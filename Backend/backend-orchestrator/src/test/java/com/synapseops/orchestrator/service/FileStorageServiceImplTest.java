@@ -8,6 +8,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import static org.mockito.Mockito.lenient;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.codec.multipart.FilePart;
 import reactor.core.publisher.Mono;
@@ -16,7 +17,6 @@ import reactor.test.StepVerifier;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -40,7 +40,7 @@ class FileStorageServiceImplTest {
 
     @BeforeEach
     void setUp() {
-        when(storageProperties.getBasePath()).thenReturn(tempDir.toString());
+        lenient().when(storageProperties.getBasePath()).thenReturn(tempDir.toString());
     }
 
     @Nested
