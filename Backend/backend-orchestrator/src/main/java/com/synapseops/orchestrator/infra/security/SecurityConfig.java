@@ -31,11 +31,20 @@ public class SecurityConfig {
                         .pathMatchers(
                                 "/swagger-ui.html",
                                 "/swagger-ui/**",
-                                "/v3/api-docs/**",
                                 "/webjars/**",
+                                "/api-docs",
+                                "/api-docs/**",
+                                "/api-docs/swagger-config",
                                 "/actuator/**"
                         ).permitAll()
                         .anyExchange().authenticated()
+                )
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint((exchange, e) -> {
+                            exchange.getResponse()
+                                    .setStatusCode(org.springframework.http.HttpStatus.UNAUTHORIZED);
+                            return exchange.getResponse().setComplete();
+                        })
                 )
                 .addFilterBefore(jwtAuthenticationWebFilter,
                         SecurityWebFiltersOrder.AUTHENTICATION)

@@ -4,6 +4,7 @@ import com.synapseops.orchestrator.domain.dto.request.PipelineRequest;
 import com.synapseops.orchestrator.domain.dto.response.PipelineResponse;
 import com.synapseops.orchestrator.domain.entity.Pipeline;
 import com.synapseops.orchestrator.domain.entity.Workspace;
+import com.synapseops.orchestrator.infra.exception.ResourceNotFoundException;
 import com.synapseops.orchestrator.infra.repository.PipelineRepository;
 import com.synapseops.orchestrator.infra.repository.WorkspaceRepository;
 import com.synapseops.orchestrator.mapper.PipelineMapper;
@@ -90,12 +91,12 @@ public class PipelineServiceImpl implements PipelineService {
 
     private Workspace resolveWorkspace(Long id) {
         return workspaceRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Workspace no encontrado con ID: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("Workspace no encontrado con ID: " + id));
     }
 
     private Pipeline resolvePipeline(Long id) {
         return pipelineRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Pipeline no encontrado con ID: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("Pipeline no encontrado con ID: " + id));
     }
 
     private void verifyOwnership(Workspace workspace, String username) {

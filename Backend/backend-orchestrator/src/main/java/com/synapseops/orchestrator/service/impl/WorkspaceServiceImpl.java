@@ -4,6 +4,7 @@ import com.synapseops.orchestrator.domain.dto.request.WorkspaceRequest;
 import com.synapseops.orchestrator.domain.dto.response.WorkspaceResponse;
 import com.synapseops.orchestrator.domain.entity.User;
 import com.synapseops.orchestrator.domain.entity.Workspace;
+import com.synapseops.orchestrator.infra.exception.ResourceNotFoundException;
 import com.synapseops.orchestrator.infra.repository.UserRepository;
 import com.synapseops.orchestrator.infra.repository.WorkspaceRepository;
 import com.synapseops.orchestrator.mapper.WorkspaceMapper;
@@ -95,12 +96,12 @@ public class WorkspaceServiceImpl implements WorkspaceService {
 
     private User resolveUser(String username) {
         return userRepository.findByUsername(username)
-                .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado: " + username));
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado: " + username));
     }
 
     private Workspace resolveWorkspace(Long id) {
         return workspaceRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Workspace no encontrado con ID: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("Workspace no encontrado con ID: " + id));
     }
 
     private void verifyOwnership(Workspace workspace, String username) {
