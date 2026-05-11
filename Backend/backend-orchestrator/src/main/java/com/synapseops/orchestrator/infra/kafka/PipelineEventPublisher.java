@@ -2,6 +2,7 @@ package com.synapseops.orchestrator.infra.kafka;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.synapseops.orchestrator.domain.dto.kafka.PipelineJobRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.core.KafkaTemplate;
