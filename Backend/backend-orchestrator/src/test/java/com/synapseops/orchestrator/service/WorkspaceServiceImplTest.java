@@ -65,7 +65,7 @@ class WorkspaceServiceImplTest {
 
         workspaceResponse = new WorkspaceResponse(
                 10L, "Mi Proyecto ML", "Clasificación de imágenes",
-                workspace.getCreatedAt(), 1L, "student_one"
+                workspace.getCreatedAt(), 1L, "student_one", "/data"
         );
     }
 
