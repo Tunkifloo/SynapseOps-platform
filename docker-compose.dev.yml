@@ -49,11 +49,39 @@ services:
       interval: 15s
       timeout: 10s
       retries: 5
-      start_period: 30s    
+      start_period: 30s
+
+  mlflow-server:
+    image: ghcr.io/mlflow/mlflow:latest
+    container_name: mlflow-server
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    command: >
+      mlflow server
+        --backend-store-uri sqlite:////mlflow/mlflow.db
+        --default-artifact-root /mlflow/artifacts
+        --host 0.0.0.0
+        --port 5000
+    volumes:
+      - mlflow_db:/mlflow          
+      - mlflow_artifacts:/mlflow/artifacts   
+    networks:
+      - mlops-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5000/health || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 20s        
 
 volumes:
   postgres_data:
     name: synapseops_postgres_data
+  mlflow_db:
+    name: synapseops_mlflow_db
+  mlflow_artifacts:
+    name: synapseops_mlflow_artifacts  
 
 networks:
   mlops-network:
