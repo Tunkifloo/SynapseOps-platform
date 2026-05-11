@@ -15,7 +15,8 @@ public class WorkspaceMapper {
                 workspace.getDescription(),
                 workspace.getCreatedAt(),
                 workspace.getUser().getIdUser(),
-                workspace.getUser().getUsername()
+                workspace.getUser().getUsername(),
+                workspace.getDatasetPath()
         );
     }
 
