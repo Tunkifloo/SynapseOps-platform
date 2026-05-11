@@ -6,6 +6,7 @@ import com.synapseops.orchestrator.domain.dto.request.UserUpdateRequest;
 import com.synapseops.orchestrator.domain.dto.response.UserResponse;
 import com.synapseops.orchestrator.domain.entity.Role;
 import com.synapseops.orchestrator.domain.entity.User;
+import com.synapseops.orchestrator.infra.exception.ResourceNotFoundException;
 import com.synapseops.orchestrator.infra.repository.UserRepository;
 import com.synapseops.orchestrator.mapper.UserMapper;
 import com.synapseops.orchestrator.service.UserService;
@@ -47,7 +48,7 @@ public class UserServiceImpl implements UserService {
         return Mono.fromCallable(() ->
                 userRepository.findByIdUserAndEnabledTrue(id)
                         .map(userMapper::toResponse)
-                        .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado con ID: " + id))
+                        .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado con ID: " + id))
         ).subscribeOn(Schedulers.boundedElastic());
     }
 
@@ -56,7 +57,7 @@ public class UserServiceImpl implements UserService {
         return Mono.fromCallable(() ->
                 userRepository.findByUsername(username)
                         .map(userMapper::toResponse)
-                        .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado: " + username))
+                        .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado: " + username))
         ).subscribeOn(Schedulers.boundedElastic());
     }
 
@@ -64,7 +65,7 @@ public class UserServiceImpl implements UserService {
     public Mono<UserResponse> updateUserByAdmin(Long id, UserUpdateRequest request) {
         return Mono.fromCallable(() -> {
             User user = userRepository.findById(id)
-                    .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado con ID: " + id));
+                    .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado con ID: " + id));
 
             if (request.email() != null
                     && !request.email().equals(user.getEmail())
@@ -82,7 +83,7 @@ public class UserServiceImpl implements UserService {
     public Mono<UserResponse> updateMyProfile(String username, UserProfileUpdateRequest request) {
         return Mono.fromCallable(() -> {
             User user = userRepository.findByUsername(username)
-                    .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado: " + username));
+                    .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado: " + username));
             userMapper.updateEntityFromProfileRequest(user, request);
             return userMapper.toResponse(userRepository.save(user));
         }).subscribeOn(Schedulers.boundedElastic());
@@ -92,7 +93,7 @@ public class UserServiceImpl implements UserService {
     public Mono<Void> updatePassword(String username, PasswordUpdateRequest request) {
         return Mono.fromRunnable(() -> {
             User user = userRepository.findByUsername(username)
-                    .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado: " + username));
+                    .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado: " + username));
 
             if (!user.isEnabled()) {
                 throw new DisabledException("Su cuenta está deshabilitada.");
@@ -113,7 +114,7 @@ public class UserServiceImpl implements UserService {
     public Mono<Void> toggleUserStatus(Long id) {
         return Mono.fromRunnable(() -> {
             User user = userRepository.findById(id)
-                    .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado con ID: " + id));
+                    .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado con ID: " + id));
             user.setEnabled(!user.isEnabled());
             userRepository.save(user);
         }).subscribeOn(Schedulers.boundedElastic()).then();
