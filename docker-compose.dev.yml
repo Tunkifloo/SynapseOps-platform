@@ -1,0 +1,31 @@
+services:
+
+  postgres-db:
+    image: postgres:17-alpine
+    container_name: postgres-db
+    restart: unless-stopped
+    ports:
+      - "5433:5432"        
+    environment:
+      POSTGRES_DB: orchestrator
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - mlops-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME} -d orchestrator"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+volumes:
+  postgres_data:
+    name: synapseops_postgres_data
+
+networks:
+  mlops-network:
+    name: mlops-network
+    driver: bridge
