@@ -133,3 +133,11 @@ logging:
       max-file-size: 10MB
       max-history: 7
       file-name-pattern: logs/backend-orchestrator-%d{yyyy-MM-dd}.%i.log
+
+storage:
+  base-path: ${STORAGE_BASE_PATH:/storage}
+  max-file-size-mb: ${STORAGE_MAX_FILE_SIZE_MB:500}
+  allowed-types:
+    - text/csv
+    - image/png
+    - image/jpeg
