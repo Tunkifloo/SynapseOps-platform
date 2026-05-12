@@ -88,11 +88,12 @@ services:
     networks:
       - mlops-network
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:5000/health || exit 1"]
-      interval: 15s
-      timeout: 10s
-      retries: 5
-      start_period: 20s
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+      start_period: 60s
 
   # ── 4. CADVISOR ───────────────────────────────────────────────────────────
   cadvisor:
@@ -162,10 +163,47 @@ services:
       start_period: 20s
 
   # ── 7. BACKEND ORCHESTRATOR — pendiente Dockerfile ────────────────────────
-  # Se activa cuando esté el Dockerfile. Por ahora corre en IntelliJ.
-  # backend-orchestrator:
-  #   build: ./Backend/backend-orchestrator
-  #   ...
+  backend-orchestrator:
+    image: ${REGISTRY:-synapseops}/backend-orchestrator:${APP_VERSION:-1.0.0}
+    build:
+      context: ./Backend/backend-orchestrator
+      dockerfile: Dockerfile
+    container_name: backend-orchestrator
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      DB_URL: jdbc:postgresql://postgres-db:5432/orchestrator
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRATION: ${JWT_EXPIRATION:-36000000}
+      KAFKA_BOOTSTRAP_SERVERS: kafka-broker:9092
+      MLFLOW_TRACKING_URI: http://mlflow-server:5000
+      STORAGE_BASE_PATH: /storage
+      STORAGE_MAX_FILE_SIZE_MB: ${STORAGE_MAX_FILE_SIZE_MB:-500}
+      ADMIN_USERNAME: ${ADMIN_USERNAME}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      ADMIN_EMAIL: ${ADMIN_EMAIL}
+    volumes:
+      - storage_data:/storage
+      - /var/run/docker.sock:/var/run/docker.sock   
+    ports:
+      - "8080:8080"
+    networks:
+      - mlops-network
+    depends_on:
+      postgres-db:
+        condition: service_healthy
+      kafka-broker:
+        condition: service_healthy
+      mlflow-server:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/actuator/health || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
 
   # ── 8. ML ENGINE — EN-010 pendiente ──────────────────────────────────────
   # ml-engine:
@@ -184,6 +222,7 @@ volumes:
   mlflow_artifacts:
   grafana_data:
   prometheus_data:
+  storage_data:
 
 networks:
   mlops-network:

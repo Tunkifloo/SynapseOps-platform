@@ -1,0 +1,19 @@
+# Build artifacts
+target/
+
+# Entorno local — nunca va a la imagen
+.env
+*.log
+logs/
+storage-dev/
+
+# Git y editor
+.git
+.gitignore
+.idea/
+*.iml
+*.iws
+
+# Docs
+README.md
+*.md
