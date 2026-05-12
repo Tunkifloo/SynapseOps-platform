@@ -1,23 +1,34 @@
 import { create } from 'zustand';
-import { Role, type User } from '../types'; 
+import { persist } from 'zustand/middleware';
 
-interface AppState {
-  user: User | null;
-  currentWorkspace: string;
-  setUser: (user: User) => void;
-  setWorkspace: (name: string) => void;
+interface User {
+  username: string;
+  name: string;  // Agregado
+  role: string;  // Agregado
 }
 
-export const useAppStore = create<AppState>((set) => ({
-  user: {
-    idUser: 1,
-    username: 'alfrog7',
-    role: Role.COLLABORATOR,
-    name: 'Alfredo Guzman',
-    email: 'roermoscol30@gmail.com' // Correo actualizado
-  },
-  currentWorkspace: 'SynapseOps_Main_Core',
-  
-  setUser: (user) => set({ user }),
-  setWorkspace: (name) => set({ currentWorkspace: name }),
-}));
+interface AppState {
+  token: string | null;
+  user: User | null;
+  currentWorkspace: string; // Agregado
+  isAuthenticated: boolean;
+  setAuth: (token: string, user: User) => void;
+  setWorkspace: (workspace: string) => void; // Para cambiar de workspace
+  logout: () => void;
+}
+
+export const useAppStore = create<AppState>()(
+  persist(
+    (set) => ({
+      token: null,
+      user: null,
+      currentWorkspace: 'Default Project', // Valor inicial
+      isAuthenticated: false,
+      setAuth: (token, user) => set({ token, user, isAuthenticated: true }),
+      setWorkspace: (name) => set({ currentWorkspace: name }),
+      logout: () => set({ token: null, user: null, isAuthenticated: false }),
+    }),
+    { name: 'app-storage' }
+  )
+);
+
