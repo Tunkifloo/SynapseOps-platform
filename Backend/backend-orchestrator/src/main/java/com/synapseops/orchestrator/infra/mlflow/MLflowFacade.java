@@ -1,6 +1,7 @@
 package com.synapseops.orchestrator.infra.mlflow;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
@@ -15,9 +16,12 @@ import java.util.Map;
 public class MLflowFacade {
 
     private final WebClient webClient;
+    @Getter
+    private final String trackingUri;
 
     public MLflowFacade(
-            @Value("${mlflow.tracking.uri:http://localhost:5000}") String mlflowUri) {
+            @Value("${mlflow.tracking.uri}") String mlflowUri) {
+        this.trackingUri = mlflowUri;
         this.webClient = WebClient.builder()
                 .baseUrl(mlflowUri)
                 .defaultHeader("Content-Type", MediaType.APPLICATION_JSON_VALUE)

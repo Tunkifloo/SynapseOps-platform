@@ -19,10 +19,9 @@ public class MLflowController {
     public Mono<ResponseEntity<String>> checkConnectivity() {
         return mlflowFacade.isReachable()
                 .map(ok -> ok
-                        ? ResponseEntity.ok("MLflow reachable en "
-                                            + "${mlflow.tracking.uri}")
+                        ? ResponseEntity.ok("MLflow reachable en " + mlflowFacade.getTrackingUri())
                         : ResponseEntity.status(503)
-                          .body("MLflow unreachable"));
+                          .body("MLflow unreachable en " + mlflowFacade.getTrackingUri()));
     }
 
     @GetMapping("/runs/{runId}/artifact-uri")
