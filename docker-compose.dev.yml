@@ -1,3 +1,9 @@
+# SynapseOps — Docker Compose Dev
+# Solo infraestructura. Backend, ml-engine y frontend corren en IDEs.
+# Uso: docker compose -f docker-compose.dev.yml up -d
+
+name: synapseops
+
 services:
 
   postgres-db:
@@ -5,7 +11,7 @@ services:
     container_name: postgres-db
     restart: unless-stopped
     ports:
-      - "5433:5432"        
+      - "5433:5432"           
     environment:
       POSTGRES_DB: orchestrator
       POSTGRES_USER: ${DB_USERNAME}
@@ -26,26 +32,29 @@ services:
     container_name: kafka-broker
     restart: unless-stopped
     ports:
-      - "9092:9092"
+      - "9092:9092"     
+      - "9094:9094"     
     environment:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092,EXTERNAL://0.0.0.0:9094,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka-broker:9092,EXTERNAL://localhost:9094
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-broker:9093
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
-      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"   
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
       KAFKA_LOG_RETENTION_HOURS: 24
+      CLUSTER_ID: ${KAFKA_CLUSTER_ID}
+    volumes:
+      - kafka_data:/var/lib/kafka/data
     networks:
       - mlops-network
     healthcheck:
-      test: ["CMD-SHELL",
-             "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list"]
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list"]
       interval: 15s
       timeout: 10s
       retries: 5
@@ -59,29 +68,32 @@ services:
       - "5000:5000"
     command: >
       mlflow server
-        --backend-store-uri sqlite:////mlflow/mlflow.db
-        --default-artifact-root /mlflow/artifacts
-        --host 0.0.0.0
-        --port 5000
+      --backend-store-uri sqlite:////mlflow/mlflow.db
+      --default-artifact-root /mlflow/artifacts
+      --host 0.0.0.0
+      --port 5000
     volumes:
-      - mlflow_db:/mlflow          
-      - mlflow_artifacts:/mlflow/artifacts   
+      - mlflow_db:/mlflow
+      - mlflow_artifacts:/mlflow/artifacts
     networks:
       - mlops-network
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:5000/health || exit 1"]
-      interval: 15s
-      timeout: 10s
-      retries: 5
-      start_period: 20s        
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+      start_period: 60s
 
 volumes:
   postgres_data:
     name: synapseops_postgres_data
+  kafka_data:
+    name: synapseops_kafka_data
   mlflow_db:
     name: synapseops_mlflow_db
   mlflow_artifacts:
-    name: synapseops_mlflow_artifacts  
+    name: synapseops_mlflow_artifacts
 
 networks:
   mlops-network:
