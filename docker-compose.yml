@@ -1,0 +1,191 @@
+# SynapseOps — Docker Compose Principal
+# EN-013 · Sprint 1 · Distribución en laboratorio UPAO
+
+# Uso:
+#   docker compose pull && docker compose up -d      ← laboratorio
+#   docker compose up -d --build                     ← desarrollo con build local
+
+# Requisitos mínimos del host: 8 GB RAM, 4 núcleos CPU
+
+
+name: synapseops
+
+services:
+
+  # ── 1. POSTGRES ───────────────────────────────────────────────────────────
+  postgres-db:
+    image: postgres:17-alpine
+    container_name: postgres-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: orchestrator
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_EXTERNAL_PORT:-5432}:5432"
+    networks:
+      - mlops-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME} -d orchestrator"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # ── 2. KAFKA BROKER — KRaft sin ZooKeeper ────────────────────────────────
+  kafka-broker:
+    image: apache/kafka:3.7.0
+    container_name: kafka-broker
+    restart: unless-stopped
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092,EXTERNAL://0.0.0.0:9094,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka-broker:9092,EXTERNAL://localhost:9094
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-broker:9093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      CLUSTER_ID: ${KAFKA_CLUSTER_ID}
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    ports:
+      - "9092:9092"   
+      - "9094:9094"   
+    networks:
+      - mlops-network
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # ── 3. MLFLOW SERVER ──────────────────────────────────────────────────────
+  mlflow-server:
+    image: ghcr.io/mlflow/mlflow:latest
+    container_name: mlflow-server
+    restart: unless-stopped
+    command: >
+      mlflow server
+      --host 0.0.0.0
+      --port 5000
+      --backend-store-uri sqlite:////mlflow/mlflow.db
+      --default-artifact-root /mlflow/artifacts
+      --serve-artifacts
+    volumes:
+      - mlflow_db:/mlflow
+      - mlflow_artifacts:/mlflow/artifacts
+    ports:
+      - "5000:5000"
+    networks:
+      - mlops-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:5000/health || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
+  # ── 4. CADVISOR ───────────────────────────────────────────────────────────
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.47.2
+    container_name: cadvisor
+    restart: unless-stopped
+    privileged: true
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    ports:
+      - "8081:8080"
+    networks:
+      - mlops-network
+    command:
+      - "--housekeeping_interval=1s"
+      - "--docker_only=true"
+      - "--disable_metrics=disk,network,tcp,udp,percpu,sched,process"
+
+  # ── 5. PROMETHEUS ─────────────────────────────────────────────────────────
+  prometheus-tsdb:
+    image: prom/prometheus:v2.51.2
+    container_name: prometheus-tsdb
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=7d"
+      - "--web.enable-lifecycle"
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - mlops-network
+    depends_on:
+      - cadvisor
+
+  # ── 6. GRAFANA ────────────────────────────────────────────────────────────
+  grafana-dashboard:
+    image: grafana/grafana:10.4.2
+    container_name: grafana-dashboard
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_PATHS_PROVISIONING: /etc/grafana/provisioning
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3001:3000"
+    networks:
+      - mlops-network
+    depends_on:
+      - prometheus-tsdb
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:3000/api/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  # ── 7. BACKEND ORCHESTRATOR — pendiente Dockerfile ────────────────────────
+  # Se activa cuando esté el Dockerfile. Por ahora corre en IntelliJ.
+  # backend-orchestrator:
+  #   build: ./Backend/backend-orchestrator
+  #   ...
+
+  # ── 8. ML ENGINE — EN-010 pendiente ──────────────────────────────────────
+  # ml-engine:
+  #   build: ./ml-engine
+  #   ...
+
+  # ── 9. FRONTEND APP — Sprint 2 ────────────────────────────────────────────
+  # frontend-app:
+  #   build: ./Frontend/frontend-app
+  #   ...
+
+volumes:
+  postgres_data:
+  kafka_data:
+  mlflow_db:
+  mlflow_artifacts:
+  grafana_data:
+  prometheus_data:
+
+networks:
+  mlops-network:
+    driver: bridge
+    name: mlops-network
