@@ -1,6 +1,5 @@
 package com.synapseops.orchestrator.controller;
 
-import com.synapseops.orchestrator.domain.dto.response.WorkspaceResponse;
 import com.synapseops.orchestrator.infra.repository.WorkspaceRepository;
 import com.synapseops.orchestrator.infra.exception.ResourceNotFoundException;
 import com.synapseops.orchestrator.service.FileStorageService;

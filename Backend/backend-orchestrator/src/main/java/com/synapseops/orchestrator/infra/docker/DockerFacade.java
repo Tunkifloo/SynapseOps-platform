@@ -8,11 +8,12 @@ import com.github.dockerjava.api.model.Frame;
 import com.github.dockerjava.api.model.HostConfig;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.stereotype.Component;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.FluxSink;
 
 import java.io.ByteArrayInputStream;
-import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -56,7 +57,6 @@ public class DockerFacade {
                 .getId();
 
         dockerClient.startContainerCmd(containerId).exec();
-
         log.info("Contenedor iniciado. ID: {}", containerId);
         return containerId;
     }
@@ -83,19 +83,34 @@ public class DockerFacade {
                     .exec();
             boolean running = Boolean.TRUE.equals(
                     inspect.getState().getRunning());
-            log.info("Health check contenedor {}: {}", containerId,
-                    running ? "RUNNING" : "STOPPED");
+            log.info("Health check contenedor {}: {}",
+                    containerId, running ? "RUNNING" : "STOPPED");
             return running;
         } catch (Exception e) {
-            log.error("Health check fallido para {}: {}", containerId, e.getMessage());
+            log.error("Health check fallido para {}: {}",
+                    containerId, e.getMessage());
             return false;
         }
     }
 
-    public void streamContainerLogs(String containerId, SseEmitter emitter) {
+    /**
+     * Stream de logs del contenedor como Flux de ServerSentEvents.
+     * El controller de Sprint 2 retorna este Flux directamente
+     * con MediaType.TEXT_EVENT_STREAM_VALUE — sin bloqueos.
+     *
+     * Uso en controller (Sprint 2):
+     *   {@code
+     *   @GetMapping(value = "/logs/{id}", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+     *   public Flux<ServerSentEvent<String>> streamLogs(@PathVariable String id) {
+     *       return dockerFacade.streamContainerLogs(id);
+     *   }
+     *   }
+     */
+    @SuppressWarnings("unused")
+    public Flux<ServerSentEvent<String>> streamContainerLogs(String containerId) {
         log.info("Iniciando stream de logs para contenedor: {}", containerId);
 
-        dockerClient.logContainerCmd(containerId)
+        return Flux.create(sink -> dockerClient.logContainerCmd(containerId)
                 .withFollowStream(true)
                 .withStdOut(true)
                 .withStdErr(true)
@@ -109,31 +124,26 @@ public class DockerFacade {
                                 StandardCharsets.UTF_8).trim();
 
                         if (!logLine.isEmpty()) {
-                            try {
-                                emitter.send(SseEmitter.event()
-                                        .id(String.valueOf(
-                                                System.currentTimeMillis()))
-                                        .name("log-event")
-                                        .data(logLine)
-                                        .reconnectTime(3000L));
-                            } catch (IOException e) {
-                                emitter.completeWithError(e);
-                            }
+                            sink.next(ServerSentEvent.<String>builder()
+                                    .id(String.valueOf(System.currentTimeMillis()))
+                                    .event("log-event")
+                                    .data(logLine)
+                                    .build());
                         }
                     }
 
                     @Override
                     public void onComplete() {
-                        emitter.complete();
                         log.info("Stream de logs completado: {}", containerId);
+                        sink.complete();
                     }
 
                     @Override
                     public void onError(Throwable throwable) {
-                        emitter.completeWithError(throwable);
                         log.error("Error en stream de logs {}: {}",
                                 containerId, throwable.getMessage());
+                        sink.error(throwable);
                     }
-                });
+                }), FluxSink.OverflowStrategy.BUFFER);
     }
 }
