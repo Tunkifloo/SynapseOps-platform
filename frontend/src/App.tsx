@@ -1,16 +1,16 @@
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { useAppStore } from './store/useAppStore';
+import { LoginPage } from './pages/LoginPage';
 import { 
-  Database, Cpu, Split, Brain, Rocket, User as UserIcon, Search, Bell,
-  Activity, Zap, Box, Layers, 
+  Database, Cpu, Split, Brain, Rocket, User as UserIcon, Search, 
+  Activity, Zap, Box, Layers, LogOut,
   type LucideIcon 
 } from 'lucide-react';
 
-// Shadcn UI Components
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
-// Definimos una interfaz para las props de la tarjeta para eliminar el error de 'any'
 interface StatCardProps {
   title: string;
   value: string;
@@ -18,20 +18,34 @@ interface StatCardProps {
   color: string;
 }
 
-function App() {
+// ─── DASHBOARD UI COMPONENT ───
+const DashboardUI = () => {
   const user = useAppStore((state) => state.user);
   const workspace = useAppStore((state) => state.currentWorkspace);
+  const logout = useAppStore((state) => state.logout);
+  const navigate = useNavigate();
 
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
+
+  // 1. Añadimos la restricción por objeto
   const components = [
-    { name: 'Data Ingestion', icon: Database, color: 'text-emerald-400' },
-    { name: 'Preprocessing', icon: Cpu, color: 'text-blue-400' },
-    { name: 'Dataset Split', icon: Split, color: 'text-orange-400' },
-    { name: 'Model Training', icon: Brain, color: 'text-purple-400' },
-    { name: 'Model Deployment', icon: Rocket, color: 'text-amber-400' },
+    { name: 'Data Ingestion', icon: Database, color: 'text-emerald-400', adminOnly: false },
+    { name: 'Preprocessing', icon: Cpu, color: 'text-blue-400', adminOnly: false },
+    { name: 'Dataset Split', icon: Split, color: 'text-orange-400', adminOnly: false },
+    { name: 'Model Training', icon: Brain, color: 'text-purple-400', adminOnly: false },
+    { name: 'Model Deployment', icon: Rocket, color: 'text-amber-400', adminOnly: true }, // <--- Solo Admin
   ];
 
+  // 2. Filtramos según el rol del usuario
+  const visibleComponents = components.filter(item => 
+    !item.adminOnly || user?.role === 'ADMIN'
+  );
+
   return (
-    <div className="flex h-screen w-full bg-[#050505] text-slate-400 font-sans selection:bg-blue-500/30 overflow-hidden">
+    <div className="flex h-screen w-full bg-[#050505] text-slate-400 font-sans overflow-hidden">
       
       {/* SIDEBAR */}
       <aside className="w-64 border-r border-white/5 bg-[#0a0a0a] p-6 flex flex-col justify-between">
@@ -45,7 +59,9 @@ function App() {
           
           <nav className="space-y-1">
             <p className="text-[10px] font-bold text-slate-600 uppercase tracking-[0.2em] px-2 mb-4">Pipeline Core</p>
-            {components.map((item) => (
+            
+            {/* Usamos la lista filtrada */}
+            {visibleComponents.map((item) => (
               <Button 
                 key={item.name} 
                 variant="ghost" 
@@ -55,15 +71,42 @@ function App() {
                 <span className="text-xs font-medium">{item.name}</span>
               </Button>
             ))}
+
+            {/* SECCIÓN EXCLUSIVA DE ADMINISTRADOR (HU-012) */}
+            {user?.role === 'ADMIN' && (
+              <div className="mt-8 pt-8 border-t border-white/5 animate-in fade-in slide-in-from-bottom-2">
+                <p className="text-[10px] font-bold text-blue-500 uppercase tracking-[0.2em] px-2 mb-4">Admin Management</p>
+                <Button 
+                  variant="ghost" 
+                  className="w-full justify-start text-slate-400 hover:text-white hover:bg-blue-500/10 rounded-xl px-2 group transition-all"
+                >
+                  <Layers className="w-4 h-4 mr-3 text-blue-500 group-hover:rotate-12 transition-transform" />
+                  <span className="text-xs font-medium">Global CRUD Services</span>
+                </Button>
+              </div>
+            )}
           </nav>
+
         </div>
 
-        <div className="p-4 bg-gradient-to-tr from-blue-600/10 to-emerald-500/5 border border-white/5 rounded-2xl backdrop-blur-sm">
-          <div className="flex items-center gap-2 mb-2">
-            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-            <p className="text-[10px] text-emerald-400 font-bold uppercase">System Live</p>
+        {/* LOGOUT BUTTON SECTION */}
+        <div className="space-y-4">
+          <Button 
+            onClick={handleLogout}
+            variant="ghost" 
+            className="w-full justify-start text-red-400/70 hover:text-red-400 hover:bg-red-400/10 rounded-xl px-2 group transition-all"
+          >
+            <LogOut className="w-4 h-4 mr-3 group-hover:translate-x-1 transition-transform" />
+            <span className="text-xs font-medium">Log out system</span>
+          </Button>
+
+          <div className="p-4 bg-gradient-to-tr from-blue-600/10 to-emerald-500/5 border border-white/5 rounded-2xl backdrop-blur-sm">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+              <p className="text-[10px] text-emerald-400 font-bold uppercase">System Live</p>
+            </div>
+            <p className="text-[10px] text-slate-500 leading-relaxed font-mono">Uptime: 99.9%</p>
           </div>
-          <p className="text-[10px] text-slate-500 leading-relaxed font-mono">Latency: 24ms<br/>Uptime: 99.9%</p>
         </div>
       </aside>
 
@@ -83,13 +126,9 @@ function App() {
           </div>
           
           <div className="flex items-center gap-6">
-            <Button variant="ghost" size="icon" className="text-slate-500 hover:text-white">
-              <Bell className="w-5 h-5" />
-            </Button>
-            <div className="h-6 w-px bg-white/10"></div>
             <div className="flex items-center gap-3">
               <div className="text-right">
-                <p className="text-xs font-bold text-white">{user?.name}</p>
+                <p className="text-xs font-bold text-white">{user?.name || user?.username}</p>
                 <p className="text-[10px] text-slate-500 font-medium tracking-tighter uppercase">{user?.role} • Online</p>
               </div>
               <div className="w-10 h-10 rounded-xl border border-white/10 p-0.5 bg-gradient-to-br from-blue-500/20 to-transparent">
@@ -114,7 +153,6 @@ function App() {
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
             <div className="text-center">
               <h3 className="text-white/10 font-black text-8xl tracking-tighter mb-2 select-none">SYNAPSE</h3>
-              {/* Aquí usamos la variable 'workspace' para eliminar el error de ESLint */}
               <p className="text-[10px] text-slate-600 uppercase tracking-[0.8em]">Workspace: {workspace}</p>
             </div>
           </div>
@@ -122,9 +160,9 @@ function App() {
       </div>
     </div>
   );
-}
+};
 
-// Componente StatCard con tipado estricto para eliminar el error de 'any'
+// ─── HELPER COMPONENTS ───
 function StatCard({ title, value, icon: Icon, color }: StatCardProps) {
   return (
     <Card className="bg-white/[0.03] border-white/5 backdrop-blur-xl hover:bg-white/[0.05] transition-all">
@@ -139,6 +177,35 @@ function StatCard({ title, value, icon: Icon, color }: StatCardProps) {
         </p>
       </CardContent>
     </Card>
+  );
+}
+
+// ─── MAIN APP COMPONENT ───
+function App() {
+  const isAuthenticated = useAppStore((state) => state.isAuthenticated);
+
+  return (
+    <BrowserRouter>
+      <Routes>
+        {/* Si ya estoy logueado y trato de ir a /login, me manda al dashboard */}
+        <Route 
+          path="/login" 
+          element={!isAuthenticated ? <LoginPage /> : <Navigate to="/dashboard" />} 
+        />
+        
+        {/* Si no estoy logueado y trato de ir al dashboard, me manda al login */}
+        <Route 
+          path="/dashboard" 
+          element={isAuthenticated ? <DashboardUI /> : <Navigate to="/login" />} 
+        />
+        
+        {/* Cualquier otra ruta redirige según el estado de autenticación */}
+        <Route 
+          path="*" 
+          element={<Navigate to={isAuthenticated ? "/dashboard" : "/login"} />} 
+        />
+      </Routes>
+    </BrowserRouter>
   );
 }
 
