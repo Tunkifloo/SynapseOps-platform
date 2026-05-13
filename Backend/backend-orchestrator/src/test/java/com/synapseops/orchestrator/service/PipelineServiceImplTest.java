@@ -3,6 +3,7 @@ package com.synapseops.orchestrator.service;
 import com.synapseops.orchestrator.domain.dto.request.PipelineRequest;
 import com.synapseops.orchestrator.domain.dto.response.PipelineResponse;
 import com.synapseops.orchestrator.domain.entity.*;
+import com.synapseops.orchestrator.infra.exception.ResourceNotFoundException;
 import com.synapseops.orchestrator.infra.repository.PipelineRepository;
 import com.synapseops.orchestrator.infra.repository.WorkspaceRepository;
 import com.synapseops.orchestrator.mapper.PipelineMapper;
@@ -28,15 +29,19 @@ import static org.mockito.Mockito.*;
 @DisplayName("PipelineServiceImpl — Tests unitarios")
 class PipelineServiceImplTest {
 
-    @Mock PipelineRepository  pipelineRepository;
-    @Mock WorkspaceRepository workspaceRepository;
-    @Mock PipelineMapper      pipelineMapper;
+    @Mock
+    PipelineRepository pipelineRepository;
+    @Mock
+    WorkspaceRepository workspaceRepository;
+    @Mock
+    PipelineMapper pipelineMapper;
 
-    @InjectMocks PipelineServiceImpl pipelineService;
+    @InjectMocks
+    PipelineServiceImpl pipelineService;
 
-    private User      owner;
+    private User owner;
     private Workspace workspace;
-    private Pipeline  pipeline;
+    private Pipeline pipeline;
     private PipelineResponse pipelineResponse;
 
     @BeforeEach
@@ -75,7 +80,8 @@ class PipelineServiceImplTest {
                     .thenReturn(List.of(pipeline));
             when(pipelineMapper.toResponse(pipeline)).thenReturn(pipelineResponse);
 
-            StepVerifier.create(pipelineService.getPipelinesByWorkspace(10L, "student_one"))
+            StepVerifier.create(
+                            pipelineService.getPipelinesByWorkspace(10L, "student_one"))
                     .expectNext(pipelineResponse)
                     .verifyComplete();
         }
@@ -85,11 +91,51 @@ class PipelineServiceImplTest {
         void shouldEmitErrorWhenNotOwner() {
             when(workspaceRepository.findById(10L)).thenReturn(Optional.of(workspace));
 
-            StepVerifier.create(pipelineService.getPipelinesByWorkspace(10L, "student_two"))
+            StepVerifier.create(
+                            pipelineService.getPipelinesByWorkspace(10L, "student_two"))
                     .expectError(AccessDeniedException.class)
                     .verify();
 
             verify(pipelineRepository, never()).findByWorkspace_IdWorkspace(any());
+        }
+    }
+
+    @Nested
+    @DisplayName("getPipelineById()")
+    class GetPipelineById {
+
+        @Test
+        @DisplayName("Debe retornar pipeline cuando pertenece al workspace y el usuario es propietario")
+        void shouldReturnPipelineForOwnerAndCorrectWorkspace() {
+            when(pipelineRepository.findById(100L)).thenReturn(Optional.of(pipeline));
+            when(pipelineMapper.toResponse(pipeline)).thenReturn(pipelineResponse);
+
+            StepVerifier.create(
+                            pipelineService.getPipelineById(100L, 10L, "student_one"))
+                    .expectNext(pipelineResponse)
+                    .verifyComplete();
+        }
+
+        @Test
+        @DisplayName("Debe emitir AccessDeniedException si el pipeline no pertenece al workspace")
+        void shouldEmitErrorWhenPipelineNotInWorkspace() {
+            when(pipelineRepository.findById(100L)).thenReturn(Optional.of(pipeline));
+
+            StepVerifier.create(
+                            pipelineService.getPipelineById(100L, 99L, "student_one"))
+                    .expectError(AccessDeniedException.class)
+                    .verify();
+        }
+
+        @Test
+        @DisplayName("Debe emitir AccessDeniedException si el usuario no es propietario")
+        void shouldEmitErrorWhenNotOwner() {
+            when(pipelineRepository.findById(100L)).thenReturn(Optional.of(pipeline));
+
+            StepVerifier.create(
+                            pipelineService.getPipelineById(100L, 10L, "student_two"))
+                    .expectError(AccessDeniedException.class)
+                    .verify();
         }
     }
 
@@ -106,14 +152,14 @@ class PipelineServiceImplTest {
             when(pipelineRepository.save(any(Pipeline.class))).thenReturn(pipeline);
             when(pipelineMapper.toResponse(pipeline)).thenReturn(pipelineResponse);
 
-            StepVerifier.create(pipelineService.createPipeline(10L, request, "student_one"))
+            StepVerifier.create(
+                            pipelineService.createPipeline(10L, request, "student_one"))
                     .expectNextMatches(r -> r.status() == PipelineStatus.DRAFT)
                     .verifyComplete();
 
             verify(pipelineRepository).save(argThat(p ->
                     p.getStatus() == PipelineStatus.DRAFT &&
-                            p.getWorkspace().equals(workspace)
-            ));
+                            p.getWorkspace().equals(workspace)));
         }
 
         @Test
@@ -122,7 +168,8 @@ class PipelineServiceImplTest {
             PipelineRequest request = new PipelineRequest("Nuevo Pipeline");
             when(workspaceRepository.findById(10L)).thenReturn(Optional.of(workspace));
 
-            StepVerifier.create(pipelineService.createPipeline(10L, request, "student_two"))
+            StepVerifier.create(
+                            pipelineService.createPipeline(10L, request, "student_two"))
                     .expectError(AccessDeniedException.class)
                     .verify();
 
@@ -135,59 +182,91 @@ class PipelineServiceImplTest {
             PipelineRequest request = new PipelineRequest("Nuevo Pipeline");
             when(workspaceRepository.findById(99L)).thenReturn(Optional.empty());
 
-            StepVerifier.create(pipelineService.createPipeline(99L, request, "student_one"))
-                    .expectError(IllegalArgumentException.class)
-                    .verify();
-        }
-    }
-
-    @Nested
-    @DisplayName("deletePipeline()")
-    class DeletePipeline {
-
-        @Test
-        @DisplayName("Debe eliminar el pipeline si el usuario es propietario")
-        void shouldDeletePipelineForOwner() {
-            when(pipelineRepository.findById(100L)).thenReturn(Optional.of(pipeline));
-
-            StepVerifier.create(pipelineService.deletePipeline(100L, "student_one"))
-                    .verifyComplete();
-
-            verify(pipelineRepository).delete(pipeline);
-        }
-
-        @Test
-        @DisplayName("Debe emitir AccessDeniedException si el usuario no es propietario")
-        void shouldEmitErrorWhenNotOwner() {
-            when(pipelineRepository.findById(100L)).thenReturn(Optional.of(pipeline));
-
-            StepVerifier.create(pipelineService.deletePipeline(100L, "student_two"))
-                    .expectError(AccessDeniedException.class)
+            StepVerifier.create(
+                            pipelineService.createPipeline(99L, request, "student_one"))
+                    .expectError(ResourceNotFoundException.class)
                     .verify();
 
-            verify(pipelineRepository, never()).delete(any());
         }
-    }
 
-    @Nested
-    @DisplayName("renamePipeline()")
-    class RenamePipeline {
+        @Nested
+        @DisplayName("renamePipeline()")
+        class RenamePipeline {
 
-        @Test
-        @DisplayName("Debe renombrar el pipeline si el usuario es propietario")
-        void shouldRenamePipelineForOwner() {
-            PipelineRequest request = new PipelineRequest("Pipeline Renombrado");
+            @Test
+            @DisplayName("Debe renombrar el pipeline si pertenece al workspace y el usuario es propietario")
+            void shouldRenamePipelineForOwner() {
+                PipelineRequest request = new PipelineRequest("Pipeline Renombrado");
 
-            when(pipelineRepository.findById(100L)).thenReturn(Optional.of(pipeline));
-            when(pipelineRepository.save(any())).thenReturn(pipeline);
-            when(pipelineMapper.toResponse(pipeline)).thenReturn(pipelineResponse);
+                when(pipelineRepository.findById(100L)).thenReturn(Optional.of(pipeline));
+                when(pipelineRepository.save(any())).thenReturn(pipeline);
+                when(pipelineMapper.toResponse(pipeline)).thenReturn(pipelineResponse);
 
-            StepVerifier.create(pipelineService.renamePipeline(100L, request, "student_one"))
-                    .expectNext(pipelineResponse)
-                    .verifyComplete();
+                StepVerifier.create(
+                                pipelineService.renamePipeline(100L, 10L, request, "student_one"))
+                        .expectNext(pipelineResponse)
+                        .verifyComplete();
 
-            verify(pipelineRepository).save(argThat(p ->
-                    p.getName().equals("Pipeline Renombrado")));
+                verify(pipelineRepository).save(argThat(p ->
+                        p.getName().equals("Pipeline Renombrado")));
+            }
+
+            @Test
+            @DisplayName("Debe emitir AccessDeniedException si el pipeline no pertenece al workspace")
+            void shouldEmitErrorWhenPipelineNotInWorkspace() {
+                PipelineRequest request = new PipelineRequest("Pipeline Renombrado");
+                when(pipelineRepository.findById(100L)).thenReturn(Optional.of(pipeline));
+
+                StepVerifier.create(
+                                pipelineService.renamePipeline(100L, 99L, request, "student_one"))
+                        .expectError(AccessDeniedException.class)
+                        .verify();
+
+                verify(pipelineRepository, never()).save(any());
+            }
+        }
+
+        @Nested
+        @DisplayName("deletePipeline()")
+        class DeletePipeline {
+
+            @Test
+            @DisplayName("Debe eliminar el pipeline si pertenece al workspace y el usuario es propietario")
+            void shouldDeletePipelineForOwner() {
+                when(pipelineRepository.findById(100L)).thenReturn(Optional.of(pipeline));
+
+                StepVerifier.create(
+                                pipelineService.deletePipeline(100L, 10L, "student_one"))
+                        .verifyComplete();
+
+                verify(pipelineRepository).delete(pipeline);
+            }
+
+            @Test
+            @DisplayName("Debe emitir AccessDeniedException si el pipeline no pertenece al workspace")
+            void shouldEmitErrorWhenPipelineNotInWorkspace() {
+                when(pipelineRepository.findById(100L)).thenReturn(Optional.of(pipeline));
+
+                StepVerifier.create(
+                                pipelineService.deletePipeline(100L, 99L, "student_one"))
+                        .expectError(AccessDeniedException.class)
+                        .verify();
+
+                verify(pipelineRepository, never()).delete(any());
+            }
+
+            @Test
+            @DisplayName("Debe emitir AccessDeniedException si el usuario no es propietario")
+            void shouldEmitErrorWhenNotOwner() {
+                when(pipelineRepository.findById(100L)).thenReturn(Optional.of(pipeline));
+
+                StepVerifier.create(
+                                pipelineService.deletePipeline(100L, 10L, "student_two"))
+                        .expectError(AccessDeniedException.class)
+                        .verify();
+
+                verify(pipelineRepository, never()).delete(any());
+            }
         }
     }
 }
