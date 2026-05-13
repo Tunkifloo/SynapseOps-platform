@@ -8,7 +8,9 @@ import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.*;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import org.springframework.http.codec.ServerSentEvent;
+import reactor.core.publisher.Flux;
+import reactor.test.StepVerifier;
 
 import java.util.List;
 import java.util.Map;
@@ -22,7 +24,6 @@ import static org.mockito.Mockito.*;
 class DockerFacadeTest {
 
     @Mock DockerClient dockerClient;
-    @Mock SseEmitter   sseEmitter;
 
     @InjectMocks DockerFacade dockerFacade;
 
@@ -204,10 +205,10 @@ class DockerFacadeTest {
             when(logCmd.withStdOut(true)).thenReturn(logCmd);
             when(logCmd.withStdErr(true)).thenReturn(logCmd);
             when(logCmd.withTimestamps(true)).thenReturn(logCmd);
-            when(logCmd.exec(any())).thenReturn(mock(
-                    com.github.dockerjava.api.async.ResultCallback.Adapter.class));
+            when(logCmd.exec(any())).thenReturn(
+                    mock(com.github.dockerjava.api.async.ResultCallback.Adapter.class));
 
-            dockerFacade.streamContainerLogs("container-xyz", sseEmitter);
+            dockerFacade.streamContainerLogs("container-xyz").subscribe();
 
             verify(logCmd).withFollowStream(true);
             verify(logCmd).withStdOut(true);
@@ -216,8 +217,8 @@ class DockerFacadeTest {
         }
 
         @Test
-        @DisplayName("Debe enviar frame de log al SseEmitter correctamente")
-        void shouldSendLogFrameToSseEmitter() throws Exception {
+        @DisplayName("Debe emitir ServerSentEvent con el contenido del frame")
+        void shouldEmitSseEventFromLogFrame() {
             byte[] payload = "[INFO] Epoch 1/50 — accuracy: 0.72".getBytes();
             Frame frame = new Frame(StreamType.STDOUT, payload);
 
@@ -233,16 +234,24 @@ class DockerFacadeTest {
                     com.github.dockerjava.api.async.ResultCallback.Adapter.class);
             when(logCmd.exec(callbackCaptor.capture())).thenReturn(null);
 
-            dockerFacade.streamContainerLogs("container-xyz", sseEmitter);
+            Flux<ServerSentEvent<String>> flux =
+                    dockerFacade.streamContainerLogs("container-xyz");
 
-            callbackCaptor.getValue().onNext(frame);
-
-            verify(sseEmitter).send(any(SseEmitter.SseEventBuilder.class));
+            StepVerifier.create(flux)
+                    .then(() -> {
+                        callbackCaptor.getValue().onNext(frame);
+                        callbackCaptor.getValue().onComplete();
+                    })
+                    .assertNext(event -> {
+                        assertThat(event.event()).isEqualTo("log-event");
+                        assertThat(event.data()).contains("Epoch 1/50");
+                    })
+                    .verifyComplete();
         }
 
         @Test
-        @DisplayName("Debe llamar emitter.complete() cuando el stream termina")
-        void shouldCompleteEmitterWhenStreamEnds() {
+        @DisplayName("Debe completar el Flux cuando el stream de Docker termina")
+        void shouldCompleteFluxWhenStreamEnds() {
             LogContainerCmd logCmd = mock(LogContainerCmd.class);
             when(dockerClient.logContainerCmd("container-xyz")).thenReturn(logCmd);
             when(logCmd.withFollowStream(true)).thenReturn(logCmd);
@@ -255,10 +264,37 @@ class DockerFacadeTest {
                     com.github.dockerjava.api.async.ResultCallback.Adapter.class);
             when(logCmd.exec(callbackCaptor.capture())).thenReturn(null);
 
-            dockerFacade.streamContainerLogs("container-xyz", sseEmitter);
-            callbackCaptor.getValue().onComplete();
+            Flux<ServerSentEvent<String>> flux =
+                    dockerFacade.streamContainerLogs("container-xyz");
 
-            verify(sseEmitter).complete();
+            StepVerifier.create(flux)
+                    .then(() -> callbackCaptor.getValue().onComplete())
+                    .verifyComplete();
+        }
+
+        @Test
+        @DisplayName("Debe terminar el Flux con error cuando Docker falla")
+        void shouldErrorFluxWhenDockerFails() {
+            LogContainerCmd logCmd = mock(LogContainerCmd.class);
+            when(dockerClient.logContainerCmd("container-xyz")).thenReturn(logCmd);
+            when(logCmd.withFollowStream(true)).thenReturn(logCmd);
+            when(logCmd.withStdOut(true)).thenReturn(logCmd);
+            when(logCmd.withStdErr(true)).thenReturn(logCmd);
+            when(logCmd.withTimestamps(true)).thenReturn(logCmd);
+
+            ArgumentCaptor<com.github.dockerjava.api.async.ResultCallback.Adapter<Frame>>
+                    callbackCaptor = ArgumentCaptor.forClass(
+                    com.github.dockerjava.api.async.ResultCallback.Adapter.class);
+            when(logCmd.exec(callbackCaptor.capture())).thenReturn(null);
+
+            Flux<ServerSentEvent<String>> flux =
+                    dockerFacade.streamContainerLogs("container-xyz");
+
+            StepVerifier.create(flux)
+                    .then(() -> callbackCaptor.getValue()
+                            .onError(new RuntimeException("Docker Engine unreachable")))
+                    .expectErrorMessage("Docker Engine unreachable")
+                    .verify();
         }
     }
 }

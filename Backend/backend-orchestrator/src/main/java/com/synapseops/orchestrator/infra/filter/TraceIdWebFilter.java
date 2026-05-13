@@ -25,12 +25,17 @@ public class TraceIdWebFilter implements WebFilter {
                 .getFirst(REQUEST_ID_KEY);
 
         if (traceId == null || traceId.isBlank()) {
-            traceId = UUID.randomUUID().toString().replace("-", "").substring(0, 16);
+            traceId = UUID.randomUUID().toString()
+                    .replace("-", "").substring(0, 16);
         }
 
-        exchange.getResponse().getHeaders().add(REQUEST_ID_KEY, traceId);
-
         final String finalTraceId = traceId;
+
+        exchange.getResponse().beforeCommit(() -> {
+            exchange.getResponse().getHeaders()
+                    .add(REQUEST_ID_KEY, finalTraceId);
+            return Mono.empty();
+        });
 
         return chain.filter(exchange)
                 .contextWrite(Context.of(TRACE_ID_KEY, finalTraceId))

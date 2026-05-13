@@ -235,14 +235,6 @@ services:
       timeout: 10s
       retries: 5
       start_period: 60s
-    # Descomentar si el host tiene NVIDIA GPU + nvidia-container-toolkit:
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: 1
-    #           capabilities: [gpu]
 
   # ── 9. FRONTEND APP — Sprint 2 ────────────────────────────────────────────
   # frontend-app:
