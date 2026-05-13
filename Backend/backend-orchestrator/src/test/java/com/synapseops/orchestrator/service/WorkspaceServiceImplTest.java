@@ -6,6 +6,7 @@ import com.synapseops.orchestrator.domain.entity.Admin;
 import com.synapseops.orchestrator.domain.entity.Role;
 import com.synapseops.orchestrator.domain.entity.User;
 import com.synapseops.orchestrator.domain.entity.Workspace;
+import com.synapseops.orchestrator.infra.exception.ResourceNotFoundException;
 import com.synapseops.orchestrator.infra.repository.UserRepository;
 import com.synapseops.orchestrator.infra.repository.WorkspaceRepository;
 import com.synapseops.orchestrator.mapper.WorkspaceMapper;
@@ -170,7 +171,7 @@ class WorkspaceServiceImplTest {
             when(workspaceRepository.findById(99L)).thenReturn(Optional.empty());
 
             StepVerifier.create(workspaceService.getWorkspaceById(99L, "student_one"))
-                    .expectError(IllegalArgumentException.class)
+                    .expectError(ResourceNotFoundException.class)
                     .verify();
         }
     }
