@@ -3,9 +3,12 @@ package com.synapseops.orchestrator.service.impl;
 import com.synapseops.orchestrator.domain.dto.request.PipelineRequest;
 import com.synapseops.orchestrator.domain.dto.response.PipelineResponse;
 import com.synapseops.orchestrator.domain.entity.Pipeline;
+import com.synapseops.orchestrator.domain.entity.Role;
+import com.synapseops.orchestrator.domain.entity.User;
 import com.synapseops.orchestrator.domain.entity.Workspace;
 import com.synapseops.orchestrator.infra.exception.ResourceNotFoundException;
 import com.synapseops.orchestrator.infra.repository.PipelineRepository;
+import com.synapseops.orchestrator.infra.repository.UserRepository;
 import com.synapseops.orchestrator.infra.repository.WorkspaceRepository;
 import com.synapseops.orchestrator.mapper.PipelineMapper;
 import com.synapseops.orchestrator.service.PipelineService;
@@ -24,6 +27,7 @@ import java.util.List;
 public class PipelineServiceImpl implements PipelineService {
 
     private final PipelineRepository  pipelineRepository;
+    private final UserRepository      userRepository;
     private final WorkspaceRepository workspaceRepository;
     private final PipelineMapper      pipelineMapper;
 
@@ -100,7 +104,14 @@ public class PipelineServiceImpl implements PipelineService {
     }
 
     private void verifyOwnership(Workspace workspace, String username) {
-        if (!workspace.getUser().getUsername().equals(username)) {
+        if (workspace.getUser().getUsername().equals(username)) {
+            return;
+        }
+
+        User requester = userRepository.findByUsername(username)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado: " + username));
+
+        if (requester.getRole() != Role.ADMIN) {
             throw new AccessDeniedException("No tienes permiso para acceder a este recurso.");
         }
     }

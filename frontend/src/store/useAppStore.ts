@@ -1,10 +1,11 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import type { Role } from '../types';
 
 interface User {
   username: string;
   name: string;  // Agregado
-  role: string;  // Agregado
+  role: Role;
 }
 
 interface AppState {

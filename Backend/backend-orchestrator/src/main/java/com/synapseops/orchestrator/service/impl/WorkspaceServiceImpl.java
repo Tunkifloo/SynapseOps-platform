@@ -2,6 +2,7 @@ package com.synapseops.orchestrator.service.impl;
 
 import com.synapseops.orchestrator.domain.dto.request.WorkspaceRequest;
 import com.synapseops.orchestrator.domain.dto.response.WorkspaceResponse;
+import com.synapseops.orchestrator.domain.entity.Role;
 import com.synapseops.orchestrator.domain.entity.User;
 import com.synapseops.orchestrator.domain.entity.Workspace;
 import com.synapseops.orchestrator.infra.exception.ResourceNotFoundException;
@@ -105,8 +106,12 @@ public class WorkspaceServiceImpl implements WorkspaceService {
     }
 
     private void verifyOwnership(Workspace workspace, String username) {
-        boolean isOwner = workspace.getUser().getUsername().equals(username);
-        if (!isOwner) {
+        if (workspace.getUser().getUsername().equals(username)) {
+            return;
+        }
+
+        User requester = resolveUser(username);
+        if (requester.getRole() != Role.ADMIN) {
             throw new AccessDeniedException("No tienes permiso para acceder a este workspace.");
         }
     }

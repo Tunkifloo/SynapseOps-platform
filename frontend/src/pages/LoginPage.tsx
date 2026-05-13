@@ -5,6 +5,26 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '../components/ui/card';
 
+interface JwtClaims {
+  sub?: string;
+  role?: string;
+}
+
+const parseJwtClaims = (token: string): JwtClaims => {
+  const [, payload] = token.split('.');
+
+  if (!payload) {
+    throw new Error('Invalid token payload');
+  }
+
+  const normalizedPayload = payload.replace(/-/g, '+').replace(/_/g, '/');
+  const paddedPayload = normalizedPayload.padEnd(Math.ceil(normalizedPayload.length / 4) * 4, '=');
+
+  return JSON.parse(atob(paddedPayload)) as JwtClaims;
+};
+
+const resolveRole = (role?: string) => role === 'ADMIN' ? 'ADMIN' : 'COLLABORATOR';
+
 export const LoginPage = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -29,14 +49,12 @@ export const LoginPage = () => {
       if (!response.ok) throw new Error('Invalid credentials');
 
       const data = await response.json();
-      
-      // LÓGICA DE ROLES (HU-012)
-      const isAdmin = username === 'superadmin';
+      const claims = parseJwtClaims(data.token);
       
       setAuth(data.token, { 
-        username: username, 
-        name: isAdmin ? 'System Administrator' : 'Standard User', 
-        role: isAdmin ? 'ADMIN' : 'COLABORADOR' 
+        username: claims.sub ?? username,
+        name: claims.sub ?? username,
+        role: resolveRole(claims.role),
       });
       
       navigate('/dashboard');

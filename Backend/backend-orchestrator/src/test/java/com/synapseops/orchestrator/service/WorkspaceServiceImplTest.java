@@ -3,9 +3,11 @@ package com.synapseops.orchestrator.service;
 import com.synapseops.orchestrator.domain.dto.request.WorkspaceRequest;
 import com.synapseops.orchestrator.domain.dto.response.WorkspaceResponse;
 import com.synapseops.orchestrator.domain.entity.Admin;
+import com.synapseops.orchestrator.domain.entity.Collaborator;
 import com.synapseops.orchestrator.domain.entity.Role;
 import com.synapseops.orchestrator.domain.entity.User;
 import com.synapseops.orchestrator.domain.entity.Workspace;
+import com.synapseops.orchestrator.infra.exception.ResourceNotFoundException;
 import com.synapseops.orchestrator.infra.repository.UserRepository;
 import com.synapseops.orchestrator.infra.repository.WorkspaceRepository;
 import com.synapseops.orchestrator.mapper.WorkspaceMapper;
@@ -40,21 +42,29 @@ class WorkspaceServiceImplTest {
 
     private User        owner;
     private User        otherUser;
+    private User        adminUser;
     private Workspace   workspace;
     private WorkspaceResponse workspaceResponse;
 
     @BeforeEach
     void setUp() {
-        owner = new Admin();
+        owner = new Collaborator();
         owner.setIdUser(1L);
         owner.setUsername("student_one");
         owner.setRole(Role.COLLABORATOR);
         owner.setEnabled(true);
 
-        otherUser = new Admin();
+        otherUser = new Collaborator();
         otherUser.setIdUser(2L);
         otherUser.setUsername("student_two");
+        otherUser.setRole(Role.COLLABORATOR);
         otherUser.setEnabled(true);
+
+        adminUser = new Admin();
+        adminUser.setIdUser(3L);
+        adminUser.setUsername("admin_root");
+        adminUser.setRole(Role.ADMIN);
+        adminUser.setEnabled(true);
 
         workspace = new Workspace();
         workspace.setIdWorkspace(10L);
@@ -158,10 +168,23 @@ class WorkspaceServiceImplTest {
         @DisplayName("Debe emitir AccessDeniedException si el usuario no es propietario")
         void shouldEmitErrorWhenNotOwner() {
             when(workspaceRepository.findById(10L)).thenReturn(Optional.of(workspace));
+            when(userRepository.findByUsername("student_two")).thenReturn(Optional.of(otherUser));
 
             StepVerifier.create(workspaceService.getWorkspaceById(10L, "student_two"))
                     .expectError(AccessDeniedException.class)
                     .verify();
+        }
+
+        @Test
+        @DisplayName("Debe permitir acceso global cuando el usuario es administrador")
+        void shouldAllowAdminToAccessAnyWorkspace() {
+            when(workspaceRepository.findById(10L)).thenReturn(Optional.of(workspace));
+            when(userRepository.findByUsername("admin_root")).thenReturn(Optional.of(adminUser));
+            when(workspaceMapper.toResponse(workspace)).thenReturn(workspaceResponse);
+
+            StepVerifier.create(workspaceService.getWorkspaceById(10L, "admin_root"))
+                    .expectNext(workspaceResponse)
+                    .verifyComplete();
         }
 
         @Test
@@ -170,7 +193,7 @@ class WorkspaceServiceImplTest {
             when(workspaceRepository.findById(99L)).thenReturn(Optional.empty());
 
             StepVerifier.create(workspaceService.getWorkspaceById(99L, "student_one"))
-                    .expectError(IllegalArgumentException.class)
+                    .expectError(ResourceNotFoundException.class)
                     .verify();
         }
     }
@@ -194,12 +217,25 @@ class WorkspaceServiceImplTest {
         @DisplayName("Debe emitir AccessDeniedException si el usuario no es propietario")
         void shouldEmitErrorWhenNotOwner() {
             when(workspaceRepository.findById(10L)).thenReturn(Optional.of(workspace));
+            when(userRepository.findByUsername("student_two")).thenReturn(Optional.of(otherUser));
 
             StepVerifier.create(workspaceService.deleteWorkspace(10L, "student_two"))
                     .expectError(AccessDeniedException.class)
                     .verify();
 
             verify(workspaceRepository, never()).delete(any());
+        }
+
+        @Test
+        @DisplayName("Debe permitir eliminar workspaces ajenos cuando el usuario es administrador")
+        void shouldAllowAdminToDeleteAnyWorkspace() {
+            when(workspaceRepository.findById(10L)).thenReturn(Optional.of(workspace));
+            when(userRepository.findByUsername("admin_root")).thenReturn(Optional.of(adminUser));
+
+            StepVerifier.create(workspaceService.deleteWorkspace(10L, "admin_root"))
+                    .verifyComplete();
+
+            verify(workspaceRepository).delete(workspace);
         }
     }
 }
