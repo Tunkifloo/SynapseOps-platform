@@ -5,6 +5,12 @@ spring:
   application:
     name: backend-orchestrator
 
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+
+  mustache:
+    check-template-location: false
+
   # ── Base de datos ──────────────────────────────────────────────────────────
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/orchestrator}
@@ -133,3 +139,11 @@ logging:
       max-file-size: 10MB
       max-history: 7
       file-name-pattern: logs/backend-orchestrator-%d{yyyy-MM-dd}.%i.log
+
+storage:
+  base-path: ${STORAGE_BASE_PATH:/storage}
+  max-file-size-mb: ${STORAGE_MAX_FILE_SIZE_MB:500}
+  allowed-types:
+    - text/csv
+    - image/png
+    - image/jpeg

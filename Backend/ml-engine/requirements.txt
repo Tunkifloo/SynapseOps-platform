@@ -1,0 +1,31 @@
+# ── API ───────────────────────────────────────────────────
+fastapi
+uvicorn[standard]
+pydantic-settings
+
+# ── Kafka ─────────────────────────────────────────────────
+confluent-kafka
+
+# ── ML Frameworks ─────────────────────────────────────────
+tensorflow
+torch
+torchvision
+grpcio>=1.48.2
+
+# ── MLflow ────────────────────────────────────────────────
+mlflow
+protobuf>=4.25,<6
+
+# ── Evidently AI ──────────────────────────────────────────
+evidently
+
+# ── Data / Preprocesamiento ───────────────────────────────
+numpy
+pandas
+scikit-learn
+Pillow
+
+# ── Observabilidad ────────────────────────────────────────
+prometheus-client
+
+--extra-index-url https://download.pytorch.org/whl/cpu

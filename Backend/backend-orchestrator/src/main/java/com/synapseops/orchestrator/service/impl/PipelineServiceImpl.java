@@ -3,12 +3,9 @@ package com.synapseops.orchestrator.service.impl;
 import com.synapseops.orchestrator.domain.dto.request.PipelineRequest;
 import com.synapseops.orchestrator.domain.dto.response.PipelineResponse;
 import com.synapseops.orchestrator.domain.entity.Pipeline;
-import com.synapseops.orchestrator.domain.entity.Role;
-import com.synapseops.orchestrator.domain.entity.User;
 import com.synapseops.orchestrator.domain.entity.Workspace;
 import com.synapseops.orchestrator.infra.exception.ResourceNotFoundException;
 import com.synapseops.orchestrator.infra.repository.PipelineRepository;
-import com.synapseops.orchestrator.infra.repository.UserRepository;
 import com.synapseops.orchestrator.infra.repository.WorkspaceRepository;
 import com.synapseops.orchestrator.mapper.PipelineMapper;
 import com.synapseops.orchestrator.service.PipelineService;
@@ -19,20 +16,20 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
-import java.util.function.Supplier;
 import java.util.List;
+import java.util.function.Supplier;
 
 @Service
 @RequiredArgsConstructor
 public class PipelineServiceImpl implements PipelineService {
 
     private final PipelineRepository  pipelineRepository;
-    private final UserRepository      userRepository;
     private final WorkspaceRepository workspaceRepository;
     private final PipelineMapper      pipelineMapper;
 
     @Override
-    public Flux<PipelineResponse> getPipelinesByWorkspace(Long workspaceId, String username) {
+    public Flux<PipelineResponse> getPipelinesByWorkspace(
+            Long workspaceId, String username) {
         return fetchPipelines(() -> {
             Workspace workspace = resolveWorkspace(workspaceId);
             verifyOwnership(workspace, username);
@@ -41,18 +38,19 @@ public class PipelineServiceImpl implements PipelineService {
     }
 
     @Override
-    public Mono<PipelineResponse> getPipelineById(Long id, String username) {
+    public Mono<PipelineResponse> getPipelineById(
+            Long id, Long workspaceId, String username) {
         return Mono.fromCallable(() -> {
             Pipeline pipeline = resolvePipeline(id);
             verifyOwnership(pipeline.getWorkspace(), username);
+            verifyBelongsToWorkspace(pipeline, workspaceId);
             return pipelineMapper.toResponse(pipeline);
         }).subscribeOn(Schedulers.boundedElastic());
     }
 
     @Override
-    public Mono<PipelineResponse> createPipeline(Long workspaceId,
-                                                 PipelineRequest request,
-                                                 String username) {
+    public Mono<PipelineResponse> createPipeline(
+            Long workspaceId, PipelineRequest request, String username) {
         return Mono.fromCallable(() -> {
             Workspace workspace = resolveWorkspace(workspaceId);
             verifyOwnership(workspace, username);
@@ -66,22 +64,23 @@ public class PipelineServiceImpl implements PipelineService {
     }
 
     @Override
-    public Mono<PipelineResponse> renamePipeline(Long id,
-                                                 PipelineRequest request,
-                                                 String username) {
+    public Mono<PipelineResponse> renamePipeline(
+            Long id, Long workspaceId, PipelineRequest request, String username) {
         return Mono.fromCallable(() -> {
             Pipeline pipeline = resolvePipeline(id);
             verifyOwnership(pipeline.getWorkspace(), username);
+            verifyBelongsToWorkspace(pipeline, workspaceId);
             pipeline.setName(request.name());
             return pipelineMapper.toResponse(pipelineRepository.save(pipeline));
         }).subscribeOn(Schedulers.boundedElastic());
     }
 
     @Override
-    public Mono<Void> deletePipeline(Long id, String username) {
+    public Mono<Void> deletePipeline(Long id, Long workspaceId, String username) {
         return Mono.fromRunnable(() -> {
             Pipeline pipeline = resolvePipeline(id);
             verifyOwnership(pipeline.getWorkspace(), username);
+            verifyBelongsToWorkspace(pipeline, workspaceId);
             pipelineRepository.delete(pipeline);
         }).subscribeOn(Schedulers.boundedElastic()).then();
     }
@@ -95,24 +94,27 @@ public class PipelineServiceImpl implements PipelineService {
 
     private Workspace resolveWorkspace(Long id) {
         return workspaceRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Workspace no encontrado con ID: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Workspace no encontrado con ID: " + id));
     }
 
     private Pipeline resolvePipeline(Long id) {
         return pipelineRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Pipeline no encontrado con ID: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Pipeline no encontrado con ID: " + id));
     }
 
     private void verifyOwnership(Workspace workspace, String username) {
-        if (workspace.getUser().getUsername().equals(username)) {
-            return;
+        if (!workspace.getUser().getUsername().equals(username)) {
+            throw new AccessDeniedException(
+                    "No tienes permiso para acceder a este recurso.");
         }
+    }
 
-        User requester = userRepository.findByUsername(username)
-                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado: " + username));
-
-        if (requester.getRole() != Role.ADMIN) {
-            throw new AccessDeniedException("No tienes permiso para acceder a este recurso.");
+    private void verifyBelongsToWorkspace(Pipeline pipeline, Long workspaceId) {
+        if (!pipeline.getWorkspace().getIdWorkspace().equals(workspaceId)) {
+            throw new AccessDeniedException(
+                    "El pipeline no pertenece al workspace indicado.");
         }
     }
 }

@@ -8,5 +8,6 @@ public record WorkspaceResponse(
         String description,
         LocalDateTime createdAt,
         Long idUser,
-        String ownerUsername
+        String ownerUsername,
+        String datasetPath
 ) {}

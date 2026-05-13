@@ -1,0 +1,15 @@
+# PC sin GPU (laboratorio estándar) — fallback automático a CPU en código
+# docker compose up -d
+
+# PC con NVIDIA + toolkit instalado
+# docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+
+services:
+  ml-engine:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
