@@ -27,7 +27,12 @@ export const useAppStore = create<AppState>()(
       isAuthenticated: false,
       setAuth: (token, user) => set({ token, user, isAuthenticated: true }),
       setWorkspace: (name) => set({ currentWorkspace: name }),
-      logout: () => set({ token: null, user: null, isAuthenticated: false }),
+      logout: () => set({
+        token: null,
+        user: null,
+        currentWorkspace: 'Default Project',
+        isAuthenticated: false,
+      }),
     }),
     { name: 'app-storage' }
   )

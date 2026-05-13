@@ -5,9 +5,19 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '../components/ui/card';
 
+const AUTH_BASE_URL = 'http://localhost:8080/api/v1/auth';
+
 interface JwtClaims {
   sub?: string;
   role?: string;
+}
+
+interface LoginResponse {
+  token: string;
+}
+
+interface ProblemDetail {
+  detail?: string;
 }
 
 const parseJwtClaims = (token: string): JwtClaims => {
@@ -26,7 +36,7 @@ const parseJwtClaims = (token: string): JwtClaims => {
 const resolveRole = (role?: string) => role === 'ADMIN' ? 'ADMIN' : 'COLLABORATOR';
 
 export const LoginPage = () => {
-  const [username, setUsername] = useState('');
+  const [credential, setCredential] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -40,26 +50,29 @@ export const LoginPage = () => {
     setError('');
 
     try {
-      const response = await fetch('http://localhost:8080/api/v1/auth/login', {
+      const response = await fetch(`${AUTH_BASE_URL}/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ username: credential.trim(), password }),
       });
 
-      if (!response.ok) throw new Error('Invalid credentials');
+      if (!response.ok) {
+        const problem = await response.json().catch(() => null) as ProblemDetail | null;
+        throw new Error(problem?.detail ?? 'No se pudo iniciar sesión con las credenciales ingresadas.');
+      }
 
-      const data = await response.json();
+      const data = await response.json() as LoginResponse;
       const claims = parseJwtClaims(data.token);
       
       setAuth(data.token, { 
-        username: claims.sub ?? username,
-        name: claims.sub ?? username,
+        username: claims.sub ?? credential,
+        name: claims.sub ?? credential,
         role: resolveRole(claims.role),
       });
       
       navigate('/dashboard');
-    } catch { 
-      setError('Login failed. Please check your credentials.');
+    } catch (err) { 
+      setError(err instanceof Error ? err.message : 'No se pudo iniciar sesión.');
     } finally {
       setIsLoading(false);
     }
@@ -77,13 +90,14 @@ export const LoginPage = () => {
         <form onSubmit={handleLogin}>
           <CardContent className="space-y-5">
             <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-400 uppercase">Username</label>
+              <label className="text-xs font-bold text-slate-400 uppercase">Usuario</label>
               <Input 
                 className="bg-white/5 border-white/10 text-white focus:ring-blue-500/50"
-                type="text" 
-                value={username} 
-                onChange={(e) => setUsername(e.target.value)}
+                type="text"
+                value={credential}
+                onChange={(e) => setCredential(e.target.value)}
                 placeholder="superadmin"
+                autoComplete="username"
                 required 
               />
             </div>
@@ -95,6 +109,7 @@ export const LoginPage = () => {
                 value={password} 
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
+                autoComplete="current-password"
                 required 
               />
             </div>
