@@ -3,7 +3,6 @@ package com.synapseops.orchestrator.infra.security;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.http.HttpStatus;
 import org.springframework.security.config.annotation.method.configuration.EnableReactiveMethodSecurity;
 import org.springframework.security.config.web.server.SecurityWebFiltersOrder;
 import org.springframework.security.config.web.server.ServerHttpSecurity;
@@ -46,10 +45,6 @@ public class SecurityConfig {
                             exchange.getResponse()
                                     .setStatusCode(
                                             org.springframework.http.HttpStatus.UNAUTHORIZED);
-                            return exchange.getResponse().setComplete();
-                        })
-                        .accessDeniedHandler((exchange, denied) -> {
-                            exchange.getResponse().setStatusCode(HttpStatus.FORBIDDEN);
                             return exchange.getResponse().setComplete();
                         })
                 )

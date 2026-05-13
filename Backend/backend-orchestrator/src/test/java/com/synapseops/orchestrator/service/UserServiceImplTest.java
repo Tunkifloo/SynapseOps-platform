@@ -6,7 +6,6 @@ import com.synapseops.orchestrator.domain.dto.response.UserResponse;
 import com.synapseops.orchestrator.domain.entity.Admin;
 import com.synapseops.orchestrator.domain.entity.Role;
 import com.synapseops.orchestrator.domain.entity.User;
-import com.synapseops.orchestrator.infra.exception.ResourceNotFoundException;
 import com.synapseops.orchestrator.infra.repository.UserRepository;
 import com.synapseops.orchestrator.mapper.UserMapper;
 import com.synapseops.orchestrator.service.impl.UserServiceImpl;
@@ -109,7 +108,7 @@ class UserServiceImplTest {
 
             StepVerifier.create(userService.getUserById(99L))
                     .expectErrorMatches(ex ->
-                            ex instanceof ResourceNotFoundException &&
+                            ex instanceof IllegalArgumentException &&
                                     ex.getMessage().contains("99"))
                     .verify();
         }
@@ -150,7 +149,7 @@ class UserServiceImplTest {
             when(userRepository.findById(99L)).thenReturn(Optional.empty());
 
             StepVerifier.create(userService.toggleUserStatus(99L))
-                    .expectError(ResourceNotFoundException.class)
+                    .expectError(IllegalArgumentException.class)
                     .verify();
         }
     }
