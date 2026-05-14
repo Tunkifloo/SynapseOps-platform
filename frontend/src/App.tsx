@@ -1,17 +1,27 @@
-import { useEffect, useState, type ReactNode } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
-import { useAppStore } from './store/useAppStore';
-import { LoginPage } from './pages/LoginPage';
-import { 
-  Database, Cpu, Split, Brain, Rocket, User as UserIcon, Search, 
-  Activity, Zap, Box, Layers, LogOut,
-  type LucideIcon 
+import { useCallback, useEffect, useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react';
+import { BrowserRouter, Navigate, Route, Routes, useNavigate } from 'react-router-dom';
+import {
+  Activity,
+  Brain,
+  Database,
+  Layers,
+  LogOut,
+  Search,
+  Shield,
+  User as UserIcon,
+  Users,
+  type LucideIcon,
 } from 'lucide-react';
 
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { LoginPage } from './pages/LoginPage';
+import { useAppStore } from './store/useAppStore';
 import type { Role } from './types';
+
+const AUTH_BASE_URL = 'http://localhost:8080/api/v1/auth';
+const API_BASE_URL = 'http://localhost:8080/api/v1';
 
 interface StatCardProps {
   title: string;
@@ -19,9 +29,6 @@ interface StatCardProps {
   icon: LucideIcon;
   color: string;
 }
-
-const AUTH_BASE_URL = 'http://localhost:8080/api/v1/auth';
-const API_BASE_URL = 'http://localhost:8080/api/v1';
 
 interface ApiErrorLike {
   status: number;
@@ -32,11 +39,29 @@ interface ProblemDetail {
   detail?: string;
 }
 
+interface SessionUser {
+  username: string;
+  name: string;
+  role: Role;
+}
+
 interface WorkspaceSummary {
   idWorkspace: number;
   name: string;
   description: string;
+  createdAt: string;
+  idUser: number;
   ownerUsername: string;
+  datasetPath: string | null;
+}
+
+interface PipelineSummary {
+  idPipeline: number;
+  name: string;
+  status: string;
+  idWorkspace: number;
+  nodeCount: number;
+  executionCount: number;
 }
 
 interface UserSummary {
@@ -45,6 +70,30 @@ interface UserSummary {
   name: string;
   email: string;
   role: Role;
+  paternalSurname: string;
+  maternalSurname: string;
+  phone: string | null;
+  enabled: boolean;
+}
+
+interface UserRegistrationPayload {
+  username: string;
+  password: string;
+  name: string;
+  paternalSurname: string;
+  maternalSurname: string;
+  email: string;
+  phone: string;
+  role: Role;
+}
+
+interface WorkspacePayload {
+  name: string;
+  description: string;
+}
+
+interface PipelinePayload {
+  name: string;
 }
 
 interface ProtectedRouteProps {
@@ -55,6 +104,18 @@ interface ProtectedRouteProps {
 interface RoleRouteProps extends ProtectedRouteProps {
   role: Role;
   currentRole?: Role;
+}
+
+interface DashboardLayoutTools {
+  user: SessionUser | null;
+  token: string | null;
+  currentWorkspace: string;
+  onAuthError: (error: unknown) => boolean;
+}
+
+interface DashboardLayoutProps {
+  section: 'dashboard' | 'workspaces' | 'admin';
+  renderContent: (tools: DashboardLayoutTools) => ReactNode;
 }
 
 class ApiError extends Error implements ApiErrorLike {
@@ -73,23 +134,75 @@ const isApiError = (error: unknown): error is ApiErrorLike => (
   'message' in error
 );
 
+const emptyStudentForm = (): UserRegistrationPayload => ({
+  username: '',
+  password: '',
+  name: '',
+  paternalSurname: '',
+  maternalSurname: '',
+  email: '',
+  phone: '',
+  role: 'COLLABORATOR',
+});
+
+const emptyWorkspaceForm = (): WorkspacePayload => ({
+  name: '',
+  description: '',
+});
+
+const emptyPipelineForm = (): PipelinePayload => ({
+  name: '',
+});
+
+const extractFilename = (datasetPath: string) => datasetPath.split(/[/\\]/).pop() ?? datasetPath;
+
 const getProblemDetail = async (response: Response) => {
   const problem = await response.json().catch(() => null) as ProblemDetail | null;
   return problem?.detail ?? `Request failed with status ${response.status}`;
 };
 
-const fetchJson = async <T,>(path: string, token: string) => {
+const authorizedRequest = async (path: string, token: string, init: RequestInit = {}) => {
+  const headers = new Headers(init.headers);
+  headers.set('Authorization', `Bearer ${token}`);
+
+  if (!(init.body instanceof FormData) && init.body && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
+
   const response = await fetch(`${API_BASE_URL}${path}`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
+    ...init,
+    headers,
   });
 
   if (!response.ok) {
     throw new ApiError(response.status, await getProblemDetail(response));
   }
 
-  return response.json() as Promise<T>;
+  return response;
+};
+
+const fetchJson = async <T,>(path: string, token: string, init?: RequestInit) => (
+  authorizedRequest(path, token, init).then((response) => response.json() as Promise<T>)
+);
+
+const sendJson = async <T,>(path: string, token: string, method: string, body: unknown) => (
+  fetchJson<T>(path, token, {
+    method,
+    body: JSON.stringify(body),
+  })
+);
+
+const sendVoid = async (path: string, token: string, method: string) => {
+  await authorizedRequest(path, token, { method });
+};
+
+const sendText = async (path: string, token: string, method: string, body?: FormData) => {
+  const response = await authorizedRequest(path, token, {
+    method,
+    body,
+  });
+
+  return response.text();
 };
 
 function ProtectedRoute({ isAuthenticated, children }: ProtectedRouteProps) {
@@ -137,259 +250,993 @@ function EmptyState({ title, message }: { title: string; message: string }) {
   );
 }
 
-function AdminCrudContent() {
-  return null;
+function SectionTitle({ eyebrow, title, description }: { eyebrow: string; title: string; description: string }) {
+  return (
+    <div className="space-y-2">
+      <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-blue-500">{eyebrow}</p>
+      <h1 className="text-3xl font-bold text-white">{title}</h1>
+      <p className="max-w-3xl text-sm text-slate-400">{description}</p>
+    </div>
+  );
 }
 
-function DashboardHomeContent({
-  workspace,
-  role,
-  token,
-  onAuthError,
-}: {
-  workspace: string;
-  role?: Role;
-  token: string;
-  onAuthError: (error: unknown) => boolean;
-}) {
+function FieldLabel({ children }: { children: ReactNode }) {
+  return <label className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">{children}</label>;
+}
+
+function FormField({ children }: { children: ReactNode }) {
+  return <div className="space-y-2">{children}</div>;
+}
+
+function TextArea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  return (
+    <textarea
+      {...props}
+      className={`min-h-28 w-full rounded-3xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus-visible:ring-[3px] focus-visible:ring-blue-500/30 ${props.className ?? ''}`}
+    />
+  );
+}
+
+function TableShell({ title, children, action }: { title: string; children: ReactNode; action?: ReactNode }) {
+  return (
+    <Card className="border-white/5 bg-white/[0.03]">
+      <CardHeader className="flex flex-row items-center justify-between gap-4">
+        <CardTitle className="text-white">{title}</CardTitle>
+        {action}
+      </CardHeader>
+      <CardContent>{children}</CardContent>
+    </Card>
+  );
+}
+
+function StatCard({ title, value, icon: Icon, color }: StatCardProps) {
+  return (
+    <Card className="bg-white/[0.03] border-white/5 backdrop-blur-xl hover:bg-white/[0.05] transition-all">
+      <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+        <CardTitle className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{title}</CardTitle>
+        <Icon className={`w-4 h-4 ${color}`} />
+      </CardHeader>
+      <CardContent>
+        <div className="text-2xl font-bold text-white tracking-tight">{value}</div>
+        <p className="text-[10px] text-emerald-500 mt-1 flex items-center gap-1">
+          <span>Live</span> <span className="text-slate-600">frontend state</span>
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function DashboardHomeContent({ token, user, currentWorkspace, onAuthError }: DashboardLayoutTools) {
   const [workspaces, setWorkspaces] = useState<WorkspaceSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
+    if (!token) {
+      return;
+    }
+
     let cancelled = false;
+    const timer = setTimeout(() => {
+      void (async () => {
+        setIsLoading(true);
 
-    const loadWorkspaces = async () => {
-      try {
-        const endpoint = role === 'ADMIN' ? '/workspaces/all' : '/workspaces';
-        const data = await fetchJson<WorkspaceSummary[]>(endpoint, token);
+        try {
+          const endpoint = user?.role === 'ADMIN' ? '/workspaces/all' : '/workspaces';
+          const data = await fetchJson<WorkspaceSummary[]>(endpoint, token);
 
-        if (!cancelled) {
-          setWorkspaces(data);
-          setError(null);
+          if (!cancelled) {
+            setWorkspaces(data);
+            setError(null);
+          }
+        } catch (error) {
+          if (cancelled || onAuthError(error)) {
+            return;
+          }
+
+          setError(error instanceof Error ? error.message : 'No se pudieron cargar los workspaces.');
+        } finally {
+          if (!cancelled) {
+            setIsLoading(false);
+          }
         }
-      } catch (err) {
-        if (cancelled || onAuthError(err)) {
-          return;
-        }
-
-        setError(err instanceof Error ? err.message : 'No se pudieron cargar los workspaces.');
-      } finally {
-        if (!cancelled) {
-          setIsLoading(false);
-        }
-      }
-    };
-
-    void loadWorkspaces();
+      })();
+    }, 0);
 
     return () => {
       cancelled = true;
+      clearTimeout(timer);
     };
-  }, [onAuthError, role, token]);
-
-  const title = role === 'ADMIN' ? 'Accessible Workspaces' : 'My Workspaces';
+  }, [onAuthError, token, user]);
 
   return (
-    <>
-      <div className="relative z-10 grid grid-cols-1 gap-6 mb-8 md:grid-cols-3">
-        <StatCard title={role === 'ADMIN' ? 'Global Workspaces' : 'My Workspaces'} value={isLoading ? '...' : String(workspaces.length)} icon={Layers} color="text-blue-500" />
-        <StatCard title="Total Models" value="48" icon={Box} color="text-emerald-500" />
-        <StatCard title="Requests/sec" value="1.2k" icon={Activity} color="text-orange-500" />
+    <div className="space-y-6">
+      <SectionTitle
+        eyebrow="Overview"
+        title="Operational Workspace Snapshot"
+        description="Esta vista resume el alcance actual de la sesión autenticada y enlaza las áreas administrativas o personales disponibles según tu rol."
+      />
+
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+        <StatCard title={user?.role === 'ADMIN' ? 'Global Workspaces' : 'My Workspaces'} value={isLoading ? '...' : String(workspaces.length)} icon={Layers} color="text-blue-500" />
+        <StatCard title="Current Role" value={user?.role ?? 'N/A'} icon={Shield} color="text-emerald-500" />
+        <StatCard title="Current Workspace" value={currentWorkspace || 'None'} icon={Database} color="text-orange-500" />
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
-        <Card className="border-white/5 bg-white/[0.03]">
-          <CardHeader>
-            <CardTitle className="text-white">{title}</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
+      <div className="grid gap-6 lg:grid-cols-[1.3fr_1fr]">
+        <TableShell title={user?.role === 'ADMIN' ? 'Accessible Workspaces' : 'My Workspaces'} action={
+          <Button variant="outline" size="sm" onClick={() => navigate('/workspaces')}>Open Workspaces</Button>
+        }>
+          <div className="space-y-3">
             {isLoading && <p className="text-sm text-slate-400">Loading workspaces...</p>}
             {error && <p className="text-sm text-red-400">{error}</p>}
             {!isLoading && !error && workspaces.length === 0 && (
               <p className="text-sm text-slate-400">No workspaces available for this session.</p>
             )}
-            {!isLoading && !error && workspaces.map((item) => (
+            {!isLoading && !error && workspaces.slice(0, 4).map((item) => (
               <div key={item.idWorkspace} className="rounded-2xl border border-white/5 bg-black/20 p-4">
                 <p className="text-sm font-semibold text-white">{item.name}</p>
                 <p className="mt-1 text-xs text-slate-400">{item.description || 'No description available.'}</p>
-                <p className="mt-3 text-[10px] uppercase tracking-[0.2em] text-slate-500">
-                  Owner: {item.ownerUsername}
-                </p>
+                <p className="mt-3 text-[10px] uppercase tracking-[0.2em] text-slate-500">Owner: {item.ownerUsername}</p>
               </div>
             ))}
-          </CardContent>
-        </Card>
+          </div>
+        </TableShell>
 
-        <Card className="border-white/5 bg-white/[0.03]">
-          <CardHeader>
-            <CardTitle className="text-white">Session Scope</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3 text-sm text-slate-400">
+        <TableShell title="Next Actions" action={user?.role === 'ADMIN' ? (
+          <Button variant="outline" size="sm" onClick={() => navigate('/admin')}>Open Admin Panel</Button>
+        ) : undefined}>
+          <div className="space-y-3 text-sm text-slate-400">
             <p>
-              {role === 'ADMIN'
-                ? 'This dashboard can read the global workspace listing available to administrators.'
-                : 'This dashboard is limited to the authenticated collaborator resources.'}
+              {user?.role === 'ADMIN'
+                ? 'Gestiona usuarios activos, workspaces globales y cuentas deshabilitadas desde el panel administrativo.'
+                : 'Crea proyectos aislados, carga dataset por workspace y administra pipelines del proyecto seleccionado.'}
             </p>
-            <p className="text-[10px] uppercase tracking-[0.2em] text-blue-400">
-              Active workspace: {workspace}
-            </p>
-          </CardContent>
-        </Card>
+            <p className="text-[10px] uppercase tracking-[0.2em] text-blue-400">Session owner: {user?.username}</p>
+          </div>
+        </TableShell>
       </div>
-
-      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-        <div className="text-center">
-          <h3 className="text-white/10 font-black text-8xl tracking-tighter mb-2 select-none">SYNAPSE</h3>
-          <p className="text-[10px] text-slate-600 uppercase tracking-[0.8em]">Workspace: {workspace}</p>
-        </div>
-      </div>
-    </>
-  );
-}
-
-function AdminCrudPage({
-  token,
-}: {
-  token: string;
-}) {
-  const logout = useAppStore((state) => state.logout);
-  const navigate = useNavigate();
-  const [users, setUsers] = useState<UserSummary[]>([]);
-  const [workspaces, setWorkspaces] = useState<WorkspaceSummary[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const handleAuthError = (err: unknown) => {
-      if (!isApiError(err)) {
-        return false;
-      }
-
-      if (err.status === 401) {
-        logout();
-        navigate('/login', { replace: true });
-        return true;
-      }
-
-      if (err.status === 403) {
-        navigate('/forbidden', { replace: true });
-        return true;
-      }
-
-      return false;
-    };
-
-    const loadAdminData = async () => {
-      try {
-        const [usersData, workspacesData] = await Promise.all([
-          fetchJson<UserSummary[]>('/users', token),
-          fetchJson<WorkspaceSummary[]>('/workspaces/all', token),
-        ]);
-
-        if (!cancelled) {
-          setUsers(usersData);
-          setWorkspaces(workspacesData);
-          setError(null);
-        }
-      } catch (err) {
-        if (cancelled || handleAuthError(err)) {
-          return;
-        }
-
-        setError(err instanceof Error ? err.message : 'No se pudo cargar el modulo administrativo.');
-      } finally {
-        if (!cancelled) {
-          setIsLoading(false);
-        }
-      }
-    };
-
-    void loadAdminData();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [logout, navigate, token]);
-
-  return (
-    <div className="mx-auto max-w-5xl space-y-6">
-      <div>
-        <p className="text-[10px] uppercase tracking-[0.3em] text-blue-500">Admin Only</p>
-        <h1 className="text-3xl font-bold text-white">Global CRUD Services</h1>
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-3">
-        <StatCard title="Users" value={isLoading ? '...' : String(users.length)} icon={UserIcon} color="text-blue-500" />
-        <StatCard title="Workspaces" value={isLoading ? '...' : String(workspaces.length)} icon={Layers} color="text-emerald-500" />
-        <StatCard title="Pipelines" value="CRUD" icon={Brain} color="text-orange-500" />
-      </div>
-
-      {error && <EmptyState title="Admin module unavailable" message={error} />}
-
-      {!error && (
-        <div className="grid gap-6 lg:grid-cols-2">
-          <Card className="border-white/5 bg-white/[0.03]">
-            <CardHeader>
-              <CardTitle className="text-white">Global Users</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {isLoading && <p className="text-sm text-slate-400">Loading users...</p>}
-              {!isLoading && users.length === 0 && (
-                <p className="text-sm text-slate-400">No users returned by the API.</p>
-              )}
-              {!isLoading && users.slice(0, 5).map((item) => (
-                <div key={item.idUser} className="rounded-2xl border border-white/5 bg-black/20 p-4">
-                  <p className="text-sm font-semibold text-white">{item.name || item.username}</p>
-                  <p className="mt-1 text-xs text-slate-400">{item.email}</p>
-                  <p className="mt-3 text-[10px] uppercase tracking-[0.2em] text-blue-400">{item.role}</p>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-
-          <Card className="border-white/5 bg-white/[0.03]">
-            <CardHeader>
-              <CardTitle className="text-white">Global Workspaces</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {isLoading && <p className="text-sm text-slate-400">Loading workspaces...</p>}
-              {!isLoading && workspaces.length === 0 && (
-                <p className="text-sm text-slate-400">No workspaces returned by the API.</p>
-              )}
-              {!isLoading && workspaces.slice(0, 5).map((item) => (
-                <div key={item.idWorkspace} className="rounded-2xl border border-white/5 bg-black/20 p-4">
-                  <p className="text-sm font-semibold text-white">{item.name}</p>
-                  <p className="mt-1 text-xs text-slate-400">{item.description || 'No description available.'}</p>
-                  <p className="mt-3 text-[10px] uppercase tracking-[0.2em] text-emerald-400">
-                    Owner: {item.ownerUsername}
-                  </p>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        </div>
-      )}
     </div>
   );
 }
 
-// ─── DASHBOARD UI COMPONENT ───
-const DashboardUI = ({ content }: { content?: ReactNode }) => {
-  const user = useAppStore((state) => state.user);
+function AdminUsersPage({ token, onAuthError }: { token: string; onAuthError: (error: unknown) => boolean }) {
+  const [activeUsers, setActiveUsers] = useState<UserSummary[]>([]);
+  const [disabledUsers, setDisabledUsers] = useState<UserSummary[]>([]);
+  const [form, setForm] = useState<UserRegistrationPayload>(emptyStudentForm());
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      void (async () => {
+        setIsLoading(true);
+
+        try {
+          const [enabled, disabled] = await Promise.all([
+            fetchJson<UserSummary[]>('/users', token),
+            fetchJson<UserSummary[]>('/users/disabled', token),
+          ]);
+
+          if (!cancelled) {
+            setActiveUsers(enabled);
+            setDisabledUsers(disabled);
+            setError(null);
+          }
+        } catch (error) {
+          if (cancelled || onAuthError(error)) {
+            return;
+          }
+
+          setError(error instanceof Error ? error.message : 'No se pudieron cargar los usuarios.');
+        } finally {
+          if (!cancelled) {
+            setIsLoading(false);
+          }
+        }
+      })();
+    }, 0);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [onAuthError, token]);
+
+  const handleFieldChange = (field: keyof UserRegistrationPayload) => (
+    event: ChangeEvent<HTMLInputElement>
+  ) => {
+    setForm((current) => ({
+      ...current,
+      [field]: event.target.value,
+    }));
+  };
+
+  const handleCreateStudent = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setIsSubmitting(true);
+    setNotice(null);
+
+    try {
+      await sendJson<{ token: string }>('/auth/register', token, 'POST', {
+        ...form,
+        maternalSurname: form.maternalSurname || null,
+        phone: form.phone || null,
+        role: 'COLLABORATOR',
+      });
+
+      setForm(emptyStudentForm());
+      setNotice('Student account created successfully.');
+      setError(null);
+
+      const [enabled, disabled] = await Promise.all([
+        fetchJson<UserSummary[]>('/users', token),
+        fetchJson<UserSummary[]>('/users/disabled', token),
+      ]);
+      setActiveUsers(enabled);
+      setDisabledUsers(disabled);
+    } catch (error) {
+      if (onAuthError(error)) {
+        return;
+      }
+
+      setError(error instanceof Error ? error.message : 'No se pudo crear el estudiante.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleToggleStatus = async (idUser: number) => {
+    setNotice(null);
+
+    try {
+      await sendVoid(`/users/${idUser}/toggle-status`, token, 'PATCH');
+      setError(null);
+      setNotice('User status updated successfully.');
+
+      const [enabled, disabled] = await Promise.all([
+        fetchJson<UserSummary[]>('/users', token),
+        fetchJson<UserSummary[]>('/users/disabled', token),
+      ]);
+      setActiveUsers(enabled);
+      setDisabledUsers(disabled);
+    } catch (error) {
+      if (onAuthError(error)) {
+        return;
+      }
+
+      setError(error instanceof Error ? error.message : 'No se pudo actualizar el estado del usuario.');
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <SectionTitle
+        eyebrow="HU-013"
+        title="Administrative User Management"
+        description="Gestiona cuentas de estudiantes desde una tabla administrativa, crea nuevas cuentas colaboradoras y aplica desactivación lógica sin eliminar registros." 
+      />
+
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+        <StatCard title="Active Students" value={isLoading ? '...' : String(activeUsers.length)} icon={Users} color="text-blue-500" />
+        <StatCard title="Disabled Accounts" value={isLoading ? '...' : String(disabledUsers.length)} icon={Shield} color="text-orange-500" />
+        <StatCard title="Admin Scope" value="Global" icon={Layers} color="text-emerald-500" />
+      </div>
+
+      {(error || notice) && (
+        <Card className={`border-white/5 ${error ? 'bg-red-500/10' : 'bg-emerald-500/10'}`}>
+          <CardContent className="pt-6 text-sm text-white">
+            {error ?? notice}
+          </CardContent>
+        </Card>
+      )}
+
+      <div className="grid gap-6 xl:grid-cols-[1.1fr_1.6fr]">
+        <TableShell title="Create Student Account">
+          <form className="grid gap-4 md:grid-cols-2" onSubmit={handleCreateStudent}>
+            <FormField>
+              <FieldLabel>Username</FieldLabel>
+              <Input value={form.username} onChange={handleFieldChange('username')} required />
+            </FormField>
+            <FormField>
+              <FieldLabel>Password</FieldLabel>
+              <Input type="password" value={form.password} onChange={handleFieldChange('password')} minLength={7} required />
+            </FormField>
+            <FormField>
+              <FieldLabel>Name</FieldLabel>
+              <Input value={form.name} onChange={handleFieldChange('name')} required />
+            </FormField>
+            <FormField>
+              <FieldLabel>Paternal Surname</FieldLabel>
+              <Input value={form.paternalSurname} onChange={handleFieldChange('paternalSurname')} required />
+            </FormField>
+            <FormField>
+              <FieldLabel>Maternal Surname</FieldLabel>
+              <Input value={form.maternalSurname} onChange={handleFieldChange('maternalSurname')} />
+            </FormField>
+            <FormField>
+              <FieldLabel>Phone</FieldLabel>
+              <Input value={form.phone} onChange={handleFieldChange('phone')} placeholder="999999999" />
+            </FormField>
+            <div className="md:col-span-2">
+              <FormField>
+                <FieldLabel>Email</FieldLabel>
+                <Input type="email" value={form.email} onChange={handleFieldChange('email')} required />
+              </FormField>
+            </div>
+            <div className="md:col-span-2 flex justify-end">
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting ? 'Creating...' : 'Create Student'}
+              </Button>
+            </div>
+          </form>
+        </TableShell>
+
+        <div className="space-y-6">
+          <TableShell title="Active Accounts">
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[720px] text-left text-sm text-slate-300">
+                <thead className="text-[10px] uppercase tracking-[0.2em] text-slate-500">
+                  <tr>
+                    <th className="pb-3">User</th>
+                    <th className="pb-3">Email</th>
+                    <th className="pb-3">Role</th>
+                    <th className="pb-3">Status</th>
+                    <th className="pb-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {!isLoading && activeUsers.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="py-6 text-center text-slate-500">No active users available.</td>
+                    </tr>
+                  )}
+                  {activeUsers.map((item) => (
+                    <tr key={item.idUser} className="border-t border-white/5">
+                      <td className="py-4">
+                        <p className="font-semibold text-white">{item.name || item.username}</p>
+                        <p className="text-xs text-slate-500">@{item.username}</p>
+                      </td>
+                      <td className="py-4">{item.email}</td>
+                      <td className="py-4">{item.role}</td>
+                      <td className="py-4 text-emerald-400">Enabled</td>
+                      <td className="py-4 text-right">
+                        <Button variant="destructive" size="sm" onClick={() => void handleToggleStatus(item.idUser)}>
+                          Disable
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </TableShell>
+
+          <TableShell title="Soft Deleted Accounts">
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[720px] text-left text-sm text-slate-300">
+                <thead className="text-[10px] uppercase tracking-[0.2em] text-slate-500">
+                  <tr>
+                    <th className="pb-3">User</th>
+                    <th className="pb-3">Email</th>
+                    <th className="pb-3">Role</th>
+                    <th className="pb-3">Status</th>
+                    <th className="pb-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {!isLoading && disabledUsers.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="py-6 text-center text-slate-500">No disabled accounts.</td>
+                    </tr>
+                  )}
+                  {disabledUsers.map((item) => (
+                    <tr key={item.idUser} className="border-t border-white/5">
+                      <td className="py-4">
+                        <p className="font-semibold text-white">{item.name || item.username}</p>
+                        <p className="text-xs text-slate-500">@{item.username}</p>
+                      </td>
+                      <td className="py-4">{item.email}</td>
+                      <td className="py-4">{item.role}</td>
+                      <td className="py-4 text-orange-400">Disabled</td>
+                      <td className="py-4 text-right">
+                        <Button variant="outline" size="sm" onClick={() => void handleToggleStatus(item.idUser)}>
+                          Reactivate
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </TableShell>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function WorkspacesPage({ token, onAuthError }: { token: string; onAuthError: (error: unknown) => boolean }) {
+  const setWorkspace = useAppStore((state) => state.setWorkspace);
+  const [workspaces, setWorkspaces] = useState<WorkspaceSummary[]>([]);
+  const [pipelines, setPipelines] = useState<PipelineSummary[]>([]);
+  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<number | null>(null);
+  const [workspaceForm, setWorkspaceForm] = useState<WorkspacePayload>(emptyWorkspaceForm());
+  const [pipelineForm, setPipelineForm] = useState<PipelinePayload>(emptyPipelineForm());
+  const [editingWorkspaceId, setEditingWorkspaceId] = useState<number | null>(null);
+  const [renamingPipelineId, setRenamingPipelineId] = useState<number | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [datasetFile, setDatasetFile] = useState<File | null>(null);
+  const [isLoadingWorkspaces, setIsLoadingWorkspaces] = useState(true);
+  const [isLoadingPipelines, setIsLoadingPipelines] = useState(false);
+  const [isSavingWorkspace, setIsSavingWorkspace] = useState(false);
+  const [isSavingPipeline, setIsSavingPipeline] = useState(false);
+  const [isUploadingDataset, setIsUploadingDataset] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const loadPipelines = useCallback(async (workspaceId: number) => {
+    setIsLoadingPipelines(true);
+
+    try {
+      const data = await fetchJson<PipelineSummary[]>(`/workspaces/${workspaceId}/pipelines`, token);
+      setPipelines(data);
+      setError(null);
+    } catch (error) {
+      if (onAuthError(error)) {
+        return;
+      }
+
+      setError(error instanceof Error ? error.message : 'No se pudieron cargar los pipelines del proyecto.');
+    } finally {
+      setIsLoadingPipelines(false);
+    }
+  }, [onAuthError, token]);
+
+  const applyWorkspaceSelection = (items: WorkspaceSummary[], preferredId?: number | null) => {
+    if (items.length === 0) {
+      setSelectedWorkspaceId(null);
+      setWorkspace('Default Project');
+      setPipelines([]);
+      return;
+    }
+
+    const nextWorkspace = items.find((item) => item.idWorkspace === preferredId)
+      ?? items.find((item) => item.idWorkspace === selectedWorkspaceId)
+      ?? items[0];
+
+    setSelectedWorkspaceId(nextWorkspace.idWorkspace);
+    setWorkspace(nextWorkspace.name);
+    void loadPipelines(nextWorkspace.idWorkspace);
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      void (async () => {
+        setIsLoadingWorkspaces(true);
+
+        try {
+          const data = await fetchJson<WorkspaceSummary[]>('/workspaces', token);
+
+          if (!cancelled) {
+            setWorkspaces(data);
+            if (data.length === 0) {
+              setSelectedWorkspaceId(null);
+              setWorkspace('Default Project');
+              setPipelines([]);
+            } else {
+              const nextWorkspace = data[0];
+              setSelectedWorkspaceId(nextWorkspace.idWorkspace);
+              setWorkspace(nextWorkspace.name);
+              void loadPipelines(nextWorkspace.idWorkspace);
+            }
+            setError(null);
+          }
+        } catch (error) {
+          if (cancelled || onAuthError(error)) {
+            return;
+          }
+
+          setError(error instanceof Error ? error.message : 'No se pudieron cargar tus proyectos.');
+        } finally {
+          if (!cancelled) {
+            setIsLoadingWorkspaces(false);
+          }
+        }
+      })();
+    }, 0);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [loadPipelines, onAuthError, setWorkspace, token]);
+
+  const selectedWorkspace = workspaces.find((item) => item.idWorkspace === selectedWorkspaceId) ?? null;
+
+  const handleSelectWorkspace = (workspace: WorkspaceSummary) => {
+    setSelectedWorkspaceId(workspace.idWorkspace);
+    setWorkspace(workspace.name);
+    void loadPipelines(workspace.idWorkspace);
+  };
+
+  const handleWorkspaceFieldChange = (field: keyof WorkspacePayload) => (
+    event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+  ) => {
+    setWorkspaceForm((current) => ({
+      ...current,
+      [field]: event.target.value,
+    }));
+  };
+
+  const resetWorkspaceForm = () => {
+    setWorkspaceForm(emptyWorkspaceForm());
+    setEditingWorkspaceId(null);
+  };
+
+  const handleSubmitWorkspace = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setIsSavingWorkspace(true);
+    setNotice(null);
+
+    try {
+      let selectedId: number;
+
+      if (editingWorkspaceId) {
+        const updated = await sendJson<WorkspaceSummary>(`/workspaces/${editingWorkspaceId}`, token, 'PUT', workspaceForm);
+        selectedId = updated.idWorkspace;
+        setNotice('Workspace updated successfully.');
+      } else {
+        const created = await sendJson<WorkspaceSummary>('/workspaces', token, 'POST', workspaceForm);
+        selectedId = created.idWorkspace;
+        setNotice('Workspace created successfully.');
+      }
+
+      setError(null);
+      resetWorkspaceForm();
+      const data = await fetchJson<WorkspaceSummary[]>('/workspaces', token);
+      setWorkspaces(data);
+      applyWorkspaceSelection(data, selectedId);
+    } catch (error) {
+      if (onAuthError(error)) {
+        return;
+      }
+
+      setError(error instanceof Error ? error.message : 'No se pudo guardar el workspace.');
+    } finally {
+      setIsSavingWorkspace(false);
+    }
+  };
+
+  const startEditingWorkspace = (workspace: WorkspaceSummary) => {
+    setEditingWorkspaceId(workspace.idWorkspace);
+    setWorkspaceForm({
+      name: workspace.name,
+      description: workspace.description ?? '',
+    });
+  };
+
+  const handleDeleteWorkspace = async (workspaceId: number) => {
+    setNotice(null);
+
+    try {
+      await sendVoid(`/workspaces/${workspaceId}`, token, 'DELETE');
+      setError(null);
+      setNotice('Workspace deleted successfully.');
+      if (selectedWorkspaceId === workspaceId) {
+        setSelectedWorkspaceId(null);
+      }
+      resetWorkspaceForm();
+
+      const data = await fetchJson<WorkspaceSummary[]>('/workspaces', token);
+      setWorkspaces(data);
+      applyWorkspaceSelection(data);
+    } catch (error) {
+      if (onAuthError(error)) {
+        return;
+      }
+
+      setError(error instanceof Error ? error.message : 'No se pudo eliminar el workspace.');
+    }
+  };
+
+  const handleDatasetUpload = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!selectedWorkspaceId || !datasetFile) {
+      setError('Select a workspace and file before uploading a dataset.');
+      return;
+    }
+
+    setIsUploadingDataset(true);
+    setNotice(null);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', datasetFile);
+      const message = await sendText(`/workspaces/${selectedWorkspaceId}/dataset`, token, 'POST', formData);
+      setDatasetFile(null);
+      setError(null);
+      setNotice(message);
+
+      const data = await fetchJson<WorkspaceSummary[]>('/workspaces', token);
+      setWorkspaces(data);
+      applyWorkspaceSelection(data, selectedWorkspaceId);
+    } catch (error) {
+      if (onAuthError(error)) {
+        return;
+      }
+
+      setError(error instanceof Error ? error.message : 'No se pudo cargar el dataset.');
+    } finally {
+      setIsUploadingDataset(false);
+    }
+  };
+
+  const handleDeleteDataset = async () => {
+    if (!selectedWorkspaceId || !selectedWorkspace?.datasetPath) {
+      return;
+    }
+
+    setNotice(null);
+
+    try {
+      await sendVoid(`/workspaces/${selectedWorkspaceId}/dataset/${extractFilename(selectedWorkspace.datasetPath)}`, token, 'DELETE');
+      setError(null);
+      setNotice('Dataset removed successfully.');
+
+      const data = await fetchJson<WorkspaceSummary[]>('/workspaces', token);
+      setWorkspaces(data);
+      applyWorkspaceSelection(data, selectedWorkspaceId);
+    } catch (error) {
+      if (onAuthError(error)) {
+        return;
+      }
+
+      setError(error instanceof Error ? error.message : 'No se pudo eliminar el dataset.');
+    }
+  };
+
+  const handleCreatePipeline = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!selectedWorkspaceId) {
+      setError('Select a workspace before creating a pipeline.');
+      return;
+    }
+
+    setIsSavingPipeline(true);
+    setNotice(null);
+
+    try {
+      await sendJson<PipelineSummary>(`/workspaces/${selectedWorkspaceId}/pipelines`, token, 'POST', pipelineForm);
+      setPipelineForm(emptyPipelineForm());
+      setError(null);
+      setNotice('Pipeline created successfully.');
+      await loadPipelines(selectedWorkspaceId);
+    } catch (error) {
+      if (onAuthError(error)) {
+        return;
+      }
+
+      setError(error instanceof Error ? error.message : 'No se pudo crear el pipeline.');
+    } finally {
+      setIsSavingPipeline(false);
+    }
+  };
+
+  const handleRenamePipeline = async (pipelineId: number) => {
+    if (!selectedWorkspaceId || !renameValue.trim()) {
+      return;
+    }
+
+    setIsSavingPipeline(true);
+    setNotice(null);
+
+    try {
+      await sendJson<PipelineSummary>(`/workspaces/${selectedWorkspaceId}/pipelines/${pipelineId}/rename`, token, 'PATCH', {
+        name: renameValue.trim(),
+      });
+      setRenamingPipelineId(null);
+      setRenameValue('');
+      setError(null);
+      setNotice('Pipeline renamed successfully.');
+      await loadPipelines(selectedWorkspaceId);
+    } catch (error) {
+      if (onAuthError(error)) {
+        return;
+      }
+
+      setError(error instanceof Error ? error.message : 'No se pudo renombrar el pipeline.');
+    } finally {
+      setIsSavingPipeline(false);
+    }
+  };
+
+  const handleDeletePipeline = async (pipelineId: number) => {
+    if (!selectedWorkspaceId) {
+      return;
+    }
+
+    setNotice(null);
+
+    try {
+      await sendVoid(`/workspaces/${selectedWorkspaceId}/pipelines/${pipelineId}`, token, 'DELETE');
+      setError(null);
+      setNotice('Pipeline deleted successfully.');
+      await loadPipelines(selectedWorkspaceId);
+    } catch (error) {
+      if (onAuthError(error)) {
+        return;
+      }
+
+      setError(error instanceof Error ? error.message : 'No se pudo eliminar el pipeline.');
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <SectionTitle
+        eyebrow="HU-014"
+        title="Workspace Project Management"
+        description="Administra tus proyectos MLOps, su dataset aislado y los pipelines asociados al workspace seleccionado sin salir del contexto del estudiante autenticado."
+      />
+
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+        <StatCard title="My Projects" value={isLoadingWorkspaces ? '...' : String(workspaces.length)} icon={Layers} color="text-blue-500" />
+        <StatCard title="Workspace Pipelines" value={selectedWorkspaceId ? (isLoadingPipelines ? '...' : String(pipelines.length)) : '0'} icon={Brain} color="text-emerald-500" />
+        <StatCard title="Dataset Status" value={selectedWorkspace?.datasetPath ? 'Attached' : 'Pending'} icon={Database} color="text-orange-500" />
+      </div>
+
+      {(error || notice) && (
+        <Card className={`border-white/5 ${error ? 'bg-red-500/10' : 'bg-emerald-500/10'}`}>
+          <CardContent className="pt-6 text-sm text-white">
+            {error ?? notice}
+          </CardContent>
+        </Card>
+      )}
+
+      <div className="grid gap-6 xl:grid-cols-[0.95fr_2fr]">
+        <div className="space-y-6">
+          <TableShell title={editingWorkspaceId ? 'Edit Project' : 'Create Project'} action={editingWorkspaceId ? (
+            <Button variant="outline" size="sm" onClick={resetWorkspaceForm}>Cancel Edit</Button>
+          ) : undefined}>
+            <form className="space-y-4" onSubmit={handleSubmitWorkspace}>
+              <FormField>
+                <FieldLabel>Project Name</FieldLabel>
+                <Input value={workspaceForm.name} onChange={handleWorkspaceFieldChange('name')} required />
+              </FormField>
+              <FormField>
+                <FieldLabel>Description</FieldLabel>
+                <TextArea value={workspaceForm.description} onChange={handleWorkspaceFieldChange('description')} placeholder="Describe the workspace purpose" />
+              </FormField>
+              <Button type="submit" disabled={isSavingWorkspace}>
+                {isSavingWorkspace ? 'Saving...' : editingWorkspaceId ? 'Update Project' : 'Create Project'}
+              </Button>
+            </form>
+          </TableShell>
+
+          <TableShell title="My Projects">
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[760px] text-left text-sm text-slate-300">
+                <thead className="text-[10px] uppercase tracking-[0.2em] text-slate-500">
+                  <tr>
+                    <th className="pb-3">Project</th>
+                    <th className="pb-3">Description</th>
+                    <th className="pb-3">Dataset</th>
+                    <th className="pb-3">Created</th>
+                    <th className="pb-3">Status</th>
+                    <th className="pb-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {isLoadingWorkspaces && (
+                    <tr>
+                      <td colSpan={6} className="py-6 text-center text-slate-500">Loading projects...</td>
+                    </tr>
+                  )}
+                  {!isLoadingWorkspaces && workspaces.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="py-6 text-center text-slate-500">No projects created yet.</td>
+                    </tr>
+                  )}
+                  {workspaces.map((item) => {
+                    const isSelected = item.idWorkspace === selectedWorkspaceId;
+
+                    return (
+                      <tr key={item.idWorkspace} className={`border-t border-white/5 ${isSelected ? 'bg-blue-500/10' : ''}`}>
+                        <td className="py-4">
+                          <button
+                            type="button"
+                            className="text-left"
+                            onClick={() => handleSelectWorkspace(item)}
+                          >
+                            <p className="font-semibold text-white">{item.name}</p>
+                            <p className="text-xs text-slate-500">ID #{item.idWorkspace}</p>
+                          </button>
+                        </td>
+                        <td className="py-4 text-slate-400">{item.description || 'No description available.'}</td>
+                        <td className="py-4 text-slate-400">{item.datasetPath ? 'Attached' : 'Pending'}</td>
+                        <td className="py-4 text-slate-400">{new Date(item.createdAt).toLocaleDateString()}</td>
+                        <td className={`py-4 ${isSelected ? 'text-blue-400' : 'text-slate-500'}`}>
+                          {isSelected ? 'Active' : 'Idle'}
+                        </td>
+                        <td className="py-4">
+                          <div className="flex justify-end gap-2">
+                            <Button variant="outline" size="sm" onClick={() => handleSelectWorkspace(item)}>
+                              Open
+                            </Button>
+                            <Button variant="outline" size="sm" onClick={() => startEditingWorkspace(item)}>
+                              Edit
+                            </Button>
+                            <Button variant="destructive" size="sm" onClick={() => void handleDeleteWorkspace(item.idWorkspace)}>
+                              Delete
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </TableShell>
+        </div>
+
+        <div className="space-y-6">
+          <TableShell title="Selected Workspace Context">
+            {!selectedWorkspace && (
+              <p className="text-sm text-slate-400">Select or create a project to inspect its isolated dataset and pipelines.</p>
+            )}
+
+            {selectedWorkspace && (
+              <div className="space-y-6">
+                <div className="grid gap-4 md:grid-cols-2">
+                  <Card className="border-white/5 bg-black/20">
+                    <CardHeader>
+                      <CardTitle className="text-white">Dataset Isolation</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <p className="text-sm text-slate-400">
+                        Este proyecto mantiene su propio `datasetPath`, aislado del resto de workspaces del usuario.
+                      </p>
+                      <p className="rounded-2xl border border-white/5 bg-white/[0.03] p-3 text-xs text-slate-300">
+                        {selectedWorkspace.datasetPath ?? 'No dataset uploaded yet.'}
+                      </p>
+                      <form className="space-y-3" onSubmit={handleDatasetUpload}>
+                        <Input
+                          type="file"
+                          onChange={(event) => setDatasetFile(event.target.files?.[0] ?? null)}
+                          accept=".csv,.png,.jpg,.jpeg"
+                        />
+                        <div className="flex gap-2">
+                          <Button type="submit" disabled={isUploadingDataset || !datasetFile}>
+                            {isUploadingDataset ? 'Uploading...' : 'Upload Dataset'}
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="destructive"
+                            onClick={() => void handleDeleteDataset()}
+                            disabled={!selectedWorkspace.datasetPath}
+                          >
+                            Remove Dataset
+                          </Button>
+                        </div>
+                      </form>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="border-white/5 bg-black/20">
+                    <CardHeader>
+                      <CardTitle className="text-white">Pipeline Isolation</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <p className="text-sm text-slate-400">
+                        Los pipelines se consultan y mutan usando el `workspaceId` activo, asegurando que cada proyecto opere sobre su propio flujo.
+                      </p>
+                      <form className="space-y-3" onSubmit={handleCreatePipeline}>
+                        <FormField>
+                          <FieldLabel>New Pipeline</FieldLabel>
+                          <Input
+                            value={pipelineForm.name}
+                            onChange={(event) => setPipelineForm({ name: event.target.value })}
+                            placeholder="Training Pipeline"
+                            required
+                          />
+                        </FormField>
+                        <Button type="submit" disabled={isSavingPipeline}>
+                          {isSavingPipeline ? 'Saving...' : 'Create Pipeline'}
+                        </Button>
+                      </form>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                <Card className="border-white/5 bg-black/20">
+                  <CardHeader>
+                    <CardTitle className="text-white">Workspace Pipelines</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {isLoadingPipelines && <p className="text-sm text-slate-400">Loading pipelines...</p>}
+                    {!isLoadingPipelines && pipelines.length === 0 && (
+                      <p className="text-sm text-slate-400">No pipelines attached to this workspace.</p>
+                    )}
+                    {pipelines.map((item) => (
+                      <div key={item.idPipeline} className="rounded-2xl border border-white/5 bg-white/[0.03] p-4">
+                        {renamingPipelineId === item.idPipeline ? (
+                          <div className="space-y-3">
+                            <Input value={renameValue} onChange={(event) => setRenameValue(event.target.value)} />
+                            <div className="flex gap-2">
+                              <Button size="sm" onClick={() => void handleRenamePipeline(item.idPipeline)} disabled={isSavingPipeline}>
+                                Save Name
+                              </Button>
+                              <Button variant="outline" size="sm" onClick={() => {
+                                setRenamingPipelineId(null);
+                                setRenameValue('');
+                              }}>
+                                Cancel
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="flex items-start justify-between gap-4">
+                              <div>
+                                <p className="text-sm font-semibold text-white">{item.name}</p>
+                                <p className="mt-1 text-xs text-slate-400">Status: {item.status}</p>
+                                <p className="mt-2 text-[10px] uppercase tracking-[0.2em] text-slate-500">
+                                  Nodes: {item.nodeCount} · Executions: {item.executionCount}
+                                </p>
+                              </div>
+                              <div className="flex gap-2">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    setRenamingPipelineId(item.idPipeline);
+                                    setRenameValue(item.name);
+                                  }}
+                                >
+                                  Rename
+                                </Button>
+                                <Button variant="destructive" size="sm" onClick={() => void handleDeletePipeline(item.idPipeline)}>
+                                  Delete
+                                </Button>
+                              </div>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+          </TableShell>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DashboardLayout({ section, renderContent }: DashboardLayoutProps) {
+  const user = useAppStore((state) => state.user as SessionUser | null);
   const token = useAppStore((state) => state.token);
-  const workspace = useAppStore((state) => state.currentWorkspace);
+  const currentWorkspace = useAppStore((state) => state.currentWorkspace);
   const logout = useAppStore((state) => state.logout);
   const navigate = useNavigate();
 
   const handleSessionEnd = () => {
     logout();
-    navigate('/login');
+    navigate('/login', { replace: true });
   };
 
-  const handleAuthError = (error: unknown) => {
+  const onAuthError = (error: unknown) => {
     if (!isApiError(error)) {
       return false;
     }
@@ -422,172 +1269,171 @@ const DashboardUI = ({ content }: { content?: ReactNode }) => {
     }
   };
 
-  const components = [
-    { name: 'My Data Ingestion', icon: Database, color: 'text-emerald-400', adminOnly: false },
-    { name: 'My Preprocessing', icon: Cpu, color: 'text-blue-400', adminOnly: false },
-    { name: 'My Dataset Split', icon: Split, color: 'text-orange-400', adminOnly: false },
-    { name: 'My Model Training', icon: Brain, color: 'text-purple-400', adminOnly: false },
-    { name: 'Global Deployment', icon: Rocket, color: 'text-amber-400', adminOnly: true },
-  ];
+  const navigationItems = [
+    { key: 'dashboard', label: 'Overview', icon: Activity, path: '/dashboard' },
+    { key: 'workspaces', label: 'My Projects', icon: Layers, path: '/workspaces' },
+  ] as const;
 
-  const visibleComponents = components.filter(item => 
-    !item.adminOnly || user?.role === 'ADMIN'
-  );
+  const adminItems = user?.role === 'ADMIN'
+    ? [{ key: 'admin', label: 'Admin Users', icon: Users, path: '/admin' }] as const
+    : [];
 
   return (
-    <div className="flex h-screen w-full bg-[#050505] text-slate-400 font-sans overflow-hidden">
-      
-      {/* SIDEBAR */}
-      <aside className="w-64 border-r border-white/5 bg-[#0a0a0a] p-6 flex flex-col justify-between">
+    <div className="flex h-screen w-full overflow-hidden bg-[#050505] font-sans text-slate-400">
+      <aside className="flex w-64 flex-col justify-between border-r border-white/5 bg-[#0a0a0a] p-6">
         <div>
-          <div className="flex items-center gap-3 mb-10 px-2">
-            <div className="w-8 h-8 bg-gradient-to-tr from-blue-600 to-emerald-400 rounded-lg shadow-lg shadow-blue-500/20 flex items-center justify-center">
-              <Zap className="w-5 h-5 text-white" />
+          <div className="mb-10 flex items-center gap-3 px-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-tr from-blue-600 to-emerald-400 shadow-lg shadow-blue-500/20">
+              <Search className="h-4 w-4 text-white" />
             </div>
-            <h2 className="text-xl font-bold text-white tracking-tight italic">Synapse<span className="text-blue-500">Ops</span></h2>
+            <h2 className="text-xl font-bold tracking-tight italic text-white">
+              Synapse<span className="text-blue-500">Ops</span>
+            </h2>
           </div>
-          
+
           <nav className="space-y-1">
-            <p className="text-[10px] font-bold text-slate-600 uppercase tracking-[0.2em] px-2 mb-4">Pipeline Core</p>
-            
-            {/* Usamos la lista filtrada */}
-            {visibleComponents.map((item) => (
-              <Button 
-                key={item.name} 
-                variant="ghost" 
-                className="w-full justify-start text-slate-400 hover:text-white hover:bg-white/5 rounded-xl px-2 group transition-all"
+            <p className="mb-4 px-2 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-600">Workspace Core</p>
+            {navigationItems.map((item) => (
+              <Button
+                key={item.key}
+                onClick={() => navigate(item.path)}
+                variant="ghost"
+                className={`w-full justify-start rounded-xl px-2 transition-all ${section === item.key ? 'bg-blue-500/10 text-white' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}
               >
-                <item.icon className={`w-4 h-4 mr-3 ${item.color} group-hover:scale-110 transition-transform`} />
-                <span className="text-xs font-medium">{item.name}</span>
+                <item.icon className="mr-3 h-4 w-4 text-blue-400" />
+                <span className="text-xs font-medium">{item.label}</span>
               </Button>
             ))}
 
-            {user?.role === 'ADMIN' && (
-              <div className="mt-8 pt-8 border-t border-white/5 animate-in fade-in slide-in-from-bottom-2">
-                <p className="text-[10px] font-bold text-blue-500 uppercase tracking-[0.2em] px-2 mb-4">Admin Management</p>
-                <Button 
-                  onClick={() => navigate('/admin')}
-                  variant="ghost" 
-                  className="w-full justify-start text-slate-400 hover:text-white hover:bg-blue-500/10 rounded-xl px-2 group transition-all"
-                >
-                  <Layers className="w-4 h-4 mr-3 text-blue-500 group-hover:rotate-12 transition-transform" />
-                  <span className="text-xs font-medium">Global CRUD Services</span>
-                </Button>
+            {adminItems.length > 0 && (
+              <div className="mt-8 border-t border-white/5 pt-8">
+                <p className="mb-4 px-2 text-[10px] font-bold uppercase tracking-[0.2em] text-blue-500">Admin Management</p>
+                {adminItems.map((item) => (
+                  <Button
+                    key={item.key}
+                    onClick={() => navigate(item.path)}
+                    variant="ghost"
+                    className={`w-full justify-start rounded-xl px-2 transition-all ${section === item.key ? 'bg-blue-500/10 text-white' : 'text-slate-400 hover:bg-blue-500/10 hover:text-white'}`}
+                  >
+                    <item.icon className="mr-3 h-4 w-4 text-blue-500" />
+                    <span className="text-xs font-medium">{item.label}</span>
+                  </Button>
+                ))}
               </div>
             )}
           </nav>
-
         </div>
 
         <div className="space-y-4">
-          <div className="p-4 bg-gradient-to-tr from-blue-600/10 to-emerald-500/5 border border-white/5 rounded-2xl backdrop-blur-sm">
-            <div className="flex items-center gap-2 mb-2">
-              <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-              <p className="text-[10px] text-emerald-400 font-bold uppercase">System Live</p>
+          <div className="rounded-2xl border border-white/5 bg-gradient-to-tr from-blue-600/10 to-emerald-500/5 p-4 backdrop-blur-sm">
+            <div className="mb-2 flex items-center gap-2">
+              <div className="h-2 w-2 animate-pulse rounded-full bg-emerald-500"></div>
+              <p className="text-[10px] font-bold uppercase text-emerald-400">System Live</p>
             </div>
-            <p className="text-[10px] text-slate-500 leading-relaxed font-mono">Uptime: 99.9%</p>
+            <p className="text-[10px] font-mono leading-relaxed text-slate-500">Workspace: {currentWorkspace}</p>
           </div>
         </div>
       </aside>
 
-      {/* MAIN CONTENT AREA */}
-      <div className="flex-1 flex flex-col relative">
-        
-        {/* HEADER */}
-        <header className="h-16 border-b border-white/5 flex items-center justify-between px-8 bg-[#050505]/60 backdrop-blur-md sticky top-0 z-50">
-          <div className="flex items-center gap-4 flex-1">
+      <div className="relative flex flex-1 flex-col">
+        <header className="sticky top-0 z-50 flex h-16 items-center justify-between border-b border-white/5 bg-[#050505]/60 px-8 backdrop-blur-md">
+          <div className="flex flex-1 items-center gap-4">
             <div className="relative w-72">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-600 z-10" />
-              <Input 
-                placeholder="Search nodes..." 
-                className="bg-white/5 border-white/10 rounded-full pl-10 text-xs focus-visible:ring-blue-500/50"
-              />
+              <Search className="absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-slate-600" />
+              <Input placeholder="Search workspaces or users..." className="rounded-full border-white/10 bg-white/5 pl-10 text-xs focus-visible:ring-blue-500/50" />
             </div>
           </div>
-          
+
           <div className="flex items-center gap-6">
             <div className="flex items-center gap-3">
               <div className="text-right">
                 <p className="text-xs font-bold text-white">{user?.name || user?.username}</p>
-                <p className="text-[10px] text-slate-500 font-medium tracking-tighter uppercase">{user?.role} • Online</p>
+                <p className="text-[10px] font-medium uppercase tracking-tighter text-slate-500">{user?.role} • Online</p>
               </div>
-              <div className="w-10 h-10 rounded-xl border border-white/10 p-0.5 bg-gradient-to-br from-blue-500/20 to-transparent">
-                <div className="w-full h-full rounded-[10px] bg-slate-900 flex items-center justify-center">
-                  <UserIcon className="w-5 h-5 text-blue-400" />
+              <div className="rounded-xl border border-white/10 bg-gradient-to-br from-blue-500/20 to-transparent p-0.5">
+                <div className="flex h-10 w-10 items-center justify-center rounded-[10px] bg-slate-900">
+                  <UserIcon className="h-5 w-5 text-blue-400" />
                 </div>
               </div>
             </div>
 
-            <Button 
-              onClick={handleLogout}
-              variant="ghost"
-              className="text-red-400/70 hover:bg-red-400/10 hover:text-red-400"
-            >
+            <Button onClick={() => void handleLogout()} variant="ghost" className="text-red-400/70 hover:bg-red-400/10 hover:text-red-400">
               <LogOut className="mr-2 h-4 w-4" />
               <span className="text-xs font-medium">Logout</span>
             </Button>
           </div>
         </header>
 
-        {/* WORKSPACE AREA */}
-        <main className="flex-1 relative bg-[#050505] overflow-hidden p-8">
+        <main className="relative flex-1 overflow-auto bg-[#050505] p-8">
           <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff05_1px,transparent_1px),linear-gradient(to_bottom,#ffffff05_1px,transparent_1px)] bg-[size:40px_40px]"></div>
-
           <div className="relative z-10">
-            {content ?? (
-              token ? (
-                <DashboardHomeContent
-                  workspace={workspace}
-                  role={user?.role}
-                  token={token}
-                  onAuthError={handleAuthError}
-                />
-              ) : null
-            )}
+            {renderContent({
+              user,
+              token,
+              currentWorkspace,
+              onAuthError,
+            })}
           </div>
         </main>
       </div>
     </div>
   );
-};
+}
 
-// ─── HELPER COMPONENTS ───
-function StatCard({ title, value, icon: Icon, color }: StatCardProps) {
+function DashboardPage() {
   return (
-    <Card className="bg-white/[0.03] border-white/5 backdrop-blur-xl hover:bg-white/[0.05] transition-all">
-      <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-        <CardTitle className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{title}</CardTitle>
-        <Icon className={`w-4 h-4 ${color}`} />
-      </CardHeader>
-      <CardContent>
-        <div className="text-2xl font-bold text-white tracking-tight">{value}</div>
-        <p className="text-[10px] text-emerald-500 mt-1 flex items-center gap-1">
-          <span>+12.5%</span> <span className="text-slate-600">from last cycle</span>
-        </p>
-      </CardContent>
-    </Card>
+    <DashboardLayout
+      section="dashboard"
+      renderContent={(tools) => <DashboardHomeContent {...tools} />}
+    />
   );
 }
 
-// ─── MAIN APP COMPONENT ───
+function WorkspacesRoutePage() {
+  return (
+    <DashboardLayout
+      section="workspaces"
+      renderContent={({ token, onAuthError }) => (
+        token ? <WorkspacesPage token={token} onAuthError={onAuthError} /> : null
+      )}
+    />
+  );
+}
+
+function AdminRoutePage() {
+  return (
+    <DashboardLayout
+      section="admin"
+      renderContent={({ token, onAuthError }) => (
+        token ? <AdminUsersPage token={token} onAuthError={onAuthError} /> : <EmptyState title="Admin session unavailable" message="No authentication token was found." />
+      )}
+    />
+  );
+}
+
 function App() {
   const isAuthenticated = useAppStore((state) => state.isAuthenticated);
   const role = useAppStore((state) => state.user?.role);
-  const token = useAppStore((state) => state.token);
 
   return (
     <BrowserRouter>
       <Routes>
-        <Route 
-          path="/login" 
-          element={!isAuthenticated ? <LoginPage /> : <Navigate to="/dashboard" replace />} 
-        />
+        <Route path="/login" element={!isAuthenticated ? <LoginPage /> : <Navigate to="/dashboard" replace />} />
 
-        <Route 
-          path="/dashboard" 
+        <Route
+          path="/dashboard"
           element={
             <ProtectedRoute isAuthenticated={isAuthenticated}>
-              <DashboardUI />
+              <DashboardPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/workspaces"
+          element={
+            <ProtectedRoute isAuthenticated={isAuthenticated}>
+              <WorkspacesRoutePage />
             </ProtectedRoute>
           }
         />
@@ -596,22 +1442,16 @@ function App() {
           path="/admin"
           element={
             <RoleRoute isAuthenticated={isAuthenticated} role="ADMIN" currentRole={role}>
-              <DashboardUI
-                content={token ? <AdminCrudPage token={token} /> : <AdminCrudContent />}
-              />
+              <AdminRoutePage />
             </RoleRoute>
           }
         />
 
         <Route path="/forbidden" element={<ForbiddenPage />} />
-
-        <Route 
-          path="*" 
-          element={<Navigate to={isAuthenticated ? "/dashboard" : "/login"} replace />} 
-        />
+        <Route path="*" element={<Navigate to={isAuthenticated ? '/dashboard' : '/login'} replace />} />
       </Routes>
     </BrowserRouter>
   );
 }
 
-export default App;
+export default App
