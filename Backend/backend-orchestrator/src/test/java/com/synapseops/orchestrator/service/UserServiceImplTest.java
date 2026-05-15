@@ -54,7 +54,7 @@ class UserServiceImplTest {
 
         testUserResponse = new UserResponse(
                 1L, "admin_test", "Admin", "admin@test.com",
-                Role.ADMIN, "Apellido", "Materno", "999999999", true
+                Role.ADMIN, "Apellido", "Materno", "999999999", true, null, null
         );
     }
 

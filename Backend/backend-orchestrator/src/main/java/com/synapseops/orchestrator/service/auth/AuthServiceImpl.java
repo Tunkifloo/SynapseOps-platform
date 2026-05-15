@@ -4,6 +4,7 @@ import com.synapseops.orchestrator.domain.dto.request.ForgotPasswordRequest;
 import com.synapseops.orchestrator.domain.dto.request.LoginRequest;
 import com.synapseops.orchestrator.domain.dto.request.UserRegistrationRequest;
 import com.synapseops.orchestrator.domain.dto.response.TokenResponse;
+import com.synapseops.orchestrator.domain.entity.Role;
 import com.synapseops.orchestrator.domain.entity.User;
 import com.synapseops.orchestrator.infra.repository.UserRepository;
 import com.synapseops.orchestrator.infra.security.JwtService;
@@ -52,6 +53,7 @@ public class AuthServiceImpl implements AuthService {
     public Mono<TokenResponse> register(UserRegistrationRequest request) {
         return Mono.fromCallable(() -> {
                     validateUniqueConstraints(request);
+                    validateCollaboratorFields(request);
                     User user = userFactory.createUser(request.role());
                     userMapper.populateUserFromRequest(user, request, passwordEncoder.encode(request.password()));
                     userRepository.save(user);
@@ -104,6 +106,19 @@ public class AuthServiceImpl implements AuthService {
         if (userRepository.existsByEmail(request.email())) {
             throw new IllegalArgumentException(
                     String.format("El correo '%s' ya se encuentra registrado.", request.email()));
+        }
+    }
+
+    private void validateCollaboratorFields(UserRegistrationRequest request) {
+        if (request.role() == Role.COLLABORATOR) {
+            if (request.studentCode() == null || request.studentCode().isBlank()) {
+                throw new IllegalArgumentException(
+                        "El código de estudiante es obligatorio para colaboradores.");
+            }
+            if (request.career() == null || request.career().isBlank()) {
+                throw new IllegalArgumentException(
+                        "La carrera es obligatoria para colaboradores.");
+            }
         }
     }
 }

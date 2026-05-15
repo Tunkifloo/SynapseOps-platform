@@ -11,5 +11,7 @@ public record UserResponse(
         String paternalSurname,
         String maternalSurname,
         String phone,
-        boolean enabled
+        boolean enabled,
+        String studentCode,
+        String carrer
 ) {}

@@ -1,5 +1,6 @@
 package com.synapseops.orchestrator.domain.dto.request;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import com.synapseops.orchestrator.domain.entity.Role;
 import jakarta.validation.constraints.*;
 
@@ -20,5 +21,8 @@ public record UserRegistrationRequest(
         @Pattern(regexp = "^\\d{9}$", message = "El teléfono debe tener exactamente 9 dígitos numéricos.")
         String phone,
         @NotNull(message = "El rol es obligatorio.")
-        Role role
+        Role role,
+        String studentCode,
+        @JsonAlias("carrer")
+        String career
 ) {}
