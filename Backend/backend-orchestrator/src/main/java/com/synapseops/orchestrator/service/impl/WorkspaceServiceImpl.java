@@ -88,10 +88,11 @@ public class WorkspaceServiceImpl implements WorkspaceService {
     }
 
     private Flux<WorkspaceResponse> fetchWorkspaces(Supplier<List<Workspace>> query) {
-        return Mono.fromCallable(query::get)
+        return Mono.fromCallable(() -> query.get().stream()
+                        .map(workspaceMapper::toResponse)
+                        .toList())
                 .subscribeOn(Schedulers.boundedElastic())
-                .flatMapMany(Flux::fromIterable)
-                .map(workspaceMapper::toResponse);
+                .flatMapMany(Flux::fromIterable);
     }
 
     private User resolveUser(String username) {

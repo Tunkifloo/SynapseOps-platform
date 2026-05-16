@@ -7,4 +7,5 @@ public interface FileStorageService {
     Mono<String> store(FilePart file, Long userId, Long workspaceId);
     Mono<String> getPath(String filename, Long userId, Long workspaceId);
     Mono<Void> delete(String filename, Long userId, Long workspaceId);
+    Mono<Boolean> hasImagesInZip(FilePart file);
 }

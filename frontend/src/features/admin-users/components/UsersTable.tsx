@@ -33,6 +33,7 @@ export function UsersTable({
           <thead className="text-[10px] uppercase tracking-[0.2em] text-slate-500">
             <tr>
               <th className="pb-3">User</th>
+              <th className="pb-3">Student Code</th>
               <th className="pb-3">Email</th>
               <th className="pb-3">Role</th>
               <th className="pb-3">Status</th>
@@ -42,12 +43,12 @@ export function UsersTable({
           <tbody>
             {isLoading && (
               <tr>
-                <td colSpan={5} className="py-6 text-center text-slate-500">Loading users...</td>
+                <td colSpan={6} className="py-6 text-center text-slate-500">Loading users...</td>
               </tr>
             )}
             {!isLoading && users.length === 0 && (
               <tr>
-                <td colSpan={5} className="py-6 text-center text-slate-500">{emptyMessage}</td>
+                <td colSpan={6} className="py-6 text-center text-slate-500">{emptyMessage}</td>
               </tr>
             )}
             {users.map((item) => (
@@ -56,6 +57,7 @@ export function UsersTable({
                   <p className="font-semibold text-white">{item.name || item.username}</p>
                   <p className="text-xs text-slate-500">@{item.username}</p>
                 </td>
+                <td className="py-4 text-slate-400">{item.studentCode || '—'}</td>
                 <td className="py-4">{item.email}</td>
                 <td className="py-4">{item.role}</td>
                 <td className={`py-4 ${item.enabled ? 'text-emerald-400' : 'text-orange-400'}`}>

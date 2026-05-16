@@ -14,6 +14,8 @@ export interface UserSummary {
   maternalSurname: string
   phone: string | null
   enabled: boolean
+  studentCode: string | null
+  career: string | null
 }
 
 export interface UserUpdatePayload {
@@ -24,6 +26,8 @@ export interface UserUpdatePayload {
   email: string
   phone: string
   role: Role
+  studentCode: string
+  career: string
 }
 
 export interface UserProfileUpdatePayload {
@@ -47,6 +51,8 @@ export interface CreateStudentFormData {
   email: string
   phone: string
   role: Role
+  studentCode: string
+  career: string
 }
 
 export const emptyStudentForm = (): CreateStudentFormData => ({
@@ -58,6 +64,8 @@ export const emptyStudentForm = (): CreateStudentFormData => ({
   email: '',
   phone: '',
   role: 'COLLABORATOR',
+  studentCode: '',
+  career: '',
 })
 
 export const emptyUserUpdatePayload = (): UserUpdatePayload => ({
@@ -68,4 +76,6 @@ export const emptyUserUpdatePayload = (): UserUpdatePayload => ({
   email: '',
   phone: '',
   role: 'COLLABORATOR',
+  studentCode: '',
+  career: '',
 })

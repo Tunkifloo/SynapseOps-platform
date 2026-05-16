@@ -8,13 +8,28 @@ import org.springframework.stereotype.Component;
 public class PipelineMapper {
 
     public PipelineResponse toResponse(Pipeline pipeline) {
+        int nodeCount = 0;
+        int executionCount = 0;
+        long workspaceId = 0;
+        try {
+            workspaceId = pipeline.getWorkspace().getIdWorkspace();
+        } catch (Exception ignored) {
+        }
+        try {
+            nodeCount = pipeline.getNodes().size();
+        } catch (Exception ignored) {
+        }
+        try {
+            executionCount = pipeline.getExecutions().size();
+        } catch (Exception ignored) {
+        }
         return new PipelineResponse(
                 pipeline.getIdPipeline(),
                 pipeline.getName(),
                 pipeline.getStatus(),
-                pipeline.getWorkspace().getIdWorkspace(),
-                pipeline.getNodes().size(),
-                pipeline.getExecutions().size()
+                workspaceId,
+                nodeCount,
+                executionCount
         );
     }
 }

@@ -1,3 +1,4 @@
+import { useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { logout } from '../api'
@@ -12,12 +13,12 @@ export function useProtectedSession() {
   const navigate = useNavigate()
   const { clearAuth } = useAuthSession()
 
-  const endSession = () => {
+  const endSession = useCallback(() => {
     clearAuth()
     navigate('/login', { replace: true })
-  }
+  }, [clearAuth, navigate])
 
-  const onAuthError = (error: unknown) => {
+  const onAuthError = useCallback((error: unknown) => {
     if (!(error instanceof Error) || !('status' in error)) {
       return false
     }
@@ -34,7 +35,7 @@ export function useProtectedSession() {
     }
 
     return false
-  }
+  }, [endSession, navigate])
 
   const handleLogout = async () => {
     try {

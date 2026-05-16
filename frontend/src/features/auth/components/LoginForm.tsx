@@ -1,4 +1,5 @@
-import type { ChangeEvent, FormEvent } from 'react'
+import { useState, type ChangeEvent, type FormEvent } from 'react'
+import { Eye, EyeOff } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
@@ -23,6 +24,8 @@ export function LoginForm({
   onPasswordChange,
   onSubmit,
 }: LoginFormProps) {
+  const [showPassword, setShowPassword] = useState(false)
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-[#050505] px-4">
       <Card className="w-full max-w-md border-white/10 bg-black/40 backdrop-blur-md">
@@ -50,15 +53,25 @@ export function LoginForm({
 
             <div className="space-y-2">
               <label className="text-xs font-bold uppercase text-slate-400">Password</label>
-              <Input
-                className="border-white/10 bg-white/5 text-white focus:ring-blue-500/50"
-                type="password"
-                value={password}
-                onChange={onPasswordChange}
-                placeholder="••••••••"
-                autoComplete="current-password"
-                required
-              />
+              <div className="relative">
+                <Input
+                  className="border-white/10 bg-white/5 pr-10 text-white focus:ring-blue-500/50"
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={onPasswordChange}
+                  placeholder="••••••••"
+                  autoComplete="current-password"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
+                  tabIndex={-1}
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
             </div>
 
             {error && (

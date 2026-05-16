@@ -10,12 +10,19 @@ import type {
 } from './types'
 import { collaboratorRole, isCollaboratorUser } from './types'
 
+const mapUserSummary = (user: UserSummary): UserSummary => ({
+  ...user,
+  career: user.career ?? (user as unknown as { carrer?: string }).carrer ?? null,
+})
+
+const mapUserList = (users: UserSummary[]) => users.map(mapUserSummary)
+
 export const listUsers = (token: string) => (
-  fetchJson<UserSummary[]>('/users', token)
+  fetchJson<UserSummary[]>('/users', token).then(mapUserList)
 )
 
 export const listUsersByRole = (token: string, role: Role) => (
-  fetchJson<UserSummary[]>(`/users/role/${role}`, token)
+  fetchJson<UserSummary[]>(`/users/role/${role}`, token).then(mapUserList)
 )
 
 export const listCollaborators = (token: string) => (
@@ -24,19 +31,20 @@ export const listCollaborators = (token: string) => (
 
 export const listDisabledUsers = (token: string) => (
   fetchJson<UserSummary[]>('/users/disabled', token)
+    .then(mapUserList)
     .then((users) => users.filter(isCollaboratorUser))
 )
 
 export const getUserById = (token: string, userId: number) => (
-  fetchJson<UserSummary>(`/users/${userId}`, token)
+  fetchJson<UserSummary>(`/users/${userId}`, token).then(mapUserSummary)
 )
 
 export const updateUserByAdmin = (token: string, userId: number, payload: UserUpdatePayload) => (
-  sendJson<UserSummary>(`/users/${userId}`, token, 'PUT', payload)
+  sendJson<UserSummary>(`/users/${userId}`, token, 'PUT', payload).then(mapUserSummary)
 )
 
 export const getMyProfile = (token: string) => (
-  fetchJson<UserSummary>('/users/me', token)
+  fetchJson<UserSummary>('/users/me', token).then(mapUserSummary)
 )
 
 export const updateMyProfile = (token: string, payload: UserProfileUpdatePayload) => (

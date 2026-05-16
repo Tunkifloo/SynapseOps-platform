@@ -1,4 +1,5 @@
-import type { ChangeEvent, FormEvent, ReactNode } from 'react'
+import { useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react'
+import { Eye, EyeOff } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -21,6 +22,8 @@ function FormField({ children }: { children: ReactNode }) {
 }
 
 export function CreateStudentForm({ form, isSubmitting, onChange, onSubmit }: CreateStudentFormProps) {
+  const [showPassword, setShowPassword] = useState(false)
+
   return (
     <form className="grid gap-4 md:grid-cols-2" onSubmit={(event) => void onSubmit(event)}>
       <FormField>
@@ -29,7 +32,24 @@ export function CreateStudentForm({ form, isSubmitting, onChange, onSubmit }: Cr
       </FormField>
       <FormField>
         <FieldLabel>Password</FieldLabel>
-        <Input type="password" value={form.password} onChange={onChange('password')} minLength={7} required />
+        <div className="relative">
+          <Input
+            type={showPassword ? 'text' : 'password'}
+            value={form.password}
+            onChange={onChange('password')}
+            minLength={7}
+            required
+            className="pr-10"
+          />
+          <button
+            type="button"
+            onClick={() => setShowPassword((prev) => !prev)}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
+            tabIndex={-1}
+          >
+            {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+          </button>
+        </div>
       </FormField>
       <FormField>
         <FieldLabel>Name</FieldLabel>
@@ -46,6 +66,14 @@ export function CreateStudentForm({ form, isSubmitting, onChange, onSubmit }: Cr
       <FormField>
         <FieldLabel>Phone</FieldLabel>
         <Input value={form.phone} onChange={onChange('phone')} placeholder="999999999" />
+      </FormField>
+      <FormField>
+        <FieldLabel>Student Code</FieldLabel>
+        <Input value={form.studentCode} onChange={onChange('studentCode')} placeholder="U20210001" required />
+      </FormField>
+      <FormField>
+        <FieldLabel>Career</FieldLabel>
+        <Input value={form.career} onChange={onChange('career')} placeholder="Ing. de Sistemas" />
       </FormField>
       <div className="md:col-span-2">
         <FormField>
