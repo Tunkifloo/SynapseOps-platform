@@ -1,4 +1,4 @@
-import { fetchJson, sendJson, sendText, sendVoid } from '@/shared/api/client'
+import { authorizedRequest, fetchJson, sendJson, sendText, sendVoid } from '@/shared/api/client'
 
 import type { PipelineFormData, PipelineSummary, WorkspaceFormData, WorkspaceSummary } from './types'
 
@@ -38,6 +38,14 @@ export const uploadDataset = (token: string, workspaceId: number, file: File) =>
   const formData = new FormData()
   formData.append('file', file)
   return sendText(`/workspaces/${workspaceId}/dataset`, token, 'POST', formData)
+}
+
+export const uploadDatasetFromUrl = async (token: string, workspaceId: number, url: string) => {
+  const response = await authorizedRequest(`/workspaces/${workspaceId}/dataset/url`, token, {
+    method: 'POST',
+    body: JSON.stringify({ url }),
+  })
+  return response.text()
 }
 
 export const deleteDataset = (token: string, workspaceId: number, filename: string) => (

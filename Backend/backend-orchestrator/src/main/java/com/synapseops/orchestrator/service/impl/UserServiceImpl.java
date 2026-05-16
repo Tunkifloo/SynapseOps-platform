@@ -121,9 +121,10 @@ public class UserServiceImpl implements UserService {
     }
 
     private Flux<UserResponse> fetchUsers(Supplier<List<User>> query) {
-        return Mono.fromCallable(query::get)
+        return Mono.fromCallable(() -> query.get().stream()
+                        .map(userMapper::toResponse)
+                        .toList())
                 .subscribeOn(Schedulers.boundedElastic())
-                .flatMapMany(Flux::fromIterable)
-                .map(userMapper::toResponse);
+                .flatMapMany(Flux::fromIterable);
     }
 }

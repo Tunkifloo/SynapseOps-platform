@@ -84,14 +84,14 @@ public class FileStorageServiceImpl implements FileStorageService {
 
     private Mono<FilePart> validateFile(FilePart file) {
         String filename = file.filename().toLowerCase();
-        boolean validType = filename.endsWith(".csv")
-                || filename.endsWith(".png")
+        boolean validType = filename.endsWith(".png")
                 || filename.endsWith(".jpg")
-                || filename.endsWith(".jpeg");
+                || filename.endsWith(".jpeg")
+                || filename.endsWith(".zip");
 
         if (!validType) {
             return Mono.error(new IllegalArgumentException(
-                    "Tipo de archivo no permitido. Solo se aceptan: .csv, .png, .jpg, .jpeg"));
+                    "Solo se aceptan datasets de imágenes (.png, .jpg, .jpeg) o archivos comprimidos (.zip)."));
         }
 
         long maxBytes = storageProperties.getMaxFileSizeMb() * 1024 * 1024;
@@ -104,6 +104,36 @@ public class FileStorageServiceImpl implements FileStorageService {
         }
 
         return Mono.just(file);
+    }
+
+    public Mono<Boolean> hasImagesInZip(FilePart file) {
+        String filename = file.filename().toLowerCase();
+        if (!filename.endsWith(".zip")) {
+            return Mono.just(true);
+        }
+
+        return Mono.fromCallable(() -> {
+            Path tempFile = Files.createTempFile("ds_", ".zip");
+            try {
+                file.transferTo(tempFile).block();
+                try (java.util.zip.ZipInputStream zis = new java.util.zip.ZipInputStream(
+                        new java.io.FileInputStream(tempFile.toFile()))) {
+                    java.util.zip.ZipEntry entry;
+                    while ((entry = zis.getNextEntry()) != null) {
+                        String name = entry.getName().toLowerCase();
+                        if (name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg")) {
+                            return true;
+                        }
+                        if (!name.endsWith("/")) {
+                            return false;
+                        }
+                    }
+                }
+                return false;
+            } finally {
+                Files.deleteIfExists(tempFile);
+            }
+        }).subscribeOn(Schedulers.boundedElastic());
     }
 
     private String sanitizeFilename(String filename) {

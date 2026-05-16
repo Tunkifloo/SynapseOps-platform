@@ -86,10 +86,11 @@ public class PipelineServiceImpl implements PipelineService {
     }
 
     private Flux<PipelineResponse> fetchPipelines(Supplier<List<Pipeline>> query) {
-        return Mono.fromCallable(query::get)
+        return Mono.fromCallable(() -> query.get().stream()
+                        .map(pipelineMapper::toResponse)
+                        .toList())
                 .subscribeOn(Schedulers.boundedElastic())
-                .flatMapMany(Flux::fromIterable)
-                .map(pipelineMapper::toResponse);
+                .flatMapMany(Flux::fromIterable);
     }
 
     private Workspace resolveWorkspace(Long id) {
