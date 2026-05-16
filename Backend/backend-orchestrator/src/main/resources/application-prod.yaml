@@ -1,0 +1,33 @@
+spring:
+  datasource:
+
+    url: ${DB_URL:jdbc:postgresql://postgres-db:5432/orchestrator}
+
+  jpa:
+    show-sql: false
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:kafka-broker:9092}
+
+mlflow:
+  tracking:
+    uri: ${MLFLOW_TRACKING_URI:http://mlflow-server:5000}
+
+storage:
+  base-path: ${STORAGE_BASE_PATH:/storage}
+
+springdoc:
+  swagger-ui:
+    enabled: false
+  api-docs:
+    enabled: false
+
+logging:
+  level:
+    root: WARN
+    com.synapseops.orchestrator: INFO
+    org.springframework.security: WARN
+    org.hibernate.SQL: WARN
+    org.hibernate.type.descriptor.sql.BasicBinder: WARN
+    org.springframework.kafka: WARN
+    org.apache.kafka: WARN

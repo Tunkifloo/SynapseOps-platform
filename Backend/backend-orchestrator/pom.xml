@@ -164,6 +164,12 @@
             <artifactId>spring-kafka-test</artifactId>
             <scope>test</scope>
         </dependency>
+        <dependency>
+            <groupId>io.projectreactor</groupId>
+            <artifactId>reactor-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
     </dependencies>
 
     <build>
@@ -180,6 +186,7 @@
                     </excludes>
                 </configuration>
             </plugin>
+
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
@@ -187,9 +194,7 @@
                     <execution>
                         <id>default-compile</id>
                         <phase>compile</phase>
-                        <goals>
-                            <goal>compile</goal>
-                        </goals>
+                        <goals><goal>compile</goal></goals>
                         <configuration>
                             <annotationProcessorPaths>
                                 <path>
@@ -202,9 +207,7 @@
                     <execution>
                         <id>default-testCompile</id>
                         <phase>test-compile</phase>
-                        <goals>
-                            <goal>testCompile</goal>
-                        </goals>
+                        <goals><goal>testCompile</goal></goals>
                         <configuration>
                             <annotationProcessorPaths>
                                 <path>
@@ -216,9 +219,11 @@
                     </execution>
                 </executions>
             </plugin>
+
             <plugin>
                 <groupId>org.jacoco</groupId>
                 <artifactId>jacoco-maven-plugin</artifactId>
+                <version>0.8.14</version>
                 <executions>
                     <execution>
                         <id>prepare-agent</id>
@@ -229,9 +234,74 @@
                         <phase>verify</phase>
                         <goals><goal>report</goal></goals>
                     </execution>
+                    <execution>
+                        <id>check</id>
+                        <phase>verify</phase>
+                        <goals><goal>check</goal></goals>
+                        <configuration>
+                            <rules>
+                                <rule>
+                                    <element>PACKAGE</element>
+                                    <includes>
+                                        <include>com.synapseops.orchestrator.service.*</include>
+                                        <include>com.synapseops.orchestrator.controller.*</include>
+                                    </includes>
+                                    <limits>
+                                        <limit>
+                                            <counter>LINE</counter>
+                                            <value>COVEREDRATIO</value>
+                                            <minimum>0.70</minimum>
+                                        </limit>
+                                    </limits>
+                                </rule>
+                            </rules>
+                        </configuration>
+                    </execution>
                 </executions>
             </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <profile>
+            <id>unit</id>
+            <activation><activeByDefault>true</activeByDefault></activation>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <configuration>
+                            <excludedGroups>integration</excludedGroups>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <profile>
+            <id>integration</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <configuration>
+                            <groups>integration</groups>
+                            <forkCount>1</forkCount>
+                            <reuseForks>true</reuseForks>
+                            <properties>
+                                <configurationParameters>
+                                    junit.jupiter.execution.parallel.enabled=true
+                                    junit.jupiter.execution.parallel.config.strategy=fixed
+                                    junit.jupiter.execution.parallel.config.fixed.parallelism=2
+                                </configurationParameters>
+                            </properties>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 
 </project>

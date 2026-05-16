@@ -31,3 +31,11 @@ build/
 
 ### VS Code ###
 .vscode/
+
+# Environment variables
+.env
+/.env
+
+# Logs
+/logs
+/logs/backend-orchestrator.log

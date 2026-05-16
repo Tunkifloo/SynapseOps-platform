@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="es" class="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SynapseOps — Mockup</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>tailwind.config={darkMode:'class'}</script>
+<style>
+  body { font-family: 'Figtree Variable', system-ui, sans-serif; background: #050505; }
+  .screen { border: 1px solid rgba(255,255,255,.05); border-radius: 16px; overflow: hidden; margin-bottom: 48px; }
+  .screen-label { font-size: 10px; letter-spacing: .3em; text-transform: uppercase; color: #3b82f6; padding: 12px 16px 0; }
+  .screen-title { font-size: 18px; font-weight: 700; color: white; padding: 4px 16px 16px; }
+  .sidebar-link { transition: .15s; cursor: pointer; }
+  .sidebar-link:hover { background: rgba(255,255,255,.05); color: white; }
+  .btn { transition: .15s; }
+  .row-active { background: rgba(59,130,246,.1); }
+  .endpoint { font-family: monospace; font-size: 10px; color: #64748b; background: rgba(255,255,255,.03); padding: 4px 8px; border-radius: 8px; }
+</style>
+</head>
+<body class="min-h-screen p-8 space-y-12">
+
+<!-- ===== LOGIN ===== -->
+<div class="screen max-w-md mx-auto bg-black/40 backdrop-blur">
+  <div class="screen-label">Pantalla 1</div>
+  <div class="screen-title">Login</div>
+  <div class="p-6 space-y-5">
+    <p class="text-xs uppercase tracking-[.3em] text-slate-500 text-center">Secure Access Gateway</p>
+    <div class="space-y-2"><label class="text-xs font-bold uppercase text-slate-400">Usuario</label><input class="w-full h-9 rounded-4xl border border-white/10 bg-white/5 px-3 text-sm text-white outline-none" placeholder="superadmin"></div>
+    <div class="space-y-2"><label class="text-xs font-bold uppercase text-slate-400">Password</label><input type="password" class="w-full h-9 rounded-4xl border border-white/10 bg-white/5 px-3 text-sm text-white outline-none" placeholder="••••••••"></div>
+    <button class="btn w-full h-11 rounded-4xl bg-blue-600 font-bold text-white text-sm hover:bg-blue-500">Access System</button>
+    <p class="text-[10px] text-slate-500 text-center"><span class="endpoint">POST /api/v1/auth/login</span></p>
+  </div>
+</div>
+
+<!-- ===== DASHBOARD ===== -->
+<div class="screen max-w-5xl mx-auto">
+  <div class="screen-label">Pantalla 2</div>
+  <div class="screen-title">Dashboard</div>
+  <div class="flex" style="height:420px">
+    <!-- Sidebar -->
+    <div class="w-56 border-r border-white/5 bg-[#0a0a0a] p-5 flex flex-col justify-between shrink-0">
+      <div>
+        <div class="flex items-center gap-2 mb-8"><div class="w-7 h-7 rounded-lg bg-gradient-to-tr from-blue-600 to-emerald-400"></div><span class="text-base font-bold italic text-white">Synapse<span class="text-blue-500">Ops</span></span></div>
+        <p class="text-[10px] font-bold uppercase tracking-[.2em] text-slate-600 mb-3">Workspace Core</p>
+        <div class="sidebar-link flex items-center gap-2 rounded-xl px-2 py-1.5 text-xs text-white bg-blue-500/10"><span class="w-3 h-3 rounded bg-blue-400"></span>Overview</div>
+        <div class="sidebar-link flex items-center gap-2 rounded-xl px-2 py-1.5 text-xs text-slate-400 mt-1"><span class="w-3 h-3 rounded bg-blue-400"></span>My Projects</div>
+        <div class="mt-8 pt-6 border-t border-white/5">
+          <p class="text-[10px] font-bold uppercase tracking-[.2em] text-blue-500 mb-3">Admin</p>
+          <div class="sidebar-link flex items-center gap-2 rounded-xl px-2 py-1.5 text-xs text-slate-400"><span class="w-3 h-3 rounded bg-blue-500"></span>Admin Users</div>
+        </div>
+      </div>
+      <div class="rounded-2xl border border-white/5 bg-gradient-to-tr from-blue-600/10 to-emerald-500/5 p-3">
+        <div class="flex items-center gap-1.5 mb-1"><div class="w-1.5 h-1.5 rounded-full bg-emerald-500"></div><p class="text-[10px] font-bold uppercase text-emerald-400">System Live</p></div>
+        <p class="text-[10px] text-slate-500">Workspace: Default</p>
+      </div>
+    </div>
+    <!-- Main -->
+    <div class="flex-1 flex flex-col">
+      <div class="h-12 border-b border-white/5 flex items-center justify-between px-6 bg-[#050505]/60">
+        <div class="flex items-center gap-3"><div class="w-36 h-7 rounded-full border border-white/10 bg-white/5"></div></div>
+        <div class="flex items-center gap-4">
+          <div class="flex items-center gap-2"><p class="text-xs font-bold text-white">superadmin</p><p class="text-[10px] text-slate-500 uppercase">ADMIN · Online</p><div class="w-8 h-8 rounded-xl bg-slate-900 border border-white/10"></div></div>
+          <div class="btn flex items-center gap-1 text-xs text-red-400/70 cursor-pointer">↪ Logout</div>
+        </div>
+      </div>
+      <div class="flex-1 p-6 space-y-4 bg-[#050505]">
+        <div class="grid grid-cols-3 gap-4">
+          <div class="rounded-2xl bg-white/[.03] border border-white/5 p-4"><p class="text-[10px] font-bold uppercase text-slate-500">My Workspaces</p><p class="text-2xl font-bold text-white mt-1">5</p></div>
+          <div class="rounded-2xl bg-white/[.03] border border-white/5 p-4"><p class="text-[10px] font-bold uppercase text-slate-500">Current Role</p><p class="text-2xl font-bold text-white mt-1">ADMIN</p></div>
+          <div class="rounded-2xl bg-white/[.03] border border-white/5 p-4"><p class="text-[10px] font-bold uppercase text-slate-500">Workspace</p><p class="text-2xl font-bold text-white mt-1">Iris</p></div>
+        </div>
+        <div class="flex gap-4">
+          <div class="flex-1 rounded-2xl bg-white/[.03] border border-white/5 p-4">
+            <p class="text-sm font-semibold text-white mb-2">Accessible Workspaces</p>
+            <div class="space-y-2">
+              <div class="rounded-2xl bg-black/20 border border-white/5 p-3"><p class="text-xs font-semibold text-white">Iris Classification</p><p class="text-[10px] text-slate-500">Owner: superadmin</p></div>
+              <div class="rounded-2xl bg-black/20 border border-white/5 p-3"><p class="text-xs font-semibold text-white">MNIST Digits</p><p class="text-[10px] text-slate-500">Owner: student_one</p></div>
+            </div>
+          </div>
+          <div class="flex-1 rounded-2xl bg-white/[.03] border border-white/5 p-4">
+            <p class="text-sm font-semibold text-white mb-2">Next Actions</p>
+            <p class="text-xs text-slate-400">Crea proyectos aislados, carga dataset y administra pipelines del proyecto seleccionado.</p>
+          </div>
+        </div>
+        <p class="text-[10px] text-slate-600"><span class="endpoint">GET /api/v1/workspaces</span></p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== ADMIN USERS ===== -->
+<div class="screen max-w-6xl mx-auto">
+  <div class="screen-label">Pantalla 3</div>
+  <div class="screen-title">Admin Users</div>
+  <div class="p-6 space-y-4 bg-[#050505]">
+    <div class="grid grid-cols-3 gap-4">
+      <div class="rounded-2xl bg-white/[.03] border border-white/5 p-4"><p class="text-[10px] font-bold uppercase text-slate-500">Active Students</p><p class="text-2xl font-bold text-white mt-1">3</p></div>
+      <div class="rounded-2xl bg-white/[.03] border border-white/5 p-4"><p class="text-[10px] font-bold uppercase text-slate-500">Disabled</p><p class="text-2xl font-bold text-white mt-1">1</p></div>
+      <div class="rounded-2xl bg-white/[.03] border border-white/5 p-4"><p class="text-[10px] font-bold uppercase text-slate-500">Scope</p><p class="text-2xl font-bold text-white mt-1">Students</p></div>
+    </div>
+    <div class="grid gap-4" style="grid-template-columns:1fr 1.5fr">
+      <!-- Form -->
+      <div class="rounded-2xl bg-white/[.03] border border-white/5 p-4">
+        <p class="text-sm font-semibold text-white mb-3">Create Student Account</p>
+        <div class="grid grid-cols-2 gap-3">
+          <div class="space-y-1"><label class="text-[10px] font-bold uppercase text-slate-400">Username</label><input class="w-full h-8 rounded-3xl border border-white/10 bg-white/5 px-3 text-xs text-white outline-none" placeholder="student_01"></div>
+          <div class="space-y-1"><label class="text-[10px] font-bold uppercase text-slate-400">Password</label><input type="password" class="w-full h-8 rounded-3xl border border-white/10 bg-white/5 px-3 text-xs text-white outline-none"></div>
+          <div class="space-y-1"><label class="text-[10px] font-bold uppercase text-slate-400">Name</label><input class="w-full h-8 rounded-3xl border border-white/10 bg-white/5 px-3 text-xs text-white outline-none" placeholder="Jorge"></div>
+          <div class="space-y-1"><label class="text-[10px] font-bold uppercase text-slate-400">Paternal Surname</label><input class="w-full h-8 rounded-3xl border border-white/10 bg-white/5 px-3 text-xs text-white outline-none" placeholder="Moscol"></div>
+          <div class="space-y-1"><label class="text-[10px] font-bold uppercase text-slate-400">Phone</label><input class="w-full h-8 rounded-3xl border border-white/10 bg-white/5 px-3 text-xs text-white outline-none" placeholder="999999999"></div>
+          <div class="space-y-1"><label class="text-[10px] font-bold uppercase text-slate-400">Student Code</label><input class="w-full h-8 rounded-3xl border border-white/10 bg-white/5 px-3 text-xs text-white outline-none" placeholder="U20260001"></div>
+          <div class="col-span-2 space-y-1"><label class="text-[10px] font-bold uppercase text-slate-400">Career</label><input class="w-full h-8 rounded-3xl border border-white/10 bg-white/5 px-3 text-xs text-white outline-none" placeholder="Ing. de Sistemas"></div>
+          <div class="col-span-2 space-y-1"><label class="text-[10px] font-bold uppercase text-slate-400">Email</label><input type="email" class="w-full h-8 rounded-3xl border border-white/10 bg-white/5 px-3 text-xs text-white outline-none" placeholder="student@example.com"></div>
+        </div>
+        <button class="btn mt-4 h-9 px-4 rounded-4xl bg-blue-600 font-bold text-white text-xs hover:bg-blue-500">Create Student</button>
+      </div>
+      <!-- Tables -->
+      <div class="space-y-4">
+        <div class="rounded-2xl bg-white/[.03] border border-white/5 p-4">
+          <p class="text-xs font-semibold text-white mb-2">Active Student Accounts</p>
+          <table class="w-full text-xs text-slate-300">
+            <thead class="text-[10px] uppercase tracking-[.15em] text-slate-500"><tr><td class="pb-2">User</td><td class="pb-2">St.Code</td><td class="pb-2">Role</td><td class="pb-2">Status</td><td class="pb-2" style="text-align:right">Actions</td></tr></thead>
+            <tbody>
+              <tr class="border-t border-white/5"><td class="py-2"><p class="font-semibold text-white">Jor</p><p class="text-[10px] text-slate-500">@Jor</p></td><td class="py-2 text-slate-400">U20260001</td><td class="py-2">COLLABORATOR</td><td class="py-2 text-emerald-400">Enabled</td><td class="py-2 text-right"><span class="btn text-[10px] text-red-400 bg-red-400/10 px-2 py-1 rounded-2xl cursor-pointer">Disable</span></td></tr>
+              <tr class="border-t border-white/5"><td class="py-2"><p class="font-semibold text-white">Ana</p><p class="text-[10px] text-slate-500">@Ana</p></td><td class="py-2 text-slate-400">U20260002</td><td class="py-2">COLLABORATOR</td><td class="py-2 text-emerald-400">Enabled</td><td class="py-2 text-right"><span class="btn text-[10px] text-red-400 bg-red-400/10 px-2 py-1 rounded-2xl cursor-pointer">Disable</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="rounded-2xl bg-white/[.03] border border-white/5 p-4">
+          <p class="text-xs font-semibold text-white mb-2">Soft Deleted Accounts</p>
+          <table class="w-full text-xs text-slate-300">
+            <thead class="text-[10px] uppercase tracking-[.15em] text-slate-500"><tr><td class="pb-2">User</td><td class="pb-2">St.Code</td><td class="pb-2">Role</td><td class="pb-2">Status</td><td class="pb-2" style="text-align:right">Actions</td></tr></thead>
+            <tbody>
+              <tr class="border-t border-white/5"><td class="py-2"><p class="font-semibold text-white">Luis</p><p class="text-[10px] text-slate-500">@Luis</p></td><td class="py-2 text-slate-400">U20250001</td><td class="py-2">COLLABORATOR</td><td class="py-2 text-orange-400">Disabled</td><td class="py-2 text-right"><span class="btn text-[10px] text-slate-400 border border-white/10 px-2 py-1 rounded-2xl cursor-pointer">Reactivate</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <p class="text-[10px] text-slate-600 space-x-4">
+      <span class="endpoint">GET /users/role/COLLABORATOR</span>
+      <span class="endpoint">GET /users/disabled</span>
+      <span class="endpoint">POST /auth/register</span>
+      <span class="endpoint">PATCH /users/{id}/toggle-status</span>
+    </p>
+  </div>
+</div>
+
+<!-- ===== MY PROJECTS ===== -->
+<div class="screen max-w-6xl mx-auto">
+  <div class="screen-label">Pantalla 4</div>
+  <div class="screen-title">My Projects</div>
+  <div class="p-6 space-y-4 bg-[#050505]">
+    <div class="grid grid-cols-3 gap-4">
+      <div class="rounded-2xl bg-white/[.03] border border-white/5 p-4"><p class="text-[10px] font-bold uppercase text-slate-500">My Projects</p><p class="text-2xl font-bold text-white mt-1">3</p></div>
+      <div class="rounded-2xl bg-white/[.03] border border-white/5 p-4"><p class="text-[10px] font-bold uppercase text-slate-500">Pipelines</p><p class="text-2xl font-bold text-white mt-1">2</p></div>
+      <div class="rounded-2xl bg-white/[.03] border border-white/5 p-4"><p class="text-[10px] font-bold uppercase text-slate-500">Dataset</p><p class="text-2xl font-bold text-white mt-1">Attached</p></div>
+    </div>
+    <div class="grid gap-4" style="grid-template-columns:1fr 2fr">
+      <div class="space-y-4">
+        <div class="rounded-2xl bg-white/[.03] border border-white/5 p-4">
+          <p class="text-sm font-semibold text-white mb-3">Create Project</p>
+          <div class="space-y-3">
+            <div class="space-y-1"><label class="text-[10px] font-bold uppercase text-slate-400">Project Name</label><input class="w-full h-8 rounded-3xl border border-white/10 bg-white/5 px-3 text-xs text-white outline-none" placeholder="Iris Classification"></div>
+            <div class="space-y-1"><label class="text-[10px] font-bold uppercase text-slate-400">Description</label><textarea class="w-full h-20 rounded-3xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white outline-none resize-none" placeholder="Describe the workspace"></textarea></div>
+            <button class="btn h-9 px-4 rounded-4xl bg-blue-600 font-bold text-white text-xs hover:bg-blue-500">Create Project</button>
+          </div>
+        </div>
+        <div class="rounded-2xl bg-white/[.03] border border-white/5 p-4">
+          <p class="text-xs font-semibold text-white mb-2">My Projects</p>
+          <div class="space-y-2">
+            <div class="rounded-xl border border-blue-500/40 bg-blue-500/10 p-3"><p class="text-xs font-semibold text-white">Iris Classification</p><p class="text-[10px] text-slate-500">Created: 15/05/2026</p><div class="flex gap-1 mt-2"><span class="text-[10px] border border-white/10 px-2 py-0.5 rounded-2xl text-slate-300">Open</span><span class="text-[10px] border border-white/10 px-2 py-0.5 rounded-2xl text-slate-300">Edit</span><span class="text-[10px] bg-red-400/10 text-red-400 px-2 py-0.5 rounded-2xl">Delete</span></div></div>
+            <div class="rounded-xl border border-white/5 bg-black/20 p-3"><p class="text-xs font-semibold text-white">MNIST Digits</p><p class="text-[10px] text-slate-500">Created: 14/05/2026</p><div class="flex gap-1 mt-2"><span class="text-[10px] border border-white/10 px-2 py-0.5 rounded-2xl text-slate-300">Open</span><span class="text-[10px] border border-white/10 px-2 py-0.5 rounded-2xl text-slate-300">Edit</span><span class="text-[10px] bg-red-400/10 text-red-400 px-2 py-0.5 rounded-2xl">Delete</span></div></div>
+          </div>
+        </div>
+      </div>
+      <div class="rounded-2xl bg-white/[.03] border border-white/5 p-4">
+        <p class="text-sm font-semibold text-white mb-3">Selected Workspace Context</p>
+        <div class="grid grid-cols-2 gap-3 mb-4">
+          <div class="rounded-2xl bg-black/20 border border-white/5 p-3">
+            <p class="text-xs font-semibold text-white mb-2">Dataset Isolation</p>
+            <p class="text-[10px] text-slate-400 mb-2">/storage/1/5/datasets/iris.csv</p>
+            <div class="flex gap-1"><span class="text-[10px] bg-blue-600/20 text-blue-400 px-2 py-1 rounded-2xl">Upload</span><span class="text-[10px] bg-red-400/10 text-red-400 px-2 py-1 rounded-2xl">Remove</span></div>
+          </div>
+          <div class="rounded-2xl bg-black/20 border border-white/5 p-3">
+            <p class="text-xs font-semibold text-white mb-2">Pipeline Isolation</p>
+            <input class="w-full h-8 rounded-3xl border border-white/10 bg-white/5 px-3 text-xs text-white outline-none mb-2" placeholder="Training Pipeline">
+            <span class="text-[10px] bg-blue-600/20 text-blue-400 px-2 py-1 rounded-2xl">Create Pipeline</span>
+          </div>
+        </div>
+        <p class="text-xs font-semibold text-white mb-2">Workspace Pipelines</p>
+        <div class="rounded-xl border border-white/5 bg-white/[.03] p-3 mb-2">
+          <p class="text-xs font-semibold text-white">Pipeline A</p>
+          <p class="text-[10px] text-slate-500 mt-0.5">Status: DRAFT · Nodes: 0 · Exec: 0</p>
+          <div class="flex gap-1 mt-2"><span class="text-[10px] border border-white/10 px-2 py-0.5 rounded-2xl text-slate-300">Rename</span><span class="text-[10px] bg-red-400/10 text-red-400 px-2 py-0.5 rounded-2xl">Delete</span></div>
+        </div>
+      </div>
+    </div>
+    <p class="text-[10px] text-slate-600 space-x-4">
+      <span class="endpoint">GET/POST/PUT/DELETE /workspaces</span>
+      <span class="endpoint">POST/DELETE /workspaces/{id}/dataset</span>
+      <span class="endpoint">GET/POST/PATCH/DELETE /workspaces/{id}/pipelines</span>
+    </p>
+  </div>
+</div>
+
+<!-- ===== FORBIDDEN ===== -->
+<div class="screen max-w-md mx-auto">
+  <div class="screen-label">Pantalla 5</div>
+  <div class="screen-title">Forbidden</div>
+  <div class="p-8 text-center space-y-3 bg-black/40 backdrop-blur">
+    <p class="text-2xl font-bold text-white">Acceso restringido</p>
+    <p class="text-sm text-slate-400">Tu perfil no tiene permisos para acceder a este modulo.</p>
+    <p class="text-xs uppercase tracking-[.3em] text-red-400">HTTP 403 Forbidden</p>
+  </div>
+</div>
+
+</body>
+</html>

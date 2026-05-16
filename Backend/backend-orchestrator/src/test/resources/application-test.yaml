@@ -1,0 +1,20 @@
+spring:
+  jpa:
+    show-sql: true
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+  kafka:
+    bootstrap-servers: localhost:9999
+    admin:
+      fail-fast: false
+
+logging:
+  level:
+    root: WARN
+    com.synapseops.orchestrator: INFO
+    org.flywaydb: INFO
+    org.testcontainers: INFO
