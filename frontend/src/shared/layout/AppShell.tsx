@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useState, type ChangeEvent, type ReactNode } from 'react'
 import { Layers, LogOut, Search, User as UserIcon, Users, type LucideIcon } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
@@ -23,11 +23,13 @@ interface AppShellProps {
   section: 'dashboard' | 'workspaces' | 'admin'
   user: SessionUser | null
   currentWorkspace: string
+  searchQuery: string
+  onSearchChange: (query: string) => void
   onLogout: () => Promise<void> | void
   children: ReactNode
 }
 
-export function AppShell({ section, user, currentWorkspace, onLogout, children }: AppShellProps) {
+export function AppShell({ section, user, currentWorkspace, searchQuery, onSearchChange, onLogout, children }: AppShellProps) {
   const navigate = useNavigate()
 
   const navigationItems: NavigationItem[] = [
@@ -101,7 +103,12 @@ export function AppShell({ section, user, currentWorkspace, onLogout, children }
           <div className="flex flex-1 items-center gap-4">
             <div className="relative w-72">
               <Search className="absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-slate-600" />
-              <Input placeholder="Search workspaces or users..." className="rounded-full border-white/10 bg-white/5 pl-10 text-xs focus-visible:ring-blue-500/50" />
+              <Input
+                placeholder="Search workspaces or users..."
+                value={searchQuery}
+                onChange={(e: ChangeEvent<HTMLInputElement>) => onSearchChange(e.target.value)}
+                className="rounded-full border-white/10 bg-white/5 pl-10 text-xs focus-visible:ring-blue-500/50"
+              />
             </div>
           </div>
 
