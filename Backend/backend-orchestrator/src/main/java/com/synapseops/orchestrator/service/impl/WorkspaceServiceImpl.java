@@ -10,6 +10,7 @@ import com.synapseops.orchestrator.infra.repository.WorkspaceRepository;
 import com.synapseops.orchestrator.mapper.WorkspaceMapper;
 import com.synapseops.orchestrator.service.WorkspaceService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
@@ -26,6 +27,7 @@ public class WorkspaceServiceImpl implements WorkspaceService {
     private final WorkspaceRepository workspaceRepository;
     private final UserRepository      userRepository;
     private final WorkspaceMapper     workspaceMapper;
+    private final JdbcTemplate        jdbcTemplate;
 
     @Override
     public Flux<WorkspaceResponse> getMyWorkspaces(String username) {
@@ -73,17 +75,22 @@ public class WorkspaceServiceImpl implements WorkspaceService {
         return Mono.fromCallable(() -> {
             Workspace workspace = resolveWorkspace(id);
             verifyOwnership(workspace, username);
-            workspaceMapper.updateFromRequest(workspace, request);
-            return workspaceMapper.toResponse(workspaceRepository.save(workspace));
+            jdbcTemplate.update(
+                    "UPDATE workspaces SET name = ?, description = ? WHERE id_workspace = ?",
+                    request.name(), request.description(), id);
+            Workspace updated = resolveWorkspace(id);
+            return workspaceMapper.toResponse(updated);
         }).subscribeOn(Schedulers.boundedElastic());
     }
 
     @Override
     public Mono<Void> deleteWorkspace(Long id, String username) {
-        return Mono.fromRunnable(() -> {
+        return Mono.fromCallable(() -> {
             Workspace workspace = resolveWorkspace(id);
             verifyOwnership(workspace, username);
-            workspaceRepository.delete(workspace);
+            jdbcTemplate.update("DELETE FROM workspaces WHERE id_workspace = ?",
+                    workspace.getIdWorkspace());
+            return true;
         }).subscribeOn(Schedulers.boundedElastic()).then();
     }
 

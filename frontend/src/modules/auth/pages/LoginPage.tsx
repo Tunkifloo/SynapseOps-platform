@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { login } from '@/features/auth/api'
 import { LoginForm } from '@/features/auth/components/LoginForm'
 import { useAuthSession } from '@/features/auth/hooks/useAuthSession'
+import { isApiError } from '@/shared/api/client'
 
 export function LoginPage() {
   const [credential, setCredential] = useState('')
@@ -23,8 +24,12 @@ export function LoginPage() {
       const data = await login(credential.trim(), password)
       persistSession(data.token, credential)
       navigate('/dashboard')
-    } catch (error) {
-      setError(error instanceof Error ? error.message : 'No se pudo iniciar sesión.')
+    } catch (caught) {
+      if (isApiError(caught) && caught.status === 423) {
+        navigate('/forgot-password')
+        return
+      }
+      setError(caught instanceof Error ? caught.message : 'No se pudo iniciar sesión.')
     } finally {
       setIsLoading(false)
     }

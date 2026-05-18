@@ -5,6 +5,11 @@ export interface LoginRequest {
   password: string
 }
 
+export interface ForgotPasswordRequest {
+  username: string
+  newPassword: string
+}
+
 export interface JwtClaims {
   sub?: string
   role?: string

@@ -43,10 +43,11 @@ function StatCard({ title, value }: { title: string; value: string }) {
 
 interface WorkspacesPageProps {
   token: string
+  searchQuery: string
   onAuthError: (error: unknown) => boolean
 }
 
-export function WorkspacesPage({ token, onAuthError }: WorkspacesPageProps) {
+export function WorkspacesPage({ token, searchQuery, onAuthError }: WorkspacesPageProps) {
   const setWorkspace = useAppStore((state) => state.setWorkspace)
   const [workspaces, setWorkspaces] = useState<WorkspaceSummary[]>([])
   const [pipelines, setPipelines] = useState<PipelineSummary[]>([])
@@ -64,6 +65,10 @@ export function WorkspacesPage({ token, onAuthError }: WorkspacesPageProps) {
   const [isUploadingDataset, setIsUploadingDataset] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+
+  const filteredWorkspaces = searchQuery
+    ? workspaces.filter((w) => w.name.toLowerCase().includes(searchQuery.toLowerCase()))
+    : workspaces
 
   const selectWorkspace = useCallback((workspace: WorkspaceSummary) => {
     setSelectedWorkspaceId(workspace.idWorkspace)
@@ -356,7 +361,7 @@ export function WorkspacesPage({ token, onAuthError }: WorkspacesPageProps) {
               )}
               {!isLoadingWorkspaces && (
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                  {workspaces.map((item) => {
+                  {filteredWorkspaces.map((item) => {
                     const isSelected = item.idWorkspace === selectedWorkspaceId
                     return (
                       <button
