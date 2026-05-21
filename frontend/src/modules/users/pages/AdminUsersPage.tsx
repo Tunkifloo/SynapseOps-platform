@@ -34,12 +34,25 @@ function StatCard({ title, value }: { title: string; value: string }) {
 
 interface AdminUsersPageProps {
   token: string
+  searchQuery: string
   onAuthError: (error: unknown) => boolean
 }
 
-export function AdminUsersPage({ token, onAuthError }: AdminUsersPageProps) {
+export function AdminUsersPage({ token, searchQuery, onAuthError }: AdminUsersPageProps) {
   const [activeUsers, setActiveUsers] = useState<UserSummary[]>([])
   const [disabledUsers, setDisabledUsers] = useState<UserSummary[]>([])
+
+  const filteredActiveUsers = searchQuery
+    ? activeUsers.filter((u) =>
+        u.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        u.name.toLowerCase().includes(searchQuery.toLowerCase()))
+    : activeUsers
+
+  const filteredDisabledUsers = searchQuery
+    ? disabledUsers.filter((u) =>
+        u.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        u.name.toLowerCase().includes(searchQuery.toLowerCase()))
+    : disabledUsers
   const [form, setForm] = useState<CreateStudentFormData>(emptyStudentForm())
   const [editingUserId, setEditingUserId] = useState<number | null>(null)
   const [editingUsername, setEditingUsername] = useState('')
@@ -274,7 +287,7 @@ export function AdminUsersPage({ token, onAuthError }: AdminUsersPageProps) {
             <CardContent className="pt-6">
               <UsersTable
                 title="Active Student Accounts"
-                users={activeUsers}
+                users={filteredActiveUsers}
                 isLoading={isLoading}
                 emptyMessage="No active student accounts available."
                 actionLabel="Disable"
@@ -290,7 +303,7 @@ export function AdminUsersPage({ token, onAuthError }: AdminUsersPageProps) {
             <CardContent className="pt-6">
               <UsersTable
                 title="Soft Deleted Student Accounts"
-                users={disabledUsers}
+                users={filteredDisabledUsers}
                 isLoading={isLoading}
                 emptyMessage="No disabled student accounts."
                 actionLabel="Reactivate"

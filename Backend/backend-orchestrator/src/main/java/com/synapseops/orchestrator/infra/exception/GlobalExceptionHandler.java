@@ -81,6 +81,19 @@ public class GlobalExceptionHandler {
         return problem;
     }
 
+    @ExceptionHandler(AccountLockedException.class)
+    public ProblemDetail handleAccountLocked(AccountLockedException ex,
+                                             ServerWebExchange exchange) {
+        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.LOCKED);
+        problem.setType(URI.create("/errors/account-locked"));
+        problem.setTitle("Cuenta bloqueada");
+        problem.setDetail(ex.getMessage());
+        problem.setProperty("timestamp", Instant.now());
+        problem.setProperty("path", exchange.getRequest().getPath().value());
+        problem.setProperty("redirectTo", "forgot-password");
+        return problem;
+    }
+
     @ExceptionHandler(Exception.class)
     public ProblemDetail handleGenericException(Exception ex,
                                                 ServerWebExchange exchange) {

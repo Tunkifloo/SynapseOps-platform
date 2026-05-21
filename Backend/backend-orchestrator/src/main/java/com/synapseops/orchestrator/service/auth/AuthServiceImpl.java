@@ -6,6 +6,7 @@ import com.synapseops.orchestrator.domain.dto.request.UserRegistrationRequest;
 import com.synapseops.orchestrator.domain.dto.response.TokenResponse;
 import com.synapseops.orchestrator.domain.entity.Role;
 import com.synapseops.orchestrator.domain.entity.User;
+import com.synapseops.orchestrator.infra.exception.AccountLockedException;
 import com.synapseops.orchestrator.infra.repository.UserRepository;
 import com.synapseops.orchestrator.infra.security.JwtService;
 import com.synapseops.orchestrator.mapper.UserMapper;
@@ -18,33 +19,63 @@ import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionTemplate;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
+
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 @Service
 @RequiredArgsConstructor
 public class AuthServiceImpl implements AuthService {
+
+    private static final int MAX_FAILED_ATTEMPTS = 3;
+    private final ConcurrentHashMap<String, AtomicInteger> failedAttempts = new ConcurrentHashMap<>();
 
     private final UserRepository userRepository;
     private final JwtService jwtService;
     private final PasswordEncoder passwordEncoder;
     private final UserFactory userFactory;
     private final UserMapper userMapper;
+    private final TransactionTemplate transactionTemplate;
 
     @Override
     public Mono<TokenResponse> login(LoginRequest request) {
         return Mono.fromCallable(() ->
                         userRepository.findByUsername(request.username())
-                                .orElseThrow(() -> new IllegalArgumentException("El usuario ingresado no existe en el sistema."))
+                                .orElse(null)
                 )
                 .subscribeOn(Schedulers.boundedElastic())
                 .flatMap(user -> {
+                    if (user == null) {
+                        incrementFailedAttempts(request.username());
+                        return Mono.error(new IllegalArgumentException(
+                                "El usuario ingresado no existe en el sistema."));
+                    }
+
+                    if (isAccountLocked(request.username())) {
+                        return Mono.error(new AccountLockedException(
+                                "Cuenta bloqueada por múltiples intentos fallidos. Restablezca su contraseña."));
+                    }
+
                     if (!user.isEnabled()) {
-                        return Mono.error(new DisabledException("Su cuenta ha sido deshabilitada. Contacte al administrador."));
+                        return Mono.error(new DisabledException(
+                                "Su cuenta ha sido deshabilitada. Contacte al administrador."));
                     }
                     if (!passwordEncoder.matches(request.password(), user.getPassword())) {
-                        return Mono.error(new BadCredentialsException("La contraseña ingresada es incorrecta."));
+                        incrementFailedAttempts(request.username());
+                        int remaining = MAX_FAILED_ATTEMPTS
+                                - failedAttempts.get(request.username()).get();
+                        if (remaining <= 0) {
+                            return Mono.error(new AccountLockedException(
+                                    "Cuenta bloqueada por múltiples intentos fallidos. Restablezca su contraseña."));
+                        }
+                        return Mono.error(new BadCredentialsException(
+                                "La contraseña ingresada es incorrecta."));
                     }
+
+                    clearFailedAttempts(request.username());
                     return Mono.just(new TokenResponse(jwtService.getToken(user)));
                 });
     }
@@ -55,7 +86,8 @@ public class AuthServiceImpl implements AuthService {
                     validateUniqueConstraints(request);
                     validateCollaboratorFields(request);
                     User user = userFactory.createUser(request.role());
-                    userMapper.populateUserFromRequest(user, request, passwordEncoder.encode(request.password()));
+                    userMapper.populateUserFromRequest(user, request,
+                            passwordEncoder.encode(request.password()));
                     userRepository.save(user);
                     return new TokenResponse(jwtService.getToken(user));
                 })
@@ -64,38 +96,59 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     public Mono<Void> forgotPassword(ForgotPasswordRequest request) {
-        return Mono.fromRunnable(() -> {
+        return Mono.fromRunnable(() ->
+                transactionTemplate.executeWithoutResult(status -> {
                     User user = userRepository.findByUsername(request.username())
-                            .orElseThrow(() -> new IllegalArgumentException("El usuario ingresado no existe."));
+                            .orElseThrow(() -> new IllegalArgumentException(
+                                    "El usuario ingresado no existe."));
 
                     if (!user.isEnabled()) {
-                        throw new IllegalArgumentException("No se puede restablecer la contraseña de una cuenta deshabilitada.");
+                        throw new IllegalArgumentException(
+                                "No se puede restablecer la contraseña de una cuenta deshabilitada.");
                     }
-                    if (passwordEncoder.matches(request.newPassword(), user.getPassword())) {
-                        throw new IllegalArgumentException("La nueva contraseña no puede ser igual a la anterior.");
+                    if (passwordEncoder.matches(request.newPassword(),
+                            user.getPassword())) {
+                        throw new IllegalArgumentException(
+                                "La nueva contraseña no puede ser igual a la anterior.");
                     }
 
-                    user.setPassword(passwordEncoder.encode(request.newPassword()));
-                    userRepository.save(user);
+                    String encoded = passwordEncoder.encode(request.newPassword());
+                    userRepository.updatePasswordDirect(request.username(), encoded);
+                    clearFailedAttempts(request.username());
                 })
-                .subscribeOn(Schedulers.boundedElastic())
-                .then();
+        ).subscribeOn(Schedulers.boundedElastic()).then();
     }
 
     @Override
     public Mono<Void> logout(String authHeader) {
         return Mono.fromRunnable(() -> {
             if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-                throw new IllegalArgumentException("No se proporcionó un token de sesión válido.");
+                throw new IllegalArgumentException(
+                        "No se proporcionó un token de sesión válido.");
             }
             try {
                 jwtService.getUsernameFromToken(authHeader.substring(7));
             } catch (ExpiredJwtException e) {
-                throw new IllegalArgumentException("La sesión ya se encontraba expirada.");
+                throw new IllegalArgumentException(
+                        "La sesión ya se encontraba expirada.");
             } catch (SignatureException | MalformedJwtException e) {
                 throw new SecurityException("Token de sesión inválido o corrupto.");
             }
         }).subscribeOn(Schedulers.boundedElastic()).then();
+    }
+
+    private void incrementFailedAttempts(String username) {
+        failedAttempts.computeIfAbsent(username, k -> new AtomicInteger(0))
+                .incrementAndGet();
+    }
+
+    private void clearFailedAttempts(String username) {
+        failedAttempts.remove(username);
+    }
+
+    private boolean isAccountLocked(String username) {
+        AtomicInteger attempts = failedAttempts.get(username);
+        return attempts != null && attempts.get() >= MAX_FAILED_ATTEMPTS;
     }
 
     private void validateUniqueConstraints(UserRegistrationRequest request) {
@@ -105,7 +158,8 @@ public class AuthServiceImpl implements AuthService {
         }
         if (userRepository.existsByEmail(request.email())) {
             throw new IllegalArgumentException(
-                    String.format("El correo '%s' ya se encuentra registrado.", request.email()));
+                    String.format("El correo '%s' ya se encuentra registrado.",
+                            request.email()));
         }
     }
 

@@ -10,6 +10,7 @@ import com.synapseops.orchestrator.infra.repository.WorkspaceRepository;
 import com.synapseops.orchestrator.mapper.PipelineMapper;
 import com.synapseops.orchestrator.service.PipelineService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
@@ -26,6 +27,7 @@ public class PipelineServiceImpl implements PipelineService {
     private final PipelineRepository  pipelineRepository;
     private final WorkspaceRepository workspaceRepository;
     private final PipelineMapper      pipelineMapper;
+    private final JdbcTemplate        jdbcTemplate;
 
     @Override
     public Flux<PipelineResponse> getPipelinesByWorkspace(
@@ -77,11 +79,13 @@ public class PipelineServiceImpl implements PipelineService {
 
     @Override
     public Mono<Void> deletePipeline(Long id, Long workspaceId, String username) {
-        return Mono.fromRunnable(() -> {
+        return Mono.fromCallable(() -> {
             Pipeline pipeline = resolvePipeline(id);
             verifyOwnership(pipeline.getWorkspace(), username);
             verifyBelongsToWorkspace(pipeline, workspaceId);
-            pipelineRepository.delete(pipeline);
+            jdbcTemplate.update("DELETE FROM pipelines WHERE id_pipeline = ?",
+                    pipeline.getIdPipeline());
+            return true;
         }).subscribeOn(Schedulers.boundedElastic()).then();
     }
 
