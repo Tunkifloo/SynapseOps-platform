@@ -8,14 +8,19 @@ import com.github.dockerjava.api.model.Frame;
 import com.github.dockerjava.api.model.HostConfig;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
+import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.FluxSink;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -29,17 +34,50 @@ public class DockerFacade {
 
     public String buildImage(String dockerfileContent, String imageName) {
         log.info("Construyendo imagen Docker: {}", imageName);
+        try {
+            byte[] tarBytes = buildContextTar(dockerfileContent);
+            InputStream tarStream = new ByteArrayInputStream(tarBytes);
 
-        InputStream dockerfileStream = new ByteArrayInputStream(
-                dockerfileContent.getBytes(StandardCharsets.UTF_8));
+            String imageId = dockerClient.buildImageCmd(tarStream)
+                    .withTags(Set.of(imageName + ":latest"))
+                    .exec(new BuildImageResultCallback())
+                    .awaitImageId();
 
-        String imageId = dockerClient.buildImageCmd(dockerfileStream)
-                .withTags(Set.of(imageName + ":latest"))
-                .exec(new BuildImageResultCallback())
-                .awaitImageId();
+            log.info("Imagen construida: {} → {}", imageName, imageId);
+            return imageId;
+        } catch (IOException e) {
+            throw new IllegalStateException("Error construyendo imagen Docker: "
+                    + e.getMessage(), e);
+        }
+    }
 
-        log.info("Imagen construida exitosamente. ID: {}", imageId);
-        return imageId;
+    private byte[] buildContextTar(String dockerfileContent) throws IOException {
+        String serveModelPy;
+        try (InputStream is = new ClassPathResource(
+                "templates/serve_model.py").getInputStream()) {
+            serveModelPy = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+        }
+
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try (TarArchiveOutputStream tar = new TarArchiveOutputStream(baos)) {
+            tar.setLongFileMode(TarArchiveOutputStream.LONGFILE_GNU);
+
+            addToTar(tar, "Dockerfile",
+                    dockerfileContent.getBytes(StandardCharsets.UTF_8));
+
+            addToTar(tar, "serve_model.py",
+                    serveModelPy.getBytes(StandardCharsets.UTF_8));
+        }
+        return baos.toByteArray();
+    }
+
+    private void addToTar(TarArchiveOutputStream tar, String filename,
+                          byte[] content) throws IOException {
+        TarArchiveEntry entry = new TarArchiveEntry(filename);
+        entry.setSize(content.length);
+        tar.putArchiveEntry(entry);
+        tar.write(content);
+        tar.closeArchiveEntry();
     }
 
     public String runContainer(String imageId, Map<String, String> envVars) {

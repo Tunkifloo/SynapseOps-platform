@@ -1,11 +1,13 @@
 package com.synapseops.orchestrator.domain.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.proxy.HibernateProxy;
 
 import java.util.Objects;
 
+@JsonIgnoreProperties({"execution", "hibernateLazyInitializer"})
 @Entity
 @Table(name = "ml_artifacts")
 @Getter @Setter
