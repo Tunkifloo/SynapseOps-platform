@@ -71,7 +71,7 @@ class PipelineConsumer:
 
     def _process_message(self, msg) -> None:
         raw = msg.value().decode("utf-8")
-        log.info("Mensaje recibido desde Kafka: %s", raw[:200])
+        log.info("Mensaje recibido: %s", raw[:200])
 
         try:
             data = json.loads(raw)
@@ -90,4 +90,5 @@ class PipelineConsumer:
             framework=data.get("framework", "tensorflow")
         ).observe(elapsed)
 
+        # Publicar resultado — execution_id incluido para que el backend actualice BD
         self._producer.publish_result(result)

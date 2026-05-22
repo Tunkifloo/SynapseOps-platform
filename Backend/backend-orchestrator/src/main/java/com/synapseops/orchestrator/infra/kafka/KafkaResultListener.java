@@ -1,13 +1,10 @@
 package com.synapseops.orchestrator.infra.kafka;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.synapseops.orchestrator.domain.dto.kafka.PipelineJobResult;
+import com.synapseops.orchestrator.domain.entity.*;
+import com.synapseops.orchestrator.infra.repository.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
-import org.springframework.kafka.support.KafkaHeaders;
-import org.springframework.messaging.handler.annotation.Header;
-import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.stereotype.Component;
 
 @Slf4j
@@ -15,30 +12,15 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class KafkaResultListener {
 
-    private final ObjectMapper objectMapper;
+    private final PipelineResultProcessor resultProcessor;
 
     @KafkaListener(
-            topics = "mlops.pipeline.results",
-            groupId = "orchestrator-group",
-            containerFactory = "kafkaListenerContainerFactory"
+            topics            = "mlops.pipeline.results",
+            groupId           = "orchestrator-results-group",
+            containerFactory  = "resultsListenerContainerFactory"
     )
-    public void onPipelineResult(
-            @Payload String message,
-            @Header(KafkaHeaders.RECEIVED_PARTITION) int partition,
-            @Header(KafkaHeaders.OFFSET) long offset) {
-
-        log.info("Resultado recibido desde Kafka. Partition: {} | Offset: {}",
-                partition, offset);
-
-        try {
-            PipelineJobResult result = objectMapper
-                    .readValue(message, PipelineJobResult.class);
-
-            log.info("Pipeline ExecutionId: {} | Status: {} | MLflow RunId: {}",
-                    result.executionId(), result.status(), result.mlflowRunId());
-
-        } catch (Exception e) {
-            log.error("Error deserializando PipelineJobResult: {}", e.getMessage());
-        }
+    public void onPipelineResult(String message) {
+        log.info(">>> Resultado Kafka recibido (longitud={})", message.length());
+        resultProcessor.process(message);
     }
 }

@@ -21,6 +21,7 @@ import java.security.Principal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -128,10 +129,44 @@ public class DatasetController {
             @PathVariable Long workspaceId,
             @RequestBody Map<String, String> body,
             Mono<Principal> principal) {
-        String url = body.get("url");
+
+        String url          = body.get("url");
+        String kerasDataset = body.get("kerasDataset");
+
+        if (kerasDataset != null && !kerasDataset.isBlank()) {
+            List<String> supported = List.of(
+                    "mnist", "fashion_mnist", "cifar10", "cifar100");
+
+            if (!supported.contains(kerasDataset.toLowerCase())) {
+                return Mono.just(ResponseEntity.badRequest()
+                        .body("Dataset Keras no soportado. Disponibles: " + supported));
+            }
+
+            return principal.flatMap(p ->
+                    Mono.fromCallable(() -> workspaceRepository.findById(workspaceId)
+                                    .orElseThrow(() ->
+                                            new ResourceNotFoundException("Workspace", workspaceId)))
+                            .subscribeOn(Schedulers.boundedElastic())
+                            .flatMap(workspace -> {
+                                if (!workspace.getUser().getUsername().equals(p.getName())) {
+                                    return Mono.error(new org.springframework.security.access
+                                            .AccessDeniedException("Sin permisos sobre este workspace."));
+                                }
+                                String datasetRef = "keras://" + kerasDataset.toLowerCase();
+                                return Mono.fromCallable(() -> {
+                                    workspace.setDatasetPath(datasetRef);
+                                    workspaceRepository.save(workspace);
+                                    return datasetRef;
+                                }).subscribeOn(Schedulers.boundedElastic());
+                            })
+            ).map(ref -> ResponseEntity.ok(
+                    "Dataset Keras registrado: " + ref +
+                            " — se cargará en el ml-engine al entrenar."));
+        }
+
         if (url == null || url.isBlank()) {
             return Mono.just(ResponseEntity.badRequest()
-                    .body("La URL del repositorio es obligatoria."));
+                    .body("Se requiere 'url' o 'kerasDataset' en el body."));
         }
 
         return principal.flatMap(p ->
@@ -149,34 +184,44 @@ public class DatasetController {
                             return Mono.fromCallable(() -> resolveDownloadUrl(url))
                                     .subscribeOn(Schedulers.boundedElastic())
                                     .flatMap(resolvedUrl -> {
-                                        String filename = extractFilenameFromUrl(resolvedUrl);
-                                        Path targetDir = Paths.get(storageProperties.getBasePath())
+                                        String filename   = extractFilenameFromUrl(resolvedUrl);
+                                        Path targetDir    = Paths.get(storageProperties.getBasePath())
                                                 .resolve(String.valueOf(userId))
                                                 .resolve(String.valueOf(workspaceId))
                                                 .resolve("datasets");
-                                        Path targetFile = targetDir.resolve(sanitizeFilename(filename));
+                                        Path targetFile   = targetDir.resolve(
+                                                sanitizeFilename(filename));
 
                                         Mono<Void> deletePrevious = Mono.empty();
-                                        if (workspace.getDatasetPath() != null) {
-                                            String oldName = Paths.get(workspace.getDatasetPath())
+                                        if (workspace.getDatasetPath() != null
+                                                && !workspace.getDatasetPath()
+                                                .startsWith("keras://")) {
+                                            String oldName = Paths.get(
+                                                            workspace.getDatasetPath())
                                                     .getFileName().toString();
-                                            deletePrevious = fileStorageService.delete(oldName, userId, workspaceId);
+                                            deletePrevious = fileStorageService
+                                                    .delete(oldName, userId, workspaceId);
                                         }
 
                                         return deletePrevious
                                                 .then(Mono.fromCallable(() -> {
                                                     Files.createDirectories(targetDir);
                                                     try (java.io.InputStream in =
-                                                                 new java.net.URI(resolvedUrl).toURL().openStream()) {
+                                                                 new java.net.URI(resolvedUrl)
+                                                                         .toURL().openStream()) {
                                                         Files.copy(in, targetFile,
-                                                                java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                                                                java.nio.file.StandardCopyOption
+                                                                        .REPLACE_EXISTING);
                                                     } catch (java.io.FileNotFoundException e) {
                                                         if (resolvedUrl.contains("/main.zip")) {
-                                                            String fallback = resolvedUrl.replace("/main.zip", "/master.zip");
+                                                            String fallback = resolvedUrl
+                                                                    .replace("/main.zip", "/master.zip");
                                                             try (java.io.InputStream in2 =
-                                                                         new java.net.URI(fallback).toURL().openStream()) {
+                                                                         new java.net.URI(fallback)
+                                                                                 .toURL().openStream()) {
                                                                 Files.copy(in2, targetFile,
-                                                                        java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                                                                        java.nio.file.StandardCopyOption
+                                                                                .REPLACE_EXISTING);
                                                             }
                                                         } else {
                                                             throw e;
@@ -191,29 +236,38 @@ public class DatasetController {
                                                                 boolean hasImages = false;
                                                                 try (java.util.zip.ZipInputStream zis =
                                                                              new java.util.zip.ZipInputStream(
-                                                                                     new java.io.FileInputStream(storedPath))) {
+                                                                                     new java.io.FileInputStream(
+                                                                                             storedPath))) {
                                                                     java.util.zip.ZipEntry entry;
-                                                                    while ((entry = zis.getNextEntry()) != null) {
-                                                                        String entryName = entry.getName().toLowerCase();
-                                                                        if (entryName.endsWith(".png")
-                                                                                || entryName.endsWith(".jpg")
-                                                                                || entryName.endsWith(".jpeg")) {
+                                                                    while ((entry = zis.getNextEntry())
+                                                                            != null) {
+                                                                        String e2 = entry.getName()
+                                                                                .toLowerCase();
+                                                                        if (e2.endsWith(".png")
+                                                                                || e2.endsWith(".jpg")
+                                                                                || e2.endsWith(".jpeg")) {
                                                                             hasImages = true;
                                                                             break;
                                                                         }
                                                                     }
                                                                 }
                                                                 if (!hasImages) {
-                                                                    Files.deleteIfExists(Path.of(storedPath));
+                                                                    Files.deleteIfExists(
+                                                                            Path.of(storedPath));
                                                                     throw new IllegalArgumentException(
-                                                                            "El archivo descargado no contiene imágenes válidas (.png, .jpg, .jpeg).");
+                                                                            "El archivo descargado no "
+                                                                                    + "contiene imágenes válidas "
+                                                                                    + "(.png, .jpg, .jpeg).");
                                                                 }
                                                             } else if (!name.endsWith(".png")
                                                                     && !name.endsWith(".jpg")
                                                                     && !name.endsWith(".jpeg")) {
-                                                                Files.deleteIfExists(Path.of(storedPath));
+                                                                Files.deleteIfExists(
+                                                                        Path.of(storedPath));
                                                                 throw new IllegalArgumentException(
-                                                                        "Solo se aceptan imágenes (.png, .jpg, .jpeg) o archivos .zip con imágenes.");
+                                                                        "Solo se aceptan imágenes "
+                                                                                + "(.png, .jpg, .jpeg) o "
+                                                                                + ".zip con imágenes.");
                                                             }
                                                             workspace.setDatasetPath(storedPath);
                                                             workspaceRepository.save(workspace);
@@ -221,10 +275,12 @@ public class DatasetController {
                                                         }).subscribeOn(Schedulers.boundedElastic()))
                                                 .onErrorResume(java.io.IOException.class, ex ->
                                                         Mono.error(new IllegalArgumentException(
-                                                                "No se pudo descargar desde la URL: " + ex.getMessage())));
+                                                                "No se pudo descargar desde la URL: "
+                                                                        + ex.getMessage())));
                                     });
                         })
-        ).map(path -> ResponseEntity.ok("Dataset descargado correctamente. Path: " + path));
+        ).map(path -> ResponseEntity.ok(
+                "Dataset descargado correctamente. Path: " + path));
     }
 
     private String resolveDownloadUrl(String url) {

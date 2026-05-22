@@ -1,5 +1,6 @@
 package com.synapseops.orchestrator.domain.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.proxy.HibernateProxy;
@@ -9,6 +10,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
+@JsonIgnoreProperties({"pipelines", "user", "hibernateLazyInitializer"})
 @Entity
 @Table(name = "workspaces")
 @Getter @Setter

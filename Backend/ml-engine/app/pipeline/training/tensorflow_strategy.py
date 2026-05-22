@@ -1,3 +1,7 @@
+"""
+Responsabilidad única: entrenar con TensorFlow/Keras.
+CNN adaptativa al input_shape detectado por ingestion.
+"""
 import logging
 from pathlib import Path
 
@@ -8,49 +12,38 @@ from app.pipeline.training.base import HyperParams, TrainingResult, TrainingStra
 log = logging.getLogger(__name__)
 
 
-def _resolve_tf_device() -> str:
-
-    import tensorflow as tf
-
-    gpus = tf.config.list_physical_devices("GPU")
-    if gpus:
-        for gpu in gpus:
-            tf.config.experimental.set_memory_growth(gpu, True)
-        log.info("TensorFlow — GPU disponible: %s", [g.name for g in gpus])
-        return "/GPU:0"
-
-    log.info("TensorFlow — GPU no disponible, usando CPU")
-    return "/CPU:0"
-
-
 class TensorFlowStrategy(TrainingStrategy):
-    """Entrenamiento con TensorFlow/Keras — soporta CNN, MobileNetV2, ResNet50."""
+    """
+    Strategy TensorFlow — CNN adaptativa.
+    - input_shape (28,28,1) → 2 bloques conv (MNIST-like)
+    - input_shape (64,64,3) → 3 bloques conv (imágenes color)
+    Detección automática de GPU/CPU via tf.config.
+    """
 
     def train(
         self,
         X_train: np.ndarray,
         y_train: np.ndarray,
-        X_val: np.ndarray,
-        y_val: np.ndarray,
+        X_val:   np.ndarray,
+        y_val:   np.ndarray,
         hyperparams: HyperParams,
         output_dir: str,
     ) -> TrainingResult:
         import tensorflow as tf
-        from tensorflow import keras
 
-        device = _resolve_tf_device()
-        log.info("TensorFlow %s — device: %s — arquitectura: %s",
-                 tf.__version__, device, hyperparams.architecture)
+        device = self._resolve_device()
+        log.info("TF %s — device=%s shape=%s classes=%d",
+                 tf.__version__, device,
+                 hyperparams.input_shape, hyperparams.num_classes)
 
         with tf.device(device):
-            model = self._build_model(hyperparams)
+            model = self._build_cnn(hyperparams)
             model.compile(
-                optimizer=keras.optimizers.Adam(
+                optimizer=tf.keras.optimizers.Adam(
                     learning_rate=hyperparams.learning_rate),
                 loss="sparse_categorical_crossentropy",
                 metrics=["accuracy"],
             )
-
             history = model.fit(
                 X_train, y_train,
                 validation_data=(X_val, y_val),
@@ -59,9 +52,9 @@ class TensorFlowStrategy(TrainingStrategy):
                 verbose=1,
             )
 
-        artifact_path = str(Path(output_dir) / "model.h5")
+        artifact_path = str(Path(output_dir) / "model.keras")
         model.save(artifact_path)
-        log.info("Modelo TF guardado → %s", artifact_path)
+        log.info("Modelo TF guardado: %s", artifact_path)
 
         hist = history.history
         return TrainingResult(
@@ -77,34 +70,33 @@ class TensorFlowStrategy(TrainingStrategy):
             final_loss=float(hist["loss"][-1]),
         )
 
-    def _build_model(self, hp: HyperParams):
-        from tensorflow import keras
+    def _build_cnn(self, hp: HyperParams):
+        import tensorflow as tf
 
-        if hp.architecture == "mobilenet":
-            base = keras.applications.MobileNetV2(
-                input_shape=(224, 224, 3), include_top=False, weights=None)
-            x = keras.layers.GlobalAveragePooling2D()(base.output)
-            out = keras.layers.Dense(hp.num_classes, activation="softmax")(x)
-            return keras.Model(base.input, out)
+        h = hp.input_shape[0]
+        filters = [32, 64] if h <= 32 else [32, 64, 128]
 
-        if hp.architecture == "resnet50":
-            base = keras.applications.ResNet50(
-                input_shape=(224, 224, 3), include_top=False, weights=None)
-            x = keras.layers.GlobalAveragePooling2D()(base.output)
-            out = keras.layers.Dense(hp.num_classes, activation="softmax")(x)
-            return keras.Model(base.input, out)
+        layers = [tf.keras.layers.Input(shape=hp.input_shape)]
+        for f in filters:
+            layers += [
+                tf.keras.layers.Conv2D(f, 3, activation="relu", padding="same"),
+                tf.keras.layers.MaxPooling2D(),
+            ]
+        layers += [
+            tf.keras.layers.GlobalAveragePooling2D(),
+            tf.keras.layers.Dense(128, activation="relu"),
+            tf.keras.layers.Dropout(0.4),
+            tf.keras.layers.Dense(hp.num_classes, activation="softmax"),
+        ]
+        return tf.keras.Sequential(layers)
 
-        return keras.Sequential([
-            keras.layers.Input(shape=(28, 28, 1)),
-            keras.layers.Conv2D(32, 3, activation="relu", padding="same"),
-            keras.layers.MaxPooling2D(),
-            keras.layers.Conv2D(64, 3, activation="relu", padding="same"),
-            keras.layers.MaxPooling2D(),
-            keras.layers.Flatten(),
-            keras.layers.Dense(128, activation="relu"),
-            keras.layers.Dropout(0.3),
-            keras.layers.Dense(hp.num_classes, activation="softmax"),
-        ])
-
-    def _infer_input_shape(self, hp: HyperParams) -> tuple:
-        return (28, 28, 1)
+    def _resolve_device(self) -> str:
+        import tensorflow as tf
+        gpus = tf.config.list_physical_devices("GPU")
+        if gpus:
+            for gpu in gpus:
+                tf.config.experimental.set_memory_growth(gpu, True)
+            log.info("TF GPU: %s", [g.name for g in gpus])
+            return "/GPU:0"
+        log.info("TF usando CPU")
+        return "/CPU:0"

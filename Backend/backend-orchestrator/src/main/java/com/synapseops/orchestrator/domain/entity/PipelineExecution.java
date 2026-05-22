@@ -1,5 +1,7 @@
 package com.synapseops.orchestrator.domain.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.proxy.HibernateProxy;
@@ -9,6 +11,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
+@JsonIgnoreProperties({"logs", "pipeline", "artifact", "hibernateLazyInitializer"})
 @Entity
 @Table(name = "pipeline_executions")
 @Getter @Setter
@@ -39,6 +42,7 @@ public class PipelineExecution {
     @JoinColumn(name = "id_pipeline", nullable = false)
     private Pipeline pipeline;
 
+    @JsonIgnore
     @OneToMany(mappedBy = "execution",
             cascade = CascadeType.ALL,
             orphanRemoval = true,
@@ -46,12 +50,11 @@ public class PipelineExecution {
     @OrderBy("timestamp ASC")
     private List<ExecutionLog> logs = new ArrayList<>();
 
+    @JsonIgnore
     @OneToOne(mappedBy = "execution",
             cascade = CascadeType.ALL,
             fetch = FetchType.LAZY)
     private MLArtifact artifact;
-
-    // ── Métodos de negocio ──────────────────────────────────────────────────
 
     public void start() {
         this.status = ExecutionStatus.RUNNING;
