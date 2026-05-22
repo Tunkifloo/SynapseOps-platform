@@ -61,7 +61,7 @@ services:
       start_period: 30s
 
   mlflow-server:
-    image: ghcr.io/mlflow/mlflow:latest
+    image: ghcr.io/mlflow/mlflow:v2.21.3
     container_name: mlflow-server
     restart: unless-stopped
     ports:
@@ -94,6 +94,8 @@ volumes:
     name: synapseops_mlflow_db
   mlflow_artifacts:
     name: synapseops_mlflow_artifacts
+  storage_data:             
+    name: synapseops_storage_data  
 
 networks:
   mlops-network:

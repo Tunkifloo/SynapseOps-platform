@@ -70,7 +70,7 @@ services:
 
   # ── 3. MLFLOW SERVER ──────────────────────────────────────────────────────
   mlflow-server:
-    image: ghcr.io/mlflow/mlflow:latest
+    image: ghcr.io/mlflow/mlflow:v2.21.3
     container_name: mlflow-server
     restart: unless-stopped
     command: >
@@ -80,6 +80,9 @@ services:
       --backend-store-uri sqlite:////mlflow/mlflow.db
       --default-artifact-root /mlflow/artifacts
       --serve-artifacts
+    environment:
+      MLFLOW_ALLOW_HTTP_REDIRECTS: "true"
+      MLFLOW_ENABLE_PROXY_FIX: "true"  
     volumes:
       - mlflow_db:/mlflow
       - mlflow_artifacts:/mlflow/artifacts
@@ -162,7 +165,7 @@ services:
       retries: 3
       start_period: 20s
 
-  # ── 7. BACKEND ORCHESTRATOR — pendiente Dockerfile ────────────────────────
+  # ── 7. BACKEND ORCHESTRATOR  ────────────────────────
   backend-orchestrator:
     image: ${REGISTRY:-synapseops}/backend-orchestrator:${APP_VERSION:-1.0.0}
     build:
@@ -171,7 +174,7 @@ services:
     container_name: backend-orchestrator
     restart: unless-stopped
     environment:
-      SPRING_PROFILES_ACTIVE: prod
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
       DB_URL: jdbc:postgresql://postgres-db:5432/orchestrator
       DB_USERNAME: ${DB_USERNAME}
       DB_PASSWORD: ${DB_PASSWORD}
@@ -213,6 +216,7 @@ services:
       dockerfile: Dockerfile
     container_name: ml-engine
     restart: unless-stopped
+    user: "0:0" 
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka-broker:9092
       MLFLOW_TRACKING_URI: http://mlflow-server:5000
