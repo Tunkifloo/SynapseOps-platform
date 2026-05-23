@@ -40,11 +40,16 @@ export const uploadDataset = (token: string, workspaceId: number, file: File) =>
   return sendText(`/workspaces/${workspaceId}/dataset`, token, 'POST', formData)
 }
 
-export const uploadDatasetFromUrl = async (token: string, workspaceId: number, url: string) => {
-  const response = await authorizedRequest(`/workspaces/${workspaceId}/dataset/url`, token, {
-    method: 'POST',
-    body: JSON.stringify({ url }),
-  })
+export const uploadDatasetFromUrl = async (
+    token: string,
+    workspaceId: number,
+    url: string,
+) => {
+  const response = await authorizedRequest(
+      `/workspaces/${workspaceId}/dataset/url`,
+      token,
+      { method: 'POST', body: JSON.stringify({ url }) },
+  )
   return response.text()
 }
 

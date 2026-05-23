@@ -9,6 +9,7 @@ import { LoginPage } from '@/modules/auth/pages/LoginPage'
 import { ForgotPasswordPage } from '@/modules/auth/pages/ForgotPasswordPage'
 import { AdminUsersPage } from '@/modules/users/pages/AdminUsersPage'
 import { WorkspacesPage } from '@/modules/workspaces/pages/WorkspacesPage'
+import { MlflowPage } from '@/modules/mlflow/pages/MlflowPage'
 import { AppShell } from '@/shared/layout/AppShell'
 import { useAppStore } from '@/store/useAppStore'
 import { useProtectedSession } from '@/features/auth/hooks/useProtectedSession'
@@ -21,7 +22,7 @@ interface PageProps {
 }
 
 interface ShellPageProps {
-  section: 'dashboard' | 'workspaces' | 'admin'
+  section: 'dashboard' | 'workspaces' | 'admin' | 'mlflow'
   renderPage: (props: PageProps) => ReactNode
 }
 
@@ -76,6 +77,20 @@ export function AppRouter() {
               <ShellPage section="admin" renderPage={({ token, searchQuery, onAuthError }) => <AdminUsersPage token={token} searchQuery={searchQuery} onAuthError={onAuthError} />} />
             </RoleRoute>
           }
+        />
+
+        <Route
+            path="/mlflow"
+            element={
+              <RoleRoute isAuthenticated={isAuthenticated} role="ADMIN" currentRole={role}>
+                <ShellPage
+                    section="mlflow"
+                    renderPage={({ token, onAuthError }) => (
+                        <MlflowPage token={token} onAuthError={onAuthError} />
+                    )}
+                />
+              </RoleRoute>
+            }
         />
 
         <Route path="/forbidden" element={<ForbiddenPage />} />
