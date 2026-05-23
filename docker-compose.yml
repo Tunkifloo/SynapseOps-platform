@@ -174,7 +174,7 @@ services:
     container_name: backend-orchestrator
     restart: unless-stopped
     environment:
-      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
+      SPRING_PROFILES_ACTIVE: prod
       DB_URL: jdbc:postgresql://postgres-db:5432/orchestrator
       DB_USERNAME: ${DB_USERNAME}
       DB_PASSWORD: ${DB_PASSWORD}

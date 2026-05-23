@@ -79,7 +79,17 @@ public class ExecutionServiceImpl implements ExecutionService {
             log.info("Ejecución lanzada — executionId={} pipeline={} dataset={}",
                     execution.getIdExecution(), pipelineId, datasetPath);
 
-            return toResponse(execution);
+            return new ExecutionResponse(
+                    execution.getIdExecution(),
+                    execution.getStatus(),
+                    execution.getStartedAt(),
+                    execution.getFinishedAt(),
+                    null,
+                    pipelineId,
+                    null,
+                    null,
+                    null
+            );
 
         }).subscribeOn(Schedulers.boundedElastic());
     }

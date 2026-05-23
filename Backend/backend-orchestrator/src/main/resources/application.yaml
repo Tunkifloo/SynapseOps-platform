@@ -56,11 +56,13 @@ spring:
       acks: all
       retries: 3
     consumer:
-      group-id: orchestrator-group
+      group-id: orchestrator-results-group
       auto-offset-reset: earliest
+      enable-auto-commit: false
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      enable-auto-commit: false
+    listener:
+      missing-topics-fatal: false
 
   web:
     error:

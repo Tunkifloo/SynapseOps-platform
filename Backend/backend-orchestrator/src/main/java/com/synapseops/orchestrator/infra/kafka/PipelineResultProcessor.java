@@ -29,7 +29,7 @@ public class PipelineResultProcessor {
             log.info("Procesando resultado — executionId={} status={}", executionId, status);
 
             PipelineExecution execution = executionRepository
-                    .findById(Long.parseLong(executionId))
+                    .findByIdWithDetails(Long.parseLong(executionId))
                     .orElse(null);
 
             if (execution == null) {
@@ -58,10 +58,11 @@ public class PipelineResultProcessor {
                 artifact.setMetrics(metricsJson);
                 artifact.setExecution(execution);
                 artifactRepository.save(artifact);
-                log.info("MLArtifact persistido — version={}", modelVersion);
+                log.info("MLArtifact persistido — runId={} version={}", runId, modelVersion);
 
                 pipeline.setStatus(PipelineStatus.COMPLETED);
                 pipelineRepository.save(pipeline);
+                log.info("Pipeline COMPLETADO — executionId={}", executionId);
 
             } else {
                 execution.fail();
@@ -74,7 +75,7 @@ public class PipelineResultProcessor {
 
         } catch (Exception e) {
             log.error("Error procesando resultado Kafka: {}", e.getMessage(), e);
-            throw new RuntimeException("Rollback — error en PipelineResultProcessor", e);
+            throw new RuntimeException("Error en PipelineResultProcessor", e);
         }
     }
 }

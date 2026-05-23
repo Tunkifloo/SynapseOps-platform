@@ -11,6 +11,7 @@ import com.synapseops.orchestrator.infra.repository.UserRepository;
 import com.synapseops.orchestrator.mapper.UserMapper;
 import com.synapseops.orchestrator.service.UserService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -21,6 +22,7 @@ import reactor.core.scheduler.Schedulers;
 import java.util.List;
 import java.util.function.Supplier;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class UserServiceImpl implements UserService {
@@ -112,11 +114,18 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public Mono<Void> toggleUserStatus(Long id) {
-        return Mono.fromRunnable(() -> {
+        return Mono.fromCallable(() -> {
             User user = userRepository.findById(id)
-                    .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado con ID: " + id));
-            user.setEnabled(!user.isEnabled());
-            userRepository.save(user);
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            "Usuario no encontrado con ID: " + id));
+
+            int rows = userRepository.toggleEnabled(id);
+            if (rows == 0) {
+                throw new IllegalStateException(
+                        "No se actualizó ningún registro para el usuario ID: " + id);
+            }
+            log.info("Usuario ID={} → enabled toggled ({} rows)", id, rows);
+            return rows;
         }).subscribeOn(Schedulers.boundedElastic()).then();
     }
 
