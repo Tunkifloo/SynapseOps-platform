@@ -3,9 +3,12 @@ package com.synapseops.orchestrator.service.impl;
 import com.synapseops.orchestrator.domain.dto.request.PipelineRequest;
 import com.synapseops.orchestrator.domain.dto.response.PipelineResponse;
 import com.synapseops.orchestrator.domain.entity.Pipeline;
+import com.synapseops.orchestrator.domain.entity.Role;
+import com.synapseops.orchestrator.domain.entity.User;
 import com.synapseops.orchestrator.domain.entity.Workspace;
 import com.synapseops.orchestrator.infra.exception.ResourceNotFoundException;
 import com.synapseops.orchestrator.infra.repository.PipelineRepository;
+import com.synapseops.orchestrator.infra.repository.UserRepository;
 import com.synapseops.orchestrator.infra.repository.WorkspaceRepository;
 import com.synapseops.orchestrator.mapper.PipelineMapper;
 import com.synapseops.orchestrator.service.PipelineService;
@@ -26,6 +29,7 @@ public class PipelineServiceImpl implements PipelineService {
 
     private final PipelineRepository  pipelineRepository;
     private final WorkspaceRepository workspaceRepository;
+    private final UserRepository userRepository;
     private final PipelineMapper      pipelineMapper;
     private final JdbcTemplate        jdbcTemplate;
 
@@ -34,7 +38,7 @@ public class PipelineServiceImpl implements PipelineService {
             Long workspaceId, String username) {
         return fetchPipelines(() -> {
             Workspace workspace = resolveWorkspace(workspaceId);
-            verifyOwnership(workspace, username);
+            verifyAccess(workspace, username);
             return pipelineRepository.findByWorkspace_IdWorkspace(workspaceId);
         });
     }
@@ -44,7 +48,7 @@ public class PipelineServiceImpl implements PipelineService {
             Long id, Long workspaceId, String username) {
         return Mono.fromCallable(() -> {
             Pipeline pipeline = resolvePipeline(id);
-            verifyOwnership(pipeline.getWorkspace(), username);
+            verifyAccess(pipeline.getWorkspace(), username);
             verifyBelongsToWorkspace(pipeline, workspaceId);
             return pipelineMapper.toResponse(pipeline);
         }).subscribeOn(Schedulers.boundedElastic());
@@ -55,13 +59,18 @@ public class PipelineServiceImpl implements PipelineService {
             Long workspaceId, PipelineRequest request, String username) {
         return Mono.fromCallable(() -> {
             Workspace workspace = resolveWorkspace(workspaceId);
-            verifyOwnership(workspace, username);
+            verifyAccess(workspace, username);
 
             Pipeline pipeline = new Pipeline();
             pipeline.setName(request.name());
             pipeline.setWorkspace(workspace);
 
-            return pipelineMapper.toResponse(pipelineRepository.save(pipeline));
+            Pipeline saved = pipelineRepository.save(pipeline);
+
+            return pipelineRepository.findByIdWithWorkspace(saved.getIdPipeline())
+                    .map(pipelineMapper::toResponse)
+                    .orElseGet(() -> pipelineMapper.toResponse(saved));
+
         }).subscribeOn(Schedulers.boundedElastic());
     }
 
@@ -113,6 +122,15 @@ public class PipelineServiceImpl implements PipelineService {
         if (!workspace.getUser().getUsername().equals(username)) {
             throw new AccessDeniedException(
                     "No tienes permiso para acceder a este recurso.");
+        }
+    }
+
+    private void verifyAccess(Workspace workspace, String username) {
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado: " + username));
+        if (user.getRole() == Role.ADMIN) return;
+        if (!workspace.getUser().getUsername().equals(username)) {
+            throw new AccessDeniedException("No tienes permiso para acceder a este recurso.");
         }
     }
 

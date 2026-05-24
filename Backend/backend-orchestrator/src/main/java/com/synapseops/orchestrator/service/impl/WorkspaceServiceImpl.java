@@ -2,6 +2,7 @@ package com.synapseops.orchestrator.service.impl;
 
 import com.synapseops.orchestrator.domain.dto.request.WorkspaceRequest;
 import com.synapseops.orchestrator.domain.dto.response.WorkspaceResponse;
+import com.synapseops.orchestrator.domain.entity.Role;
 import com.synapseops.orchestrator.domain.entity.User;
 import com.synapseops.orchestrator.domain.entity.Workspace;
 import com.synapseops.orchestrator.infra.exception.ResourceNotFoundException;
@@ -46,7 +47,7 @@ public class WorkspaceServiceImpl implements WorkspaceService {
     public Mono<WorkspaceResponse> getWorkspaceById(Long id, String username) {
         return Mono.fromCallable(() -> {
             Workspace workspace = resolveWorkspace(id);
-            verifyOwnership(workspace, username);
+            verifyAccess(workspace, username);
             return workspaceMapper.toResponse(workspace);
         }).subscribeOn(Schedulers.boundedElastic());
     }
@@ -71,15 +72,22 @@ public class WorkspaceServiceImpl implements WorkspaceService {
     }
 
     @Override
-    public Mono<WorkspaceResponse> updateWorkspace(Long id, WorkspaceRequest request, String username) {
+    public Mono<WorkspaceResponse> updateWorkspace(
+            Long id, WorkspaceRequest request, String username) {
         return Mono.fromCallable(() -> {
             Workspace workspace = resolveWorkspace(id);
-            verifyOwnership(workspace, username);
-            jdbcTemplate.update(
-                    "UPDATE workspaces SET name = ?, description = ? WHERE id_workspace = ?",
-                    request.name(), request.description(), id);
-            Workspace updated = resolveWorkspace(id);
-            return workspaceMapper.toResponse(updated);
+            verifyAccess(workspace, username);
+
+            if (request.name() != null
+                    && !request.name().equals(workspace.getName())
+                    && workspaceRepository.existsByNameAndUser_IdUser(
+                    request.name(), workspace.getUser().getIdUser())) {
+                throw new IllegalArgumentException(
+                        String.format("Ya tienes un workspace con el nombre '%s'.", request.name()));
+            }
+
+            workspaceMapper.updateFromRequest(workspace, request);
+            return workspaceMapper.toResponse(workspaceRepository.save(workspace));
         }).subscribeOn(Schedulers.boundedElastic());
     }
 
@@ -87,7 +95,7 @@ public class WorkspaceServiceImpl implements WorkspaceService {
     public Mono<Void> deleteWorkspace(Long id, String username) {
         return Mono.fromCallable(() -> {
             Workspace workspace = resolveWorkspace(id);
-            verifyOwnership(workspace, username);
+            verifyAccess(workspace, username);
             jdbcTemplate.update("DELETE FROM workspaces WHERE id_workspace = ?",
                     workspace.getIdWorkspace());
             return true;
@@ -112,10 +120,11 @@ public class WorkspaceServiceImpl implements WorkspaceService {
                 .orElseThrow(() -> new ResourceNotFoundException("Workspace no encontrado con ID: " + id));
     }
 
-    private void verifyOwnership(Workspace workspace, String username) {
-        boolean isOwner = workspace.getUser().getUsername().equals(username);
-        if (!isOwner) {
-            throw new AccessDeniedException("No tienes permiso para acceder a este workspace.");
+    private void verifyAccess(Workspace workspace, String username) {
+        User user = resolveUser(username);
+        if (user.getRole() == Role.ADMIN) return;
+        if (!workspace.getUser().getUsername().equals(username)) {
+            throw new AccessDeniedException("No tienes permiso para acceder/modificar este workspace.");
         }
     }
 }

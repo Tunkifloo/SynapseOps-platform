@@ -31,7 +31,7 @@ interface DashboardPageProps {
   onAuthError: (error: unknown) => boolean
 }
 
-export function DashboardPage({ token, role, currentWorkspace, searchQuery, onAuthError }: DashboardPageProps) {
+export function DashboardPage({ token, role, currentWorkspace, onAuthError }: DashboardPageProps) {
   const [workspaces, setWorkspaces] = useState<WorkspaceSummary[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)

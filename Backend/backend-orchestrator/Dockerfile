@@ -17,12 +17,12 @@ RUN mvn package -DskipTests -q
 FROM eclipse-temurin:21-jre-alpine
 
 LABEL org.opencontainers.image.title="backend-orchestrator"
-LABEL org.opencontainers.image.description="SynapseOps MLOps Orchestrator — Spring Boot 3 / WebFlux"
+LABEL org.opencontainers.image.description="SynapseOps MLOps Orchestrator — Spring Boot 4 / WebFlux"
 
 # curl para el HEALTHCHECK
 RUN apk add --no-cache curl
 
-# ── Usuario no-root + acceso al socket Docker (DooD — ADR-004) ────────────────
+# ── Usuario no-root + acceso al socket Docker (DooD) ────────────────
 # GID 999 es el estándar del grupo 'docker' en la mayoría de distros Linux.
 # El socket /var/run/docker.sock montado desde el host hereda ese GID,
 # por eso el usuario de la app debe pertenecer a ese grupo.
@@ -35,8 +35,8 @@ RUN addgroup -S spring && \
     fi
 
 # Directorios de runtime
-RUN mkdir -p /storage /logs && \
-    chown -R spring:spring /storage /logs
+RUN mkdir -p /storage /app/logs && \
+    chown -R spring:spring /storage /app/logs
 
 WORKDIR /app
 

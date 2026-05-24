@@ -1,0 +1,11 @@
+version: "2"
+authtoken: 2zD5pnZfe6rkWurmT83RYqvYoQU_7hVC1iqkXY3gHakT2uy2H
+
+tunnels:
+  frontend:
+    addr: 3000
+    proto: http
+
+  mlflow:
+    addr: 5000
+    proto: http

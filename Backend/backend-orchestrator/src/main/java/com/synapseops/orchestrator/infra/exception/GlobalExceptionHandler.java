@@ -2,6 +2,7 @@ package com.synapseops.orchestrator.infra.exception;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.DisabledException;
@@ -9,6 +10,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.bind.support.WebExchangeBindException;
 import org.springframework.web.server.ServerWebExchange;
+import reactor.core.publisher.Mono;
 
 import java.net.URI;
 import java.time.Instant;
@@ -43,6 +45,17 @@ public class GlobalExceptionHandler {
         problem.setProperty("timestamp", Instant.now());
         problem.setProperty("path", exchange.getRequest().getPath().value());
         return problem;
+    }
+
+    @ExceptionHandler(IllegalStateException.class)
+    public Mono<ResponseEntity<ProblemDetail>> handleIllegalState(
+            IllegalStateException ex, ServerWebExchange exchange) {
+        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.BAD_REQUEST);
+        problem.setTitle("Solicitud inválida");
+        problem.setDetail(ex.getMessage());
+        problem.setInstance(URI.create(exchange.getRequest().getPath().value()));
+        problem.setProperty("timestamp", Instant.now());
+        return Mono.just(ResponseEntity.status(HttpStatus.BAD_REQUEST).body(problem));
     }
 
     @ExceptionHandler(BadCredentialsException.class)
