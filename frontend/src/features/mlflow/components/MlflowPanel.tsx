@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Activity, CheckCircle, XCircle, ChevronDown, ChevronRight, RefreshCw } from 'lucide-react'
 
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui/card'
 import {
     getMlflowHealth,
     getMlflowModelVersions,

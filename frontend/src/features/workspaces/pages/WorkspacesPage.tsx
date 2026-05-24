@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { Database as DatabaseIcon, ChevronRight } from 'lucide-react'
 import { authorizedRequest } from '@/shared/api/client'
 
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui/card'
 import {
   createPipeline, createWorkspace, deleteDataset, deletePipeline,
   deleteWorkspace, listMyWorkspaces, listWorkspacePipelines,

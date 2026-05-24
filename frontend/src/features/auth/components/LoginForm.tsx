@@ -1,9 +1,9 @@
 import { useState, type ChangeEvent, type FormEvent } from 'react'
 import { Eye, EyeOff } from 'lucide-react'
 
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
+import { Button } from '@/shared/components/ui/button'
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/shared/components/ui/card'
+import { Input } from '@/shared/components/ui/input'
 
 interface LoginFormProps {
   credential: string

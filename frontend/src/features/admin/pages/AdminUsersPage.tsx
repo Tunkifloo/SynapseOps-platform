@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type ChangeEvent, type FormEvent } from 'react'
 
-import { Card, CardContent } from '@/components/ui/card'
+import { Card, CardContent } from '@/shared/components/ui/card'
 import {
   createStudent,
   getUserById,
@@ -8,17 +8,17 @@ import {
   listDisabledUsers,
   toggleUserStatus,
   updateUserByAdmin,
-} from '@/features/admin-users/api'
-import { CreateStudentForm } from '@/features/admin-users/components/CreateStudentForm'
-import { EditStudentForm } from '@/features/admin-users/components/EditStudentForm'
-import { UsersTable } from '@/features/admin-users/components/UsersTable'
+} from '@/features/admin/api'
+import { CreateStudentForm } from '@/features/admin/components/CreateStudentForm'
+import { EditStudentForm } from '@/features/admin/components/EditStudentForm'
+import { UsersTable } from '@/features/admin/components/UsersTable'
 import {
   emptyStudentForm,
   emptyUserUpdatePayload,
   type CreateStudentFormData,
   type UserSummary,
   type UserUpdatePayload,
-} from '@/features/admin-users/types'
+} from '@/features/admin/types'
 import { SectionTitle } from '@/shared/components/SectionTitle'
 
 function StatCard({ title, value }: { title: string; value: string }) {

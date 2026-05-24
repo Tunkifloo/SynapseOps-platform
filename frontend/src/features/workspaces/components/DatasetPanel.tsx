@@ -1,8 +1,8 @@
 import { useState, type ChangeEvent, type FormEvent } from 'react'
 import { Database, Link, Upload, CheckCircle } from 'lucide-react'
 
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { Button } from '@/shared/components/ui/button'
+import { Input } from '@/shared/components/ui/input'
 import { API_BASE_URL } from '@/shared/api/env'
 
 type DatasetMode = 'keras' | 'url' | 'file'

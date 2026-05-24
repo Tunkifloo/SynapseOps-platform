@@ -1,18 +1,41 @@
 import { useState, type ReactNode } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 
-import { RoleRoute } from '@/routes/RoleRoute'
-import { ProtectedRoute } from '@/routes/ProtectedRoute'
-import { ForbiddenPage } from '@/pages/ForbiddenPage'
-import { DashboardPage } from '@/modules/dashboard/pages/DashboardPage'
-import { LoginPage } from '@/modules/auth/pages/LoginPage'
-import { ForgotPasswordPage } from '@/modules/auth/pages/ForgotPasswordPage'
-import { AdminUsersPage } from '@/modules/users/pages/AdminUsersPage'
-import { WorkspacesPage } from '@/modules/workspaces/pages/WorkspacesPage'
-import { MlflowPage } from '@/modules/mlflow/pages/MlflowPage'
+import type { Role } from '@/types'
+import { ForbiddenPage } from '@/features/_shared/ForbiddenPage'
+import { DashboardPage } from '@/features/dashboard/pages/DashboardPage'
+import { LoginPage } from '@/features/auth/pages/LoginPage'
+import { ForgotPasswordPage } from '@/features/auth/pages/ForgotPasswordPage'
+import { AdminUsersPage } from '@/features/admin/pages/AdminUsersPage'
+import { WorkspacesPage } from '@/features/workspaces/pages/WorkspacesPage'
+import { MlflowPage } from '@/features/mlflow/pages/MlflowPage'
 import { AppShell } from '@/shared/layout/AppShell'
 import { useAppStore } from '@/store/useAppStore'
 import { useProtectedSession } from '@/features/auth/hooks/useProtectedSession'
+
+interface ProtectedRouteProps {
+  isAuthenticated: boolean
+  children: ReactNode
+}
+
+function ProtectedRoute({ isAuthenticated, children }: ProtectedRouteProps) {
+  return isAuthenticated ? children : <Navigate to="/login" replace />
+}
+
+interface RoleRouteProps {
+  isAuthenticated: boolean
+  role: Role
+  currentRole?: Role
+  children: ReactNode
+}
+
+function RoleRoute({ isAuthenticated, role, currentRole, children }: RoleRouteProps) {
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />
+  }
+
+  return currentRole === role ? children : <Navigate to="/forbidden" replace />
+}
 
 interface PageProps {
   token: string
@@ -80,17 +103,17 @@ export function AppRouter() {
         />
 
         <Route
-            path="/mlflow"
-            element={
-              <RoleRoute isAuthenticated={isAuthenticated} role="ADMIN" currentRole={role}>
-                <ShellPage
-                    section="mlflow"
-                    renderPage={({ token, onAuthError }) => (
-                        <MlflowPage token={token} onAuthError={onAuthError} />
-                    )}
-                />
-              </RoleRoute>
-            }
+          path="/mlflow"
+          element={
+            <RoleRoute isAuthenticated={isAuthenticated} role="ADMIN" currentRole={role}>
+              <ShellPage
+                section="mlflow"
+                renderPage={({ token, onAuthError }) => (
+                  <MlflowPage token={token} onAuthError={onAuthError} />
+                )}
+              />
+            </RoleRoute>
+          }
         />
 
         <Route path="/forbidden" element={<ForbiddenPage />} />

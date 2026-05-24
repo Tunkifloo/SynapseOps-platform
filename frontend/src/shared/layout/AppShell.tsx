@@ -2,8 +2,8 @@ import { type ChangeEvent, type ReactNode } from 'react'
 import { Activity, Layers, LogOut, Search, User as UserIcon, Users, type LucideIcon } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { Button } from '@/shared/components/ui/button'
+import { Input } from '@/shared/components/ui/input'
 import type { Role } from '@/types'
 
 interface SessionUser {

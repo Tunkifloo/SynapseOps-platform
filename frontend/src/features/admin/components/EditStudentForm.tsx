@@ -1,8 +1,8 @@
 import type { ChangeEvent, FormEvent } from 'react'
 import { User as UserIcon } from 'lucide-react'
 
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { Button } from '@/shared/components/ui/button'
+import { Input } from '@/shared/components/ui/input'
 
 import type { UserUpdatePayload } from '../types'
 
