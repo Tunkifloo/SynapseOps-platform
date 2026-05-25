@@ -36,7 +36,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
 
       - name: "Instalar dependencias frontend"
-        run: cd Frontend && npm ci --prefer-offline
+        run: cd frontend && npm ci --prefer-offline
 
       - name: "make lint (Checkstyle + ESLint)"
         run: make lint
@@ -72,10 +72,10 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
-          cache-dependency-path: Frontend/package-lock.json
+          cache-dependency-path: frontend/package-lock.json
 
       - name: "Instalar dependencias frontend"
-        run: cd Frontend && npm ci --prefer-offline
+        run: cd frontend && npm ci --prefer-offline
 
       - name: "make build (JAR + bundle React)"
         run: make build
