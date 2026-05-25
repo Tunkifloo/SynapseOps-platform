@@ -34,8 +34,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: Frontend/package-lock.json
 
       - name: "Instalar dependencias frontend"
         run: cd Frontend && npm ci --prefer-offline
