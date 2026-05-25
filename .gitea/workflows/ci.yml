@@ -1,0 +1,91 @@
+name: SynapseOps CI Pipeline
+
+run-name: "${{ gitea.actor }} → ${{ gitea.ref_name }} @ ${{ gitea.sha }}"
+
+on:
+  push:
+    branches: [ main, develop, feature/* ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  JAVA_VERSION: "21"
+  NODE_VERSION: "20"
+
+jobs:
+
+  # ── JOB 1: Lint + Tests Unitarios Backend ────────────────────────────────
+  unit-validation:
+    name: "Lint + Unit Tests"
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: "Checkout del código"
+        uses: actions/checkout@v4
+
+      - name: "Configurar JDK ${{ env.JAVA_VERSION }}"
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: temurin
+          cache: maven
+
+      - name: "Configurar Node ${{ env.NODE_VERSION }}"
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: Frontend/package-lock.json
+
+      - name: "Instalar dependencias frontend"
+        run: cd Frontend && npm ci --prefer-offline
+
+      - name: "make lint (Checkstyle + ESLint)"
+        run: make lint
+
+      - name: "make test (JUnit 5 + Mockito — sin Docker)"
+        run: make test
+
+      # ── Frontend tests: pendiente Alfredo (Sprint 2) ──────────────────
+      # TODO: descomentar cuando Vitest + RTL estén configurados
+      # - name: "make test-frontend (Vitest + RTL)"
+      #   run: make test-frontend
+
+  # ── JOB 2: Build + Docker (solo push a main) ─────────────────────────────
+  build-and-package:
+    name: "Build + Docker Images"
+    runs-on: ubuntu-latest
+    needs: unit-validation
+    if: ${{ gitea.ref == 'refs/heads/main' }}
+
+    steps:
+      - name: "Checkout del código"
+        uses: actions/checkout@v4
+
+      - name: "Configurar JDK ${{ env.JAVA_VERSION }}"
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: temurin
+          cache: maven
+
+      - name: "Configurar Node ${{ env.NODE_VERSION }}"
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: Frontend/package-lock.json
+
+      - name: "Instalar dependencias frontend"
+        run: cd Frontend && npm ci --prefer-offline
+
+      - name: "make build (JAR + bundle React)"
+        run: make build
+
+      - name: "make docker-build (tag = commit SHA)"
+        env:
+          TAG: ${{ gitea.sha }}
+        run: make docker-build
+
+      - name: "Resumen de imágenes construidas"
+        run: docker images | grep synapseops

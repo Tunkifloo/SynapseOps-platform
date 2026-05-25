@@ -1,0 +1,66 @@
+# SynapseOps — Stack CI/CD Local
+# Gitea + act_runner — 100% local, sin dependencias externas
+# Uso: docker compose -f docker-compose.gitea.yml up -d
+
+name: synapseops-cicd
+
+services:
+
+  # ── Gitea — plataforma Git + CI/CD local ─────────────────────────────────
+  gitea:
+    image: gitea/gitea:1.21.0
+    container_name: gitea
+    restart: unless-stopped
+    environment:
+      - USER_UID=1000
+      - USER_GID=1000
+      - GITEA__database__DB_TYPE=sqlite3
+      - GITEA__server__ROOT_URL=http://localhost:3030
+      - GITEA__server__HTTP_PORT=3030
+      - GITEA__server__DOMAIN=localhost
+      - GITEA__server__SSH_DOMAIN=localhost
+      - GITEA__server__SSH_PORT=222
+      - GITEA__security__INSTALL_LOCK=true
+      - GITEA__service__DISABLE_REGISTRATION=false
+      - GITEA__actions__ENABLED=true
+    volumes:
+      - gitea_data:/data
+    ports:
+      - "3030:3030"
+      - "222:22"
+    networks:
+      - cicd-network
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:3030/api/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+
+  # ── act_runner — ejecutor de Gitea Actions (DooD como ADR-004) ────────────
+  gitea-runner:
+    image: gitea/act_runner:0.2.10
+    container_name: gitea-runner
+    restart: unless-stopped
+    depends_on:
+      gitea:
+        condition: service_healthy
+    environment:
+      - GITEA_INSTANCE_URL=http://gitea:3030
+      - GITEA_RUNNER_REGISTRATION_TOKEN=${RUNNER_TOKEN}
+      - GITEA_RUNNER_NAME=synapseops-runner
+      - GITEA_RUNNER_LABELS=ubuntu-latest:docker://node:20-bullseye
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock   
+      - runner_data:/data
+    networks:
+      - cicd-network
+
+volumes:
+  gitea_data:
+  runner_data:
+
+networks:
+  cicd-network:
+    driver: bridge
+    name: cicd-network
