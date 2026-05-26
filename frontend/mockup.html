@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SynapseOps — Mockup</title>
+<title>SynapseOps — Mockup Sprint 1</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script>tailwind.config={darkMode:'class'}</script>
 <style>
@@ -15,11 +15,15 @@
   .sidebar-link:hover { background: rgba(255,255,255,.05); color: white; }
   .btn { transition: .15s; }
   .endpoint { font-family: monospace; font-size: 10px; color: #64748b; background: rgba(255,255,255,.03); padding: 4px 8px; border-radius: 8px; }
+  .endpoint-post { font-family: monospace; font-size: 10px; color: #34d399; background: rgba(52,211,153,.05); padding: 4px 8px; border-radius: 8px; }
+  .endpoint-del  { font-family: monospace; font-size: 10px; color: #f87171; background: rgba(248,113,113,.05); padding: 4px 8px; border-radius: 8px; }
 </style>
 </head>
 <body class="min-h-screen p-8 space-y-12">
 
-<!-- ===== LOGIN ===== -->
+<!-- ====================================================================== -->
+<!-- 1. LOGIN                                                                 -->
+<!-- ====================================================================== -->
 <div class="screen max-w-md mx-auto bg-black/40 backdrop-blur">
   <div class="screen-label">Pantalla 1</div>
   <div class="screen-title">Login</div>
@@ -29,13 +33,16 @@
     <div class="space-y-2"><label class="text-xs font-bold uppercase text-slate-400">Password</label><input type="password" class="w-full h-9 rounded-4xl border border-white/10 bg-white/5 px-3 text-sm text-white outline-none" placeholder="••••••••"></div>
     <button class="btn w-full h-11 rounded-4xl bg-blue-600 font-bold text-white text-sm hover:bg-blue-500">Access System</button>
     <p class="text-[10px] text-slate-500 text-center"><span class="endpoint">POST /api/v1/auth/login</span></p>
+    <p class="text-[10px] text-slate-500 text-center">3 fallos → <span class="text-orange-400 font-bold">423 Locked</span> → /forgot-password</p>
   </div>
 </div>
 
-<!-- ===== FORGOT PASSWORD ===== -->
+<!-- ====================================================================== -->
+<!-- 2. FORGOT PASSWORD                                                       -->
+<!-- ====================================================================== -->
 <div class="screen max-w-md mx-auto bg-black/40 backdrop-blur">
   <div class="screen-label">Pantalla 2</div>
-  <div class="screen-title">Forgot Password (tras 3 intentos fallidos → 423 Locked)</div>
+  <div class="screen-title">Forgot Password (bloqueo 3 intentos fallidos)</div>
   <div class="p-6 space-y-5">
     <p class="text-xs uppercase tracking-[.3em] text-orange-400 text-center">Restablecer Contraseña</p>
     <div class="space-y-2"><label class="text-xs font-bold uppercase text-slate-400">Usuario</label><input class="w-full h-9 rounded-4xl border border-white/10 bg-white/5 px-3 text-sm text-white outline-none" placeholder="superadmin"></div>
@@ -43,24 +50,29 @@
     <button class="btn w-full h-11 rounded-4xl bg-orange-600 font-bold text-white text-sm hover:bg-orange-500">Confirmar Nueva Contraseña</button>
     <p class="text-[10px] text-slate-500 text-center">← Volver al inicio de sesión</p>
     <p class="text-[10px] text-slate-500 text-center"><span class="endpoint">POST /api/v1/auth/forgot-password</span></p>
+    <div class="rounded bg-green-400/10 border border-green-400/20 p-2">
+      <p class="text-[10px] text-green-400">TransactionTemplate + SQL nativo — cambia password y desbloquea cuenta</p>
+    </div>
   </div>
 </div>
 
-<!-- ===== DASHBOARD ===== -->
+<!-- ====================================================================== -->
+<!-- 3. DASHBOARD                                                              -->
+<!-- ====================================================================== -->
 <div class="screen max-w-5xl mx-auto">
   <div class="screen-label">Pantalla 3</div>
-  <div class="screen-title">Dashboard</div>
-  <div class="flex" style="height:420px">
+  <div class="screen-title">Dashboard (Overview)</div>
+  <div class="flex" style="height:440px">
     <div class="w-56 border-r border-white/5 bg-[#0a0a0a] p-5 flex flex-col justify-between shrink-0">
       <div>
         <div class="flex items-center gap-2 mb-8"><div class="w-7 h-7 rounded-lg bg-gradient-to-tr from-blue-600 to-emerald-400"></div><span class="text-base font-bold italic text-white">Synapse<span class="text-blue-500">Ops</span></span></div>
         <p class="text-[10px] font-bold uppercase tracking-[.2em] text-slate-600 mb-3">Workspace Core</p>
-        <div class="sidebar-link flex items-center gap-2 rounded-xl px-2 py-1.5 text-xs text-white bg-blue-500/10"><span class="w-3 h-3 rounded bg-blue-400"></span>Overview</div>
-        <div class="sidebar-link flex items-center gap-2 rounded-xl px-2 py-1.5 text-xs text-slate-400 mt-1"><span class="w-3 h-3 rounded bg-blue-400"></span>My Projects</div>
+        <div class="sidebar-link flex items-center gap-2 rounded-xl px-2 py-1.5 text-xs text-white bg-blue-500/10"><span></span>Overview</div>
+        <div class="sidebar-link flex items-center gap-2 rounded-xl px-2 py-1.5 text-xs text-slate-400 mt-1"><span></span>My Projects</div>
         <div class="mt-8 pt-6 border-t border-white/5">
           <p class="text-[10px] font-bold uppercase tracking-[.2em] text-blue-500 mb-3">Admin</p>
-          <div class="sidebar-link flex items-center gap-2 rounded-xl px-2 py-1.5 text-xs text-slate-400"><span class="w-3 h-3 rounded bg-blue-500"></span>Admin Users</div>
-          <div class="sidebar-link flex items-center gap-2 rounded-xl px-2 py-1.5 text-xs text-slate-400 mt-1"><span class="w-3 h-3 rounded bg-violet-500"></span>MLflow Explorer</div>
+          <div class="sidebar-link flex items-center gap-2 rounded-xl px-2 py-1.5 text-xs text-slate-400"><span></span>Admin Users</div>
+          <div class="sidebar-link flex items-center gap-2 rounded-xl px-2 py-1.5 text-xs text-slate-400 mt-1"><span></span>MLflow Explorer</div>
         </div>
       </div>
       <div class="rounded-2xl border border-white/5 bg-gradient-to-tr from-blue-600/10 to-emerald-500/5 p-3">
@@ -70,38 +82,46 @@
     </div>
     <div class="flex-1 flex flex-col">
       <div class="h-12 border-b border-white/5 flex items-center justify-between px-6 bg-[#050505]/60">
-        <div class="flex items-center gap-3"><div class="w-36 h-7 rounded-full border border-white/10 bg-white/5"></div></div>
+        <div class="w-36 h-7 rounded-full border border-white/10 bg-white/5 flex items-center px-3"><span class="text-[10px] text-slate-600">Search workspaces...</span></div>
         <div class="flex items-center gap-4">
           <div class="flex items-center gap-2"><p class="text-xs font-bold text-white">superadmin</p><p class="text-[10px] text-slate-500 uppercase">ADMIN · Online</p><div class="w-8 h-8 rounded-xl bg-slate-900 border border-white/10"></div></div>
           <div class="btn flex items-center gap-1 text-xs text-red-400/70 cursor-pointer">Logout</div>
         </div>
       </div>
       <div class="flex-1 p-6 space-y-4 bg-[#050505]">
-        <div class="grid grid-cols-3 gap-4">
+        <div class="grid grid-cols-4 gap-4">
           <div class="rounded-2xl bg-white/[.03] border border-white/5 p-4"><p class="text-[10px] font-bold uppercase text-slate-500">My Workspaces</p><p class="text-2xl font-bold text-white mt-1">5</p></div>
-          <div class="rounded-2xl bg-white/[.03] border border-white/5 p-4"><p class="text-[10px] font-bold uppercase text-slate-500">Current Role</p><p class="text-2xl font-bold text-white mt-1">ADMIN</p></div>
-          <div class="rounded-2xl bg-white/[.03] border border-white/5 p-4"><p class="text-[10px] font-bold uppercase text-slate-500">Workspace</p><p class="text-2xl font-bold text-white mt-1">Iris</p></div>
+          <div class="rounded-2xl bg-white/[.03] border border-white/5 p-4"><p class="text-[10px] font-bold uppercase text-slate-500">Pipelines</p><p class="text-2xl font-bold text-white mt-1">8</p></div>
+          <div class="rounded-2xl bg-white/[.03] border border-white/5 p-4"><p class="text-[10px] font-bold uppercase text-slate-500">Executions</p><p class="text-2xl font-bold text-white mt-1">3</p></div>
+          <div class="rounded-2xl bg-white/[.03] border border-white/5 p-4"><p class="text-[10px] font-bold uppercase text-slate-500">Deployments</p><p class="text-2xl font-bold text-white mt-1">1</p></div>
         </div>
         <div class="flex gap-4">
           <div class="flex-1 rounded-2xl bg-white/[.03] border border-white/5 p-4">
-            <p class="text-sm font-semibold text-white mb-2">Accessible Workspaces</p>
+            <p class="text-sm font-semibold text-white mb-2">Recent Activity</p>
             <div class="space-y-2">
-              <div class="rounded-2xl bg-black/20 border border-white/5 p-3"><p class="text-xs font-semibold text-white">Iris Classification</p><p class="text-[10px] text-slate-500">Owner: superadmin</p></div>
-              <div class="rounded-2xl bg-black/20 border border-white/5 p-3"><p class="text-xs font-semibold text-white">MNIST Digits</p><p class="text-[10px] text-slate-500">Owner: student_one</p></div>
+              <div class="rounded-2xl bg-black/20 border border-white/5 p-3"><p class="text-xs font-semibold text-white">Iris Classification</p><p class="text-[10px] text-slate-500">Pipeline ejecutado · 24/05/2026</p></div>
+              <div class="rounded-2xl bg-black/20 border border-white/5 p-3"><p class="text-xs font-semibold text-white">MNIST Digits</p><p class="text-[10px] text-slate-500">Dataset uploaded · /storage-dev/1/2/</p></div>
             </div>
           </div>
           <div class="flex-1 rounded-2xl bg-white/[.03] border border-white/5 p-4">
-            <p class="text-sm font-semibold text-white mb-2">Next Actions</p>
-            <p class="text-xs text-slate-400">Crea proyectos aislados, carga dataset y administra pipelines del proyecto seleccionado.</p>
+            <p class="text-sm font-semibold text-white mb-2">Infra Status</p>
+            <div class="space-y-1.5">
+              <div class="flex items-center gap-2"><div class="w-1.5 h-1.5 rounded-full bg-emerald-500"></div><p class="text-xs text-slate-400">postgres-db :5433</p></div>
+              <div class="flex items-center gap-2"><div class="w-1.5 h-1.5 rounded-full bg-emerald-500"></div><p class="text-xs text-slate-400">kafka-broker :9092</p></div>
+              <div class="flex items-center gap-2"><div class="w-1.5 h-1.5 rounded-full bg-emerald-500"></div><p class="text-xs text-slate-400">mlflow-server :5000</p></div>
+              <div class="flex items-center gap-2"><div class="w-1.5 h-1.5 rounded-full bg-emerald-500"></div><p class="text-xs text-slate-400">ml-engine :8000</p></div>
+              <div class="flex items-center gap-2"><div class="w-1.5 h-1.5 rounded-full bg-emerald-500"></div><p class="text-xs text-slate-400">grafana :3001 · prometheus :9090</p></div>
+            </div>
           </div>
         </div>
-        <p class="text-[10px] text-slate-600"><span class="endpoint">GET /api/v1/workspaces</span></p>
       </div>
     </div>
   </div>
 </div>
 
-<!-- ===== ADMIN USERS ===== -->
+<!-- ====================================================================== -->
+<!-- 4. ADMIN USERS                                                           -->
+<!-- ====================================================================== -->
 <div class="screen max-w-6xl mx-auto">
   <div class="screen-label">Pantalla 4</div>
   <div class="screen-title">Admin Users</div>
@@ -132,8 +152,8 @@
           <table class="w-full text-xs text-slate-300">
             <thead class="text-[10px] uppercase tracking-[.15em] text-slate-500"><tr><td class="pb-2">User</td><td class="pb-2">St.Code</td><td class="pb-2">Role</td><td class="pb-2">Status</td><td class="pb-2" style="text-align:right">Actions</td></tr></thead>
             <tbody>
-              <tr class="border-t border-white/5"><td class="py-2"><p class="font-semibold text-white">Jor</p><p class="text-[10px] text-slate-500">@Jor</p></td><td class="py-2 text-slate-400">U20260001</td><td class="py-2">COLLABORATOR</td><td class="py-2 text-emerald-400">Enabled</td><td class="py-2 text-right"><span class="btn text-[10px] text-red-400 bg-red-400/10 px-2 py-1 rounded-2xl cursor-pointer">Disable</span></td></tr>
-              <tr class="border-t border-white/5"><td class="py-2"><p class="font-semibold text-white">Ana</p><p class="text-[10px] text-slate-500">@Ana</p></td><td class="py-2 text-slate-400">U20260002</td><td class="py-2">COLLABORATOR</td><td class="py-2 text-emerald-400">Enabled</td><td class="py-2 text-right"><span class="btn text-[10px] text-red-400 bg-red-400/10 px-2 py-1 rounded-2xl cursor-pointer">Disable</span></td></tr>
+              <tr class="border-t border-white/5"><td class="py-2"><p class="font-semibold text-white">Jor</p><p class="text-[10px] text-slate-500">@Jor</p></td><td class="py-2 text-slate-400">U20260001</td><td class="py-2">COLLABORATOR</td><td class="py-2 text-emerald-400">Enabled</td><td class="py-2 text-right"><span class="btn text-[10px] text-red-400 bg-red-400/10 px-2 py-1 rounded-2xl cursor-pointer">Disable</span><span class="btn text-[10px] text-blue-400 bg-blue-400/10 px-2 py-1 rounded-2xl cursor-pointer ml-1">Edit</span></td></tr>
+              <tr class="border-t border-white/5"><td class="py-2"><p class="font-semibold text-white">Ana</p><p class="text-[10px] text-slate-500">@Ana</p></td><td class="py-2 text-slate-400">U20260002</td><td class="py-2">COLLABORATOR</td><td class="py-2 text-emerald-400">Enabled</td><td class="py-2 text-right"><span class="btn text-[10px] text-red-400 bg-red-400/10 px-2 py-1 rounded-2xl cursor-pointer">Disable</span><span class="btn text-[10px] text-blue-400 bg-blue-400/10 px-2 py-1 rounded-2xl cursor-pointer ml-1">Edit</span></td></tr>
             </tbody>
           </table>
         </div>
@@ -151,16 +171,19 @@
     <p class="text-[10px] text-slate-600 space-x-4">
       <span class="endpoint">GET /users/role/COLLABORATOR</span>
       <span class="endpoint">GET /users/disabled</span>
-      <span class="endpoint">POST /auth/register</span>
+      <span class="endpoint-post">POST /auth/register</span>
       <span class="endpoint">PATCH /users/{id}/toggle-status</span>
+      <span class="endpoint">PUT /users/{id}</span>
     </p>
   </div>
 </div>
 
-<!-- ===== MY PROJECTS ===== -->
+<!-- ====================================================================== -->
+<!-- 5. MY PROJECTS (Workspaces)                                               -->
+<!-- ====================================================================== -->
 <div class="screen max-w-6xl mx-auto">
   <div class="screen-label">Pantalla 5</div>
-  <div class="screen-title">My Projects</div>
+  <div class="screen-title">My Projects (Workspaces)</div>
   <div class="p-6 space-y-4 bg-[#050505]">
     <div class="grid grid-cols-3 gap-4">
       <div class="rounded-2xl bg-white/[.03] border border-white/5 p-4"><p class="text-[10px] font-bold uppercase text-slate-500">My Projects</p><p class="text-2xl font-bold text-white mt-1">3</p></div>
@@ -186,92 +209,184 @@
         </div>
       </div>
       <div class="rounded-2xl bg-white/[.03] border border-white/5 p-4">
-        <p class="text-sm font-semibold text-white mb-3">Selected Workspace Context</p>
+        <p class="text-sm font-semibold text-white mb-3">Selected Workspace: Iris Classification</p>
         <div class="grid grid-cols-2 gap-3 mb-4">
           <div class="rounded-2xl bg-black/20 border border-white/5 p-3">
-            <p class="text-xs font-semibold text-white mb-2">Dataset Isolation</p>
-            <p class="text-[10px] text-slate-400 mb-2">/storage/1/5/datasets/iris.csv</p>
-            <div class="flex gap-1"><span class="text-[10px] bg-blue-600/20 text-blue-400 px-2 py-1 rounded-2xl">Upload</span><span class="text-[10px] bg-red-400/10 text-red-400 px-2 py-1 rounded-2xl">Remove</span></div>
-            <p class="text-[10px] text-slate-500 mt-2">URL download: GitHub / Kaggle</p>
+            <p class="text-xs font-semibold text-white mb-2">Dataset</p>
+            <p class="text-[10px] text-slate-400 mb-2">iris.csv · 5.2 KB · ⬇ View</p>
+            <div class="flex gap-1"><span class="text-[10px] bg-blue-600/20 text-blue-400 px-2 py-1 rounded-2xl cursor-pointer">Upload</span><span class="text-[10px] bg-red-400/10 text-red-400 px-2 py-1 rounded-2xl cursor-pointer">Delete</span></div>
+            <p class="text-[10px] text-slate-500 mt-2">🔗 Desde URL: GitHub .git → .zip</p>
           </div>
           <div class="rounded-2xl bg-black/20 border border-white/5 p-3">
-            <p class="text-xs font-semibold text-white mb-2">Pipeline Isolation</p>
+            <p class="text-xs font-semibold text-white mb-2">New Pipeline</p>
             <input class="w-full h-8 rounded-3xl border border-white/10 bg-white/5 px-3 text-xs text-white outline-none mb-2" placeholder="Training Pipeline">
-            <span class="text-[10px] bg-blue-600/20 text-blue-400 px-2 py-1 rounded-2xl">Create Pipeline</span>
+            <span class="text-[10px] bg-blue-600/20 text-blue-400 px-2 py-1 rounded-2xl cursor-pointer">Create</span>
           </div>
         </div>
-        <p class="text-xs font-semibold text-white mb-2">Workspace Pipelines</p>
+        <p class="text-xs font-semibold text-white mb-2">Pipelines</p>
         <div class="rounded-xl border border-white/5 bg-white/[.03] p-3 mb-2">
-          <p class="text-xs font-semibold text-white">Pipeline A</p>
-          <p class="text-[10px] text-slate-500 mt-0.5">Status: DRAFT · Nodes: 0 · Exec: 0</p>
-          <div class="flex gap-1 mt-2"><span class="text-[10px] border border-white/10 px-2 py-0.5 rounded-2xl text-slate-300">Rename</span><span class="text-[10px] bg-red-400/10 text-red-400 px-2 py-0.5 rounded-2xl">Delete</span><span class="text-[10px] bg-violet-400/10 text-violet-400 px-2 py-0.5 rounded-2xl">Run</span></div>
+          <p class="text-xs font-semibold text-white">Pipeline A <span class="text-[10px] text-slate-500">DRAFT</span></p>
+          <p class="text-[10px] text-slate-500 mt-0.5">Nodes: 3 · Exec: 2</p>
+          <div class="flex gap-1 mt-2">
+            <span class="text-[10px] border border-white/10 px-2 py-0.5 rounded-2xl text-slate-300">Rename</span>
+            <span class="text-[10px] bg-red-400/10 text-red-400 px-2 py-0.5 rounded-2xl">Delete</span>
+            <span class="text-[10px] bg-violet-400/10 text-violet-400 px-2 py-0.5 rounded-2xl font-bold">▶ Run</span>
+            <span class="text-[10px] bg-emerald-400/10 text-emerald-400 px-2 py-0.5 rounded-2xl">↗ Deploy</span>
+          </div>
         </div>
       </div>
     </div>
     <p class="text-[10px] text-slate-600 space-x-4">
-      <span class="endpoint">GET/POST/PUT/DELETE /workspaces</span>
-      <span class="endpoint">POST/DELETE /workspaces/{id}/dataset</span>
-      <span class="endpoint">GET/POST/PATCH/DELETE /workspaces/{id}/pipelines</span>
+      <span class="endpoint">GET/POST /workspaces</span>
+      <span class="endpoint">PUT /workspaces/{id}</span>
+      <span class="endpoint-del">DELETE /workspaces/{id}</span>
+      <span class="endpoint">GET /workspaces/all</span>
+      <span class="endpoint">/dataset · /dataset/url</span>
+      <span class="endpoint">/pipelines · /rename</span>
     </p>
   </div>
 </div>
 
-<!-- ===== MLFLOW ===== -->
+<!-- ====================================================================== -->
+<!-- 6. PIPELINE EXECUTIONS                                                    -->
+<!-- ====================================================================== -->
 <div class="screen max-w-5xl mx-auto">
   <div class="screen-label">Pantalla 6</div>
-  <div class="screen-title">MLflow Explorer (Admin)</div>
+  <div class="screen-title">Pipeline Executions</div>
   <div class="p-6 space-y-4 bg-[#050505]">
-    <div class="grid grid-cols-3 gap-4">
-      <div class="rounded-2xl bg-white/[.03] border border-white/5 p-4"><p class="text-[10px] font-bold uppercase text-slate-500">Tracking URI</p><p class="text-lg font-bold text-white mt-1">http://localhost:5000</p></div>
+    <div class="flex items-center justify-between">
+      <p class="text-sm font-semibold text-white">Pipeline A · Iris Classification</p>
+      <span class="btn text-[10px] bg-violet-600/20 text-violet-400 px-3 py-1.5 rounded-2xl font-bold cursor-pointer">▶ Execute Pipeline</span>
+    </div>
+    <div class="rounded-2xl bg-white/[.03] border border-white/5 p-4">
+      <p class="text-sm font-semibold text-white mb-3">Execution History</p>
+      <table class="w-full text-xs text-slate-300">
+        <thead class="text-[10px] uppercase tracking-[.15em] text-slate-500"><tr><td class="pb-2">Execution ID</td><td class="pb-2">Status</td><td class="pb-2">Started</td><td class="pb-2">Duration</td><td class="pb-2">MLflow Run</td><td class="pb-2" style="text-align:right">Actions</td></tr></thead>
+        <tbody>
+          <tr class="border-t border-white/5"><td class="py-2"><p class="font-semibold text-white">exec-024</p></td><td class="py-2 text-emerald-400">COMPLETED</td><td class="py-2 text-slate-400">24/05/2026</td><td class="py-2 text-slate-400">4m 32s</td><td class="py-2 text-slate-400">abc123def</td><td class="py-2 text-right flex gap-1 justify-end"><span class="text-[10px] border border-white/10 px-2 py-0.5 rounded-2xl">Logs</span><span class="text-[10px] bg-emerald-400/10 text-emerald-400 px-2 py-0.5 rounded-2xl">Deploy</span></td></tr>
+          <tr class="border-t border-white/5 row-active"><td class="py-2"><p class="font-semibold text-white">exec-025</p></td><td class="py-2 text-blue-400">RUNNING</td><td class="py-2 text-slate-400">24/05/2026</td><td class="py-2 text-slate-400">1m 15s</td><td class="py-2 text-slate-400">—</td><td class="py-2 text-right"><span class="text-[10px] border border-white/10 px-2 py-0.5 rounded-2xl">Live Stream</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="rounded bg-black/20 border border-white/5 p-2">
+      <p class="text-[10px] text-slate-500">Pipeline → Kafka emit → ml-engine consume & train → MLflow registry</p>
+    </div>
+    <p class="text-[10px] text-slate-600 space-x-4">
+      <span class="endpoint-post">POST /workspaces/{wid}/pipelines/{pid}/execute</span>
+      <span class="endpoint">GET /workspaces/{wid}/pipelines/{pid}/executions</span>
+      <span class="endpoint">GET /workspaces/{wid}/pipelines/{pid}/executions/{eid}</span>
+    </p>
+  </div>
+</div>
+
+<!-- ====================================================================== -->
+<!-- 7. DEPLOYMENTS                                                            -->
+<!-- ====================================================================== -->
+<div class="screen max-w-5xl mx-auto">
+  <div class="screen-label">Pantalla 7</div>
+  <div class="screen-title">Model Deployments (Docker-based)</div>
+  <div class="p-6 space-y-4 bg-[#050505]">
+    <div class="rounded-2xl bg-white/[.03] border border-white/5 p-4">
+      <p class="text-sm font-semibold text-white mb-3">Deploy Model from Execution #24</p>
+      <div class="grid grid-cols-2 gap-3 mb-4">
+        <div class="rounded-2xl bg-black/20 border border-white/5 p-3">
+          <p class="text-xs font-semibold text-white mb-1">Execution #24</p>
+          <p class="text-[10px] text-slate-400">Pipeline: Pipeline A · MLflow: abc123def</p>
+          <p class="text-[10px] text-slate-400">Accuracy: 0.97 · Model: TensorFlow CNN</p>
+          <span class="text-[10px] bg-emerald-600/20 text-emerald-400 px-2 py-1 rounded-2xl mt-2 inline-block cursor-pointer font-bold">↗ Deploy Model</span>
+        </div>
+        <div class="rounded-2xl bg-black/20 border border-white/5 p-3">
+          <p class="text-xs font-semibold text-white mb-1">Active Deployments</p>
+          <div class="space-y-1 mt-2">
+            <div class="flex items-center justify-between"><p class="text-xs text-slate-300">iris-classifier-v1</p><div class="flex items-center gap-1"><div class="w-1.5 h-1.5 rounded-full bg-emerald-500"></div><p class="text-[10px] text-emerald-400">Running :8085</p></div></div>
+            <div class="flex items-center justify-between"><p class="text-xs text-slate-300">mnist-cnn-v2</p><div class="flex items-center gap-1"><div class="w-1.5 h-1.5 rounded-full bg-slate-500"></div><p class="text-[10px] text-slate-500">Stopped</p></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="rounded bg-black/20 border border-white/5 p-2">
+      <p class="text-[10px] text-slate-500">DockerfileBuilder genera Dockerfile + DockerComposeBuilder levanta contenedor · ngrok tunnel para acceso externo</p>
+    </div>
+    <p class="text-[10px] text-slate-600 space-x-4">
+      <span class="endpoint-post">POST /workspaces/{wid}/pipelines/{pid}/executions/{eid}/deploy</span>
+      <span class="endpoint">GET /workspaces/{wid}/pipelines/{pid}/executions/{eid}/deploy/status</span>
+      <span class="endpoint-del">DELETE /workspaces/{wid}/pipelines/{pid}/executions/{eid}/deploy</span>
+    </p>
+  </div>
+</div>
+
+<!-- ====================================================================== -->
+<!-- 8. MLFLOW EXPLORER                                                        -->
+<!-- ====================================================================== -->
+<div class="screen max-w-5xl mx-auto">
+  <div class="screen-label">Pantalla 8</div>
+  <div class="screen-title">MLflow Explorer (Admin only)</div>
+  <div class="p-6 space-y-4 bg-[#050505]">
+    <div class="grid grid-cols-4 gap-4">
+      <div class="rounded-2xl bg-white/[.03] border border-white/5 p-4"><p class="text-[10px] font-bold uppercase text-slate-500">Tracking URI</p><p class="text-sm font-bold text-white mt-1">localhost:5000</p></div>
       <div class="rounded-2xl bg-white/[.03] border border-white/5 p-4"><p class="text-[10px] font-bold uppercase text-slate-500">Experiments</p><p class="text-2xl font-bold text-white mt-1">4</p></div>
-      <div class="rounded-2xl bg-white/[.03] border border-white/5 p-4"><p class="text-[10px] font-bold uppercase text-slate-500">Server Status</p><p class="text-2xl font-bold text-emerald-400 mt-1">Reachable</p></div>
+      <div class="rounded-2xl bg-white/[.03] border border-white/5 p-4"><p class="text-[10px] font-bold uppercase text-slate-500">Registered Models</p><p class="text-2xl font-bold text-white mt-1">2</p></div>
+      <div class="rounded-2xl bg-white/[.03] border border-white/5 p-4"><p class="text-[10px] font-bold uppercase text-slate-500">Server</p><p class="text-2xl font-bold text-emerald-400 mt-1">Reachable</p></div>
     </div>
     <div class="rounded-2xl bg-white/[.03] border border-white/5 p-4">
       <p class="text-sm font-semibold text-white mb-3">Recent Runs</p>
       <table class="w-full text-xs text-slate-300">
-        <thead class="text-[10px] uppercase tracking-[.15em] text-slate-500"><tr><td class="pb-2">Run ID</td><td class="pb-2">Experiment</td><td class="pb-2">Status</td><td class="pb-2">Metrics</td><td class="pb-2" style="text-align:right">Actions</td></tr></thead>
+        <thead class="text-[10px] uppercase tracking-[.15em] text-slate-500"><tr><td class="pb-2">Run ID</td><td class="pb-2">Experiment</td><td class="pb-2">Status</td><td class="pb-2">Artifacts</td><td class="pb-2" style="text-align:right">Actions</td></tr></thead>
         <tbody>
-          <tr class="border-t border-white/5"><td class="py-2"><p class="font-semibold text-white">abc123def</p></td><td class="py-2 text-slate-400">iris-classifier</td><td class="py-2 text-emerald-400">FINISHED</td><td class="py-2 text-slate-400">acc: 0.97</td><td class="py-2 text-right"><span class="text-[10px] text-slate-400 border border-white/10 px-2 py-0.5 rounded-2xl">Artifacts</span></td></tr>
+          <tr class="border-t border-white/5"><td class="py-2"><p class="font-semibold text-white">abc123def</p></td><td class="py-2 text-slate-400">iris-classifier</td><td class="py-2 text-emerald-400">FINISHED</td><td class="py-2 text-slate-400">model.h5</td><td class="py-2 text-right"><span class="text-[10px] text-slate-400 border border-white/10 px-2 py-0.5 rounded-2xl">Artifact URI</span></td></tr>
+          <tr class="border-t border-white/5"><td class="py-2"><p class="font-semibold text-white">def456ghi</p></td><td class="py-2 text-slate-400">mnist-digits</td><td class="py-2 text-emerald-400">FINISHED</td><td class="py-2 text-slate-400">model.pkl</td><td class="py-2 text-right"><span class="text-[10px] text-slate-400 border border-white/10 px-2 py-0.5 rounded-2xl">Artifact URI</span></td></tr>
         </tbody>
       </table>
     </div>
     <p class="text-[10px] text-slate-600 space-x-4">
       <span class="endpoint">GET /api/v1/mlflow/health</span>
       <span class="endpoint">GET /api/v1/mlflow/runs/{runId}/artifact-uri</span>
+      <span class="endpoint">GET /api/v1/mlflow/tracking-uri</span>
     </p>
   </div>
 </div>
 
-<!-- ===== EXECUTIONS ===== -->
-<div class="screen max-w-5xl mx-auto">
-  <div class="screen-label">Pantalla 7</div>
-  <div class="screen-title">Pipeline Executions (dentro de Workspace)</div>
-  <div class="p-6 space-y-4 bg-[#050505]">
-    <div class="rounded-2xl bg-white/[.03] border border-white/5 p-4">
-      <p class="text-sm font-semibold text-white mb-3">Execution History</p>
-      <table class="w-full text-xs text-slate-300">
-        <thead class="text-[10px] uppercase tracking-[.15em] text-slate-500"><tr><td class="pb-2">Execution ID</td><td class="pb-2">Pipeline</td><td class="pb-2">Status</td><td class="pb-2">Started</td><td class="pb-2" style="text-align:right">Actions</td></tr></thead>
-        <tbody>
-          <tr class="border-t border-white/5"><td class="py-2"><p class="font-semibold text-white">exec-001</p></td><td class="py-2 text-slate-400">Pipeline A</td><td class="py-2 text-emerald-400">SUCCESS</td><td class="py-2 text-slate-400">24/05/2026</td><td class="py-2 text-right"><span class="text-[10px] text-slate-400 border border-white/10 px-2 py-0.5 rounded-2xl">Logs</span></td></tr>
-          <tr class="border-t border-white/5"><td class="py-2"><p class="font-semibold text-white">exec-002</p></td><td class="py-2 text-slate-400">Pipeline A</td><td class="py-2 text-blue-400">RUNNING</td><td class="py-2 text-slate-400">24/05/2026</td><td class="py-2 text-right"><span class="text-[10px] text-slate-400 border border-white/10 px-2 py-0.5 rounded-2xl">Stream</span></td></tr>
-        </tbody>
-      </table>
-    </div>
-    <p class="text-[10px] text-slate-600 space-x-4">
-      <span class="endpoint">POST /api/v1/workspaces/{id}/pipelines/{id}/executions</span>
-      <span class="endpoint">GET /api/v1/workspaces/{id}/pipelines/{id}/executions</span>
-    </p>
-  </div>
-</div>
-
-<!-- ===== FORBIDDEN ===== -->
+<!-- ====================================================================== -->
+<!-- 9. FORBIDDEN                                                              -->
+<!-- ====================================================================== -->
 <div class="screen max-w-md mx-auto">
-  <div class="screen-label">Pantalla 8</div>
+  <div class="screen-label">Pantalla 9</div>
   <div class="screen-title">Forbidden</div>
   <div class="p-8 text-center space-y-3 bg-black/40 backdrop-blur">
     <p class="text-2xl font-bold text-white">Acceso restringido</p>
-    <p class="text-sm text-slate-400">Tu perfil no tiene permisos para acceder a este modulo.</p>
+    <p class="text-sm text-slate-400">Tu perfil no tiene permisos para acceder a este módulo.</p>
     <p class="text-xs uppercase tracking-[.3em] text-red-400">HTTP 403 Forbidden</p>
+  </div>
+</div>
+
+<!-- ====================================================================== -->
+<!-- 10. DOCKER STACK                                                          -->
+<!-- ====================================================================== -->
+<div class="screen max-w-4xl mx-auto">
+  <div class="screen-label">Infraestructura</div>
+  <div class="screen-title">Docker Compose Stack (8 servicios)</div>
+  <div class="p-6 bg-[#050505]">
+    <table class="w-full text-xs text-slate-300">
+      <thead class="text-[10px] uppercase tracking-[.15em] text-slate-500"><tr><td class="pb-2">Servicio</td><td class="pb-2">Imagen</td><td class="pb-2">Puerto</td><td class="pb-2">Rol</td></tr></thead>
+      <tbody>
+        <tr class="border-t border-white/5"><td class="py-2"><p class="font-semibold text-white">postgres-db</p></td><td class="py-2 text-slate-400">postgres:17-alpine</td><td class="py-2 text-slate-400">5433:5432</td><td class="py-2 text-slate-400">Base de datos principal</td></tr>
+        <tr class="border-t border-white/5"><td class="py-2"><p class="font-semibold text-white">kafka-broker</p></td><td class="py-2 text-slate-400">apache/kafka:3.7.0</td><td class="py-2 text-slate-400">9092:9092</td><td class="py-2 text-slate-400">Mensajería pipeline jobs</td></tr>
+        <tr class="border-t border-white/5"><td class="py-2"><p class="font-semibold text-white">mlflow-server</p></td><td class="py-2 text-slate-400">mlflow/mlflow:latest</td><td class="py-2 text-slate-400">5000:5000</td><td class="py-2 text-slate-400">Tracking experiments y modelos</td></tr>
+        <tr class="border-t border-white/5"><td class="py-2"><p class="font-semibold text-white">ml-engine</p></td><td class="py-2 text-slate-400">synapseops/ml-engine:1.0.0</td><td class="py-2 text-slate-400">8000:8000</td><td class="py-2 text-slate-400">FastAPI + TensorFlow/PyTorch</td></tr>
+        <tr class="border-t border-white/5"><td class="py-2"><p class="font-semibold text-white">backend-orchestrator</p></td><td class="py-2 text-slate-400">synapseops/backend-orchestrator:1.0.0</td><td class="py-2 text-slate-400">8080:8080</td><td class="py-2 text-slate-400">Spring Boot WebFlux API</td></tr>
+        <tr class="border-t border-white/5"><td class="py-2"><p class="font-semibold text-white">prometheus-tsdb</p></td><td class="py-2 text-slate-400">prom/prometheus:v2.51.2</td><td class="py-2 text-slate-400">9090:9090</td><td class="py-2 text-slate-400">Métricas</td></tr>
+        <tr class="border-t border-white/5"><td class="py-2"><p class="font-semibold text-white">grafana-dashboard</p></td><td class="py-2 text-slate-400">grafana/grafana:10.4.2</td><td class="py-2 text-slate-400">3001:3000</td><td class="py-2 text-slate-400">Dashboards</td></tr>
+        <tr class="border-t border-white/5"><td class="py-2"><p class="font-semibold text-white">cadvisor</p></td><td class="py-2 text-slate-400">cadvisor/cadvisor:v0.47.2</td><td class="py-2 text-slate-400">8081:8080</td><td class="py-2 text-slate-400">Monitor de contenedores</td></tr>
+      </tbody>
+    </table>
+    <p class="text-[10px] text-slate-500 mt-3 space-x-4">
+      <span>docker-compose.yml</span>
+      <span>docker-compose.dev.yml</span>
+      <span>docker-compose.gpu.yml</span>
+      <span>.env</span>
+      <span>ngrok.yml</span>
+      <span>frontend/Dockerfile + nginx.conf</span>
+    </p>
   </div>
 </div>
 
