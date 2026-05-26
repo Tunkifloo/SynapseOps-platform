@@ -1,5 +1,14 @@
 import { type ChangeEvent, type ReactNode } from 'react'
-import { Activity, Layers, LogOut, Search, User as UserIcon, Users, type LucideIcon } from 'lucide-react'
+import {
+  Activity,
+  Grid2X2,
+  Layers,
+  LogOut,
+  Search,
+  Sparkles,
+  Users,
+  type LucideIcon,
+} from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
 import { Button } from '@/shared/components/ui/button'
@@ -29,137 +38,153 @@ interface AppShellProps {
   children: ReactNode
 }
 
-export function AppShell({ section, user, currentWorkspace, searchQuery, onSearchChange, onLogout, children }: AppShellProps) {
+export function AppShell({
+  section,
+  user,
+  currentWorkspace,
+  searchQuery,
+  onSearchChange,
+  onLogout,
+  children,
+}: AppShellProps) {
   const navigate = useNavigate()
 
   const navigationItems: NavigationItem[] = [
-    { key: 'dashboard',   label: 'Overview',     icon: Search, path: '/dashboard'   },
-    { key: 'workspaces',  label: 'My Projects',  icon: Layers, path: '/workspaces'  },
+    { key: 'dashboard', label: 'Resumen', icon: Grid2X2, path: '/dashboard' },
+    { key: 'workspaces', label: 'Mis proyectos', icon: Layers, path: '/workspaces' },
   ]
 
   const adminItems: NavigationItem[] = user?.role === 'ADMIN'
-      ? [
-        { key: 'admin',   label: 'Admin Users',    icon: Users,    path: '/admin'   },
-        { key: 'mlflow',  label: 'Model Registry', icon: Activity, path: '/mlflow'  },
+    ? [
+        { key: 'admin', label: 'Usuarios admin', icon: Users, path: '/admin' },
+        { key: 'mlflow', label: 'Registro de modelos', icon: Activity, path: '/mlflow' },
       ]
-      : []
+    : []
+
+  const displayName = user?.name || user?.username || 'superadmin'
+  const avatarLetter = displayName.charAt(0).toUpperCase()
 
   return (
-      <div className="flex h-screen w-full overflow-hidden bg-[#050505] font-sans text-slate-400">
-        <aside className="flex w-64 flex-col justify-between border-r border-white/5 bg-[#0a0a0a] p-6">
-          <div>
-            <div className="mb-10 flex items-center gap-3 px-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-tr from-blue-600 to-emerald-400 shadow-lg shadow-blue-500/20">
-                <Search className="h-4 w-4 text-white" />
-              </div>
-              <h2 className="text-xl font-bold tracking-tight italic text-white">
-                Synapse<span className="text-blue-500">Ops</span>
-              </h2>
+    <div className="flex min-h-screen w-full overflow-hidden bg-[#070d18] font-sans text-slate-400">
+      <aside className="hidden w-56 shrink-0 flex-col justify-between border-r border-slate-800/80 bg-[#08111f] p-5 lg:flex xl:w-64">
+        <div>
+          <div className="mb-10 flex items-center gap-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl border border-blue-400/20 bg-blue-500/15 text-blue-400">
+              <Sparkles className="h-4 w-4" />
             </div>
+            <h2 className="text-lg font-bold text-slate-50 xl:text-xl">
+              Synapse<span className="text-blue-400">Ops</span>
+            </h2>
+          </div>
 
-            <nav className="space-y-1">
-              <p className="mb-4 px-2 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-600">
-                Workspace Core
-              </p>
-              {navigationItems.map((item) => (
-                  <Button
+          <nav className="space-y-1">
+            <p className="mb-3 px-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+              Navegación
+            </p>
+            {navigationItems.map((item) => {
+              const active = section === item.key
+              return (
+                <Button
+                  key={item.key}
+                  onClick={() => navigate(item.path)}
+                  variant="ghost"
+                  className={`h-10 w-full justify-start rounded-lg px-3 transition-colors ${
+                    active
+                      ? 'border border-blue-500/20 bg-blue-500/15 text-slate-50'
+                      : 'text-slate-300 hover:bg-slate-800/70 hover:text-slate-50'
+                  }`}
+                >
+                  <item.icon className={`mr-3 h-4 w-4 ${active ? 'text-blue-400' : 'text-slate-300'}`} />
+                  <span className="text-xs font-medium xl:text-sm">{item.label}</span>
+                </Button>
+              )
+            })}
+
+            {adminItems.length > 0 && (
+              <div className="mt-7 border-t border-slate-800/80 pt-7">
+                <p className="mb-3 px-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                  Administración
+                </p>
+                {adminItems.map((item) => {
+                  const active = section === item.key
+                  return (
+                    <Button
                       key={item.key}
                       onClick={() => navigate(item.path)}
                       variant="ghost"
-                      className={`w-full justify-start rounded-xl px-2 transition-all ${
-                          section === item.key
-                              ? 'bg-blue-500/10 text-white'
-                              : 'text-slate-400 hover:bg-white/5 hover:text-white'
+                      className={`h-10 w-full justify-start rounded-lg px-3 transition-colors ${
+                        active
+                          ? 'border border-blue-500/20 bg-blue-500/15 text-slate-50'
+                          : 'text-slate-300 hover:bg-slate-800/70 hover:text-slate-50'
                       }`}
-                  >
-                    <item.icon className="mr-3 h-4 w-4 text-blue-400" />
-                    <span className="text-xs font-medium">{item.label}</span>
-                  </Button>
-              ))}
-
-              {adminItems.length > 0 && (
-                  <div className="mt-8 border-t border-white/5 pt-8">
-                    <p className="mb-4 px-2 text-[10px] font-bold uppercase tracking-[0.2em] text-blue-500">
-                      Admin Management
-                    </p>
-                    {adminItems.map((item) => (
-                        <Button
-                            key={item.key}
-                            onClick={() => navigate(item.path)}
-                            variant="ghost"
-                            className={`w-full justify-start rounded-xl px-2 transition-all ${
-                                section === item.key
-                                    ? 'bg-blue-500/10 text-white'
-                                    : 'text-slate-400 hover:bg-blue-500/10 hover:text-white'
-                            }`}
-                        >
-                          <item.icon className="mr-3 h-4 w-4 text-blue-500" />
-                          <span className="text-xs font-medium">{item.label}</span>
-                        </Button>
-                    ))}
-                  </div>
-              )}
-            </nav>
-          </div>
-
-          <div className="space-y-4">
-            <div className="rounded-2xl border border-white/5 bg-gradient-to-tr from-blue-600/10 to-emerald-500/5 p-4 backdrop-blur-sm">
-              <div className="mb-2 flex items-center gap-2">
-                <div className="h-2 w-2 animate-pulse rounded-full bg-emerald-500"></div>
-                <p className="text-[10px] font-bold uppercase text-emerald-400">System Live</p>
+                    >
+                      <item.icon className={`mr-3 h-4 w-4 ${active ? 'text-blue-400' : 'text-slate-300'}`} />
+                      <span className="text-xs font-medium xl:text-sm">{item.label}</span>
+                    </Button>
+                  )
+                })}
               </div>
-              <p className="text-[10px] font-mono leading-relaxed text-slate-500">
-                Workspace: {currentWorkspace}
-              </p>
-            </div>
-          </div>
-        </aside>
-
-        <div className="relative flex flex-1 flex-col">
-          <header className="sticky top-0 z-50 flex h-16 items-center justify-between border-b border-white/5 bg-[#050505]/60 px-8 backdrop-blur-md">
-            <div className="flex flex-1 items-center gap-4">
-              <div className="relative w-72">
-                <Search className="absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-slate-600" />
-                <Input
-                    placeholder="Search workspaces or users..."
-                    value={searchQuery}
-                    onChange={(e: ChangeEvent<HTMLInputElement>) => onSearchChange(e.target.value)}
-                    className="rounded-full border-white/10 bg-white/5 pl-10 text-xs focus-visible:ring-blue-500/50"
-                />
-              </div>
-            </div>
-
-            <div className="flex items-center gap-6">
-              <div className="flex items-center gap-3">
-                <div className="text-right">
-                  <p className="text-xs font-bold text-white">{user?.name || user?.username}</p>
-                  <p className="text-[10px] font-medium uppercase tracking-tighter text-slate-500">
-                    {user?.role} • Online
-                  </p>
-                </div>
-                <div className="rounded-xl border border-white/10 bg-gradient-to-br from-blue-500/20 to-transparent p-0.5">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-[10px] bg-slate-900">
-                    <UserIcon className="h-5 w-5 text-blue-400" />
-                  </div>
-                </div>
-              </div>
-
-              <Button
-                  onClick={() => void onLogout()}
-                  variant="ghost"
-                  className="text-red-400/70 hover:bg-red-400/10 hover:text-red-400"
-              >
-                <LogOut className="mr-2 h-4 w-4" />
-                <span className="text-xs font-medium">Logout</span>
-              </Button>
-            </div>
-          </header>
-
-          <main className="relative flex-1 overflow-auto bg-[#050505] p-8">
-            <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff05_1px,transparent_1px),linear-gradient(to_bottom,#ffffff05_1px,transparent_1px)] bg-[size:40px_40px]"></div>
-            <div className="relative z-10">{children}</div>
-          </main>
+            )}
+          </nav>
         </div>
+
+        <div className="rounded-2xl border border-slate-700/70 bg-slate-900/55 p-4">
+          <div className="mb-2 flex items-center gap-2">
+            <div className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
+            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-emerald-400">
+              SISTEMA EN LÍNEA
+            </p>
+          </div>
+          <p className="text-xs leading-relaxed text-slate-400">
+            Espacio: {currentWorkspace}
+          </p>
+        </div>
+      </aside>
+
+      <div className="relative flex min-w-0 flex-1 flex-col">
+        <header className="sticky top-0 z-50 flex min-h-[68px] flex-wrap items-center justify-between gap-3 border-b border-slate-800/80 bg-[#070d18]/95 px-4 py-3 backdrop-blur-md sm:px-5 lg:px-6">
+          <div className="flex min-w-[240px] flex-1 items-center gap-4">
+            <div className="relative w-full max-w-[520px]">
+              <Search className="absolute left-4 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-slate-500" />
+              <Input
+                placeholder="Buscar espacios de trabajo o usuarios..."
+                value={searchQuery}
+                onChange={(e: ChangeEvent<HTMLInputElement>) => onSearchChange(e.target.value)}
+                className="h-11 rounded-full border-slate-700/80 bg-slate-950/50 pl-11 text-sm text-slate-200 placeholder:text-slate-500 focus-visible:border-blue-500/50 focus-visible:ring-blue-500/20"
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-5">
+            <div className="flex items-center gap-3">
+              <div className="text-right">
+                <p className="text-sm font-semibold text-slate-50">{displayName}</p>
+                <p className="text-[10px] font-medium uppercase tracking-[0.06em] text-slate-500 sm:text-[11px]">
+                  {user?.role ?? 'ADMIN'} · EN LÍNEA
+                </p>
+              </div>
+              <div className="flex h-10 w-10 items-center justify-center rounded-full border border-blue-400/20 bg-blue-500/25 text-sm font-semibold text-blue-100">
+                {avatarLetter}
+              </div>
+            </div>
+
+            <div className="h-9 w-px bg-slate-800" />
+            <Button
+              onClick={() => void onLogout()}
+              variant="ghost"
+              className="h-9 px-2 text-slate-300 hover:bg-slate-800/70 hover:text-slate-50 sm:px-3"
+            >
+              <LogOut className="mr-2 h-4 w-4" />
+              <span className="hidden text-sm font-medium sm:inline">Cerrar sesión</span>
+            </Button>
+          </div>
+        </header>
+
+        <main className="relative flex-1 overflow-auto bg-[#070d18] p-4 sm:p-5 lg:p-6">
+          <div className="pointer-events-none absolute inset-0 opacity-35 bg-[linear-gradient(to_right,rgba(51,65,85,0.18)_1px,transparent_1px),linear-gradient(to_bottom,rgba(51,65,85,0.14)_1px,transparent_1px)] bg-[size:44px_44px]" />
+          <div className="relative z-10 w-full">{children}</div>
+        </main>
       </div>
+    </div>
   )
 }

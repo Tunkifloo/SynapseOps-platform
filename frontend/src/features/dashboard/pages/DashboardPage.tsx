@@ -1,5 +1,5 @@
-import { Layers, Database, Shield } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { type ComponentType, useEffect, useState } from 'react'
+import { Database, FolderOpen, Layers, Shield, UserRound } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
 import { Button } from '@/shared/components/ui/button'
@@ -7,17 +7,30 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui
 import { listMyWorkspaces } from '@/features/workspaces/api'
 import type { WorkspaceSummary } from '@/features/workspaces/types'
 import { EmptyState } from '@/shared/components/EmptyState'
-import { SectionTitle } from '@/shared/components/SectionTitle'
+import { useAppStore } from '@/store/useAppStore'
 import type { Role } from '@/types'
 
-function StatCard({ title, value }: { title: string; value: string }) {
+interface StatCardProps {
+  title: string
+  value: string
+  icon: ComponentType<{ className?: string }>
+}
+
+function StatCard({ title, value, icon: Icon }: StatCardProps) {
   return (
-    <Card className="bg-white/[0.03] border-white/5 backdrop-blur-xl hover:bg-white/[0.05] transition-all">
-      <CardHeader className="pb-2">
-        <CardTitle className="text-[10px] font-bold uppercase tracking-widest text-slate-500">{title}</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="text-2xl font-bold tracking-tight text-white">{value}</div>
+    <Card className="rounded-2xl border border-slate-800/90 bg-slate-900/55 py-0 shadow-sm shadow-black/20">
+      <CardContent className="flex items-center gap-4 p-4 xl:p-5">
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-blue-400/15 bg-blue-500/10 text-blue-400 xl:h-12 xl:w-12">
+          <Icon className="h-5 w-5" />
+        </div>
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+            {title}
+          </p>
+          <div className="mt-1 truncate text-xl font-semibold tracking-tight text-slate-50 xl:text-2xl">
+            {value}
+          </div>
+        </div>
       </CardContent>
     </Card>
   )
@@ -35,6 +48,7 @@ export function DashboardPage({ token, role, currentWorkspace, onAuthError }: Da
   const [workspaces, setWorkspaces] = useState<WorkspaceSummary[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const setWorkspace = useAppStore((state) => state.setWorkspace)
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -46,13 +60,16 @@ export function DashboardPage({ token, role, currentWorkspace, onAuthError }: Da
         const data = await listMyWorkspaces(token)
         if (!cancelled) {
           setWorkspaces(data)
+          if ((currentWorkspace === 'Default Project' || !currentWorkspace) && data[0]) {
+            setWorkspace(data[0].name)
+          }
           setError(null)
         }
       } catch (error) {
         if (cancelled || onAuthError(error)) {
           return
         }
-        setError(error instanceof Error ? error.message : 'No se pudieron cargar los workspaces.')
+        setError(error instanceof Error ? error.message : 'No se pudieron cargar los espacios de trabajo.')
       } finally {
         if (!cancelled) {
           setIsLoading(false)
@@ -63,55 +80,96 @@ export function DashboardPage({ token, role, currentWorkspace, onAuthError }: Da
     return () => {
       cancelled = true
     }
-  }, [onAuthError, token])
+  }, [currentWorkspace, onAuthError, setWorkspace, token])
 
   return (
-    <div className="space-y-6">
-      <SectionTitle eyebrow="Overview" title="Operational Workspace Snapshot" description="Vista general del alcance actual de la sesión autenticada y acceso rápido a las áreas principales." />
+    <div className="space-y-5">
+      <section>
+        <h1 className="text-2xl font-semibold tracking-tight text-slate-50 xl:text-3xl">
+          Resumen del espacio operativo
+        </h1>
+        <p className="mt-1.5 max-w-4xl text-sm leading-6 text-slate-400 xl:text-base">
+          Vista general del alcance actual de la sesión autenticada y acceso rápido a las áreas principales.
+        </p>
+      </section>
 
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-        <StatCard title="My Workspaces" value={isLoading ? '...' : String(workspaces.length)} />
-        <StatCard title="Current Role" value={role ?? 'N/A'} />
-        <StatCard title="Current Workspace" value={currentWorkspace || 'None'} />
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <StatCard
+          title="Mis espacios de trabajo"
+          value={isLoading ? '...' : String(workspaces.length)}
+          icon={Layers}
+        />
+        <StatCard title="Rol actual" value={role ?? 'N/A'} icon={UserRound} />
+        <StatCard title="Espacio actual" value={currentWorkspace || 'Ninguno'} icon={Database} />
       </div>
 
-      {error && <EmptyState title="Workspace overview unavailable" message={error} />}
+      {error && <EmptyState title="Resumen no disponible" message={error} />}
 
       {!error && (
-        <div className="grid gap-6 lg:grid-cols-[1.3fr_1fr]">
-          <Card className="border-white/5 bg-white/[0.03]">
-            <CardHeader className="flex flex-row items-center justify-between gap-4">
-              <CardTitle className="text-white">My Workspaces</CardTitle>
-              <Button variant="outline" size="sm" onClick={() => navigate('/workspaces')}>Open Workspaces</Button>
+        <div className="grid items-start gap-4 xl:grid-cols-[1.05fr_1fr]">
+          <Card className="rounded-2xl border border-slate-800/90 bg-slate-900/55 py-0 shadow-sm shadow-black/20">
+            <CardHeader className="flex flex-row items-center justify-between gap-4 px-5 pt-5">
+              <CardTitle className="text-lg font-semibold text-slate-50 xl:text-xl">
+                Mis espacios de trabajo
+              </CardTitle>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => navigate('/workspaces')}
+                className="border-blue-500/30 bg-blue-500/5 text-slate-200 hover:bg-blue-500/10 hover:text-slate-50"
+              >
+                <FolderOpen className="mr-2 h-4 w-4 text-blue-400" />
+                Abrir espacios
+              </Button>
             </CardHeader>
-            <CardContent className="space-y-3">
-              {isLoading && <p className="text-sm text-slate-400">Loading workspaces...</p>}
-              {!isLoading && workspaces.length === 0 && <p className="text-sm text-slate-400">No workspaces available for this session.</p>}
+
+            <CardContent className="space-y-2.5 p-5 pt-4">
+              {isLoading && <p className="text-sm text-slate-500">Cargando espacios...</p>}
+              {!isLoading && workspaces.length === 0 && (
+                <p className="text-sm text-slate-500">No hay espacios disponibles para esta sesión.</p>
+              )}
               {!isLoading && workspaces.slice(0, 4).map((item) => (
-                <div key={item.idWorkspace} className="rounded-2xl border border-white/5 bg-black/20 p-4">
-                  <div className="flex items-center gap-2">
-                    <Layers className="h-4 w-4 text-blue-400" />
-                    <p className="text-sm font-semibold text-white">{item.name}</p>
+                <div
+                  key={item.idWorkspace}
+                  className="rounded-xl border border-slate-800/80 bg-slate-950/30 p-3.5 transition-colors hover:border-slate-700 hover:bg-slate-900/60"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-blue-400/10 bg-blue-500/10 text-blue-400">
+                      <Layers className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-slate-50 xl:text-base">{item.name}</p>
+                      {item.description && (
+                        <p className="mt-0.5 line-clamp-1 text-sm leading-5 text-slate-400">{item.description}</p>
+                      )}
+                      <p className="mt-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                        Owner: {item.ownerUsername}
+                      </p>
+                    </div>
                   </div>
-                  <p className="mt-1 text-xs text-slate-400">{item.description || 'No description available.'}</p>
-                  <p className="mt-3 text-[10px] uppercase tracking-[0.2em] text-slate-500">Owner: {item.ownerUsername}</p>
                 </div>
               ))}
             </CardContent>
           </Card>
 
-          <Card className="border-white/5 bg-white/[0.03]">
-            <CardHeader>
-              <CardTitle className="text-white">Next Actions</CardTitle>
+          <Card className="rounded-2xl border border-slate-800/90 bg-slate-900/55 py-0 shadow-sm shadow-black/20">
+            <CardHeader className="px-5 pt-5">
+              <CardTitle className="text-lg font-semibold text-slate-50 xl:text-xl">
+                Próximas acciones
+              </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3 text-sm text-slate-400">
-              <div className="flex items-start gap-3">
-                <Database className="mt-0.5 h-4 w-4 text-emerald-400" />
-                <p>Crea proyectos aislados, carga dataset por workspace y administra pipelines del proyecto seleccionado.</p>
+            <CardContent className="space-y-4 p-5 pt-4">
+              <div className="flex gap-3">
+                <Database className="mt-1 h-5 w-5 shrink-0 text-emerald-400" />
+                <p className="max-w-xl text-sm leading-6 text-slate-400">
+                  Crea proyectos aislados, carga dataset por workspace y administra pipelines del proyecto seleccionado.
+                </p>
               </div>
-              <div className="flex items-start gap-3">
-                <Shield className="mt-0.5 h-4 w-4 text-blue-400" />
-                <p>Si tu rol es ADMIN, también tienes acceso al panel administrativo desde la navegación lateral.</p>
+              <div className="flex gap-3">
+                <Shield className="mt-1 h-5 w-5 shrink-0 text-blue-400" />
+                <p className="max-w-xl text-sm leading-6 text-slate-400">
+                  Si tu rol es ADMIN, también tienes acceso al panel administrativo desde la navegación lateral.
+                </p>
               </div>
             </CardContent>
           </Card>

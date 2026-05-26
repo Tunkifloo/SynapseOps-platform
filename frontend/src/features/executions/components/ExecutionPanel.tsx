@@ -90,9 +90,11 @@ export function ExecutionPanel({
     }, [token, workspaceId, pipelineId, onAuthError])
 
     // Cargar al montar o cuando cambie de pipeline
+    /* eslint-disable react-hooks/set-state-in-effect */
     useEffect(() => {
         void loadExecutions()
     }, [loadExecutions])
+    /* eslint-enable react-hooks/set-state-in-effect */
 
     // Polling automático cada 4 segundos mientras haya ejecuciones RUNNING
     useEffect(() => {

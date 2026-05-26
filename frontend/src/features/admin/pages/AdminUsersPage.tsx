@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState, type ChangeEvent, type FormEvent } from 'react'
+import { useCallback, useEffect, useState, type ChangeEvent, type ComponentType, type FormEvent } from 'react'
+import { Monitor, UserCheck, UserX } from 'lucide-react'
 
 import { Card, CardContent } from '@/shared/components/ui/card'
 import {
@@ -14,19 +15,31 @@ import { EditStudentForm } from '@/features/admin/components/EditStudentForm'
 import { UsersTable } from '@/features/admin/components/UsersTable'
 import {
   emptyStudentForm,
-  emptyUserUpdatePayload,
   type CreateStudentFormData,
   type UserSummary,
-  type UserUpdatePayload,
 } from '@/features/admin/types'
-import { SectionTitle } from '@/shared/components/SectionTitle'
 
-function StatCard({ title, value }: { title: string; value: string }) {
+interface StatCardProps {
+  title: string
+  value: string
+  icon: ComponentType<{ className?: string }>
+}
+
+function StatCard({ title, value, icon: Icon }: StatCardProps) {
   return (
-    <Card className="bg-white/[0.03] border-white/5 backdrop-blur-xl hover:bg-white/[0.05] transition-all">
-      <CardContent className="pt-6">
-        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">{title}</p>
-        <div className="mt-2 text-2xl font-bold tracking-tight text-white">{value}</div>
+    <Card className="rounded-2xl border border-slate-800/90 bg-slate-900/55 py-0 shadow-sm shadow-black/20">
+      <CardContent className="flex items-center gap-4 p-4 xl:p-5">
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-blue-400/15 bg-blue-500/10 text-blue-400 xl:h-12 xl:w-12">
+          <Icon className="h-5 w-5" />
+        </div>
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+            {title}
+          </p>
+          <div className="mt-1 truncate text-xl font-semibold tracking-tight text-slate-50 xl:text-2xl">
+            {value}
+          </div>
+        </div>
       </CardContent>
     </Card>
   )
@@ -41,26 +54,26 @@ interface AdminUsersPageProps {
 export function AdminUsersPage({ token, searchQuery, onAuthError }: AdminUsersPageProps) {
   const [activeUsers, setActiveUsers] = useState<UserSummary[]>([])
   const [disabledUsers, setDisabledUsers] = useState<UserSummary[]>([])
-
-  const filteredActiveUsers = searchQuery
-    ? activeUsers.filter((u) =>
-        u.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        u.name.toLowerCase().includes(searchQuery.toLowerCase()))
-    : activeUsers
-
-  const filteredDisabledUsers = searchQuery
-    ? disabledUsers.filter((u) =>
-        u.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        u.name.toLowerCase().includes(searchQuery.toLowerCase()))
-    : disabledUsers
   const [form, setForm] = useState<CreateStudentFormData>(emptyStudentForm())
   const [editingUserId, setEditingUserId] = useState<number | null>(null)
-  const [editingUsername, setEditingUsername] = useState('')
-  const [editForm, setEditForm] = useState<UserUpdatePayload>(emptyUserUpdatePayload())
   const [isLoading, setIsLoading] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+
+  const isEditing = editingUserId !== null
+
+  const filteredActiveUsers = searchQuery
+    ? activeUsers.filter((user) =>
+        user.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        user.name.toLowerCase().includes(searchQuery.toLowerCase()))
+    : activeUsers
+
+  const filteredDisabledUsers = searchQuery
+    ? disabledUsers.filter((user) =>
+        user.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        user.name.toLowerCase().includes(searchQuery.toLowerCase()))
+    : disabledUsers
 
   const loadUsers = useCallback(async () => {
     setIsLoading(true)
@@ -108,6 +121,11 @@ export function AdminUsersPage({ token, searchQuery, onAuthError }: AdminUsersPa
     }))
   }
 
+  const resetFormMode = () => {
+    setEditingUserId(null)
+    setForm(emptyStudentForm())
+  }
+
   const handleCreateStudent = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setIsSubmitting(true)
@@ -115,8 +133,8 @@ export function AdminUsersPage({ token, searchQuery, onAuthError }: AdminUsersPa
 
     try {
       await createStudent(token, form)
-      setForm(emptyStudentForm())
-      setNotice('Student account created successfully.')
+      resetFormMode()
+      setNotice('Estudiante creado correctamente.')
       setError(null)
       await loadUsers()
     } catch (error) {
@@ -130,21 +148,6 @@ export function AdminUsersPage({ token, searchQuery, onAuthError }: AdminUsersPa
     }
   }
 
-  const handleEditFieldChange = (field: keyof UserUpdatePayload) => (
-    event: ChangeEvent<HTMLInputElement>
-  ) => {
-    setEditForm((current) => ({
-      ...current,
-      [field]: event.target.value,
-    }))
-  }
-
-  const resetEditState = () => {
-    setEditingUserId(null)
-    setEditingUsername('')
-    setEditForm(emptyUserUpdatePayload())
-  }
-
   const handleStartEdit = async (userId: number) => {
     setNotice(null)
 
@@ -156,12 +159,12 @@ export function AdminUsersPage({ token, searchQuery, onAuthError }: AdminUsersPa
       }
 
       setEditingUserId(user.idUser)
-      setEditingUsername(user.username)
-      setEditForm({
+      setForm({
+        username: user.username,
+        password: '********',
         name: user.name,
         paternalSurname: user.paternalSurname,
         maternalSurname: user.maternalSurname,
-        dni: '',
         email: user.email,
         phone: user.phone ?? '',
         role: 'COLLABORATOR',
@@ -190,16 +193,20 @@ export function AdminUsersPage({ token, searchQuery, onAuthError }: AdminUsersPa
 
     try {
       await updateUserByAdmin(token, editingUserId, {
-        ...editForm,
-        maternalSurname: editForm.maternalSurname,
-        dni: editForm.dni,
-        phone: editForm.phone,
+        name: form.name,
+        paternalSurname: form.paternalSurname,
+        maternalSurname: form.maternalSurname,
+        dni: '',
+        email: form.email,
+        phone: form.phone,
         role: 'COLLABORATOR',
+        studentCode: form.studentCode,
+        career: form.career,
       })
 
-      setNotice('Student account updated successfully.')
+      setNotice('Cambios guardados correctamente.')
       setError(null)
-      resetEditState()
+      resetFormMode()
       await loadUsers()
     } catch (error) {
       if (onAuthError(error)) {
@@ -216,8 +223,8 @@ export function AdminUsersPage({ token, searchQuery, onAuthError }: AdminUsersPa
     setNotice(null)
 
     try {
-      const activeUser = activeUsers.find((u) => u.idUser === userId)
-      const disabledUser = disabledUsers.find((u) => u.idUser === userId)
+      const activeUser = activeUsers.find((user) => user.idUser === userId)
+      const disabledUser = disabledUsers.find((user) => user.idUser === userId)
       const target = activeUser ?? disabledUser
       if (!target) return
 
@@ -225,14 +232,17 @@ export function AdminUsersPage({ token, searchQuery, onAuthError }: AdminUsersPa
       const toggled = { ...target, enabled: !target.enabled }
 
       if (target.enabled) {
-        setActiveUsers((prev) => prev.filter((u) => u.idUser !== userId))
+        setActiveUsers((prev) => prev.filter((user) => user.idUser !== userId))
         setDisabledUsers((prev) => [toggled, ...prev])
+        if (editingUserId === userId) {
+          resetFormMode()
+        }
       } else {
-        setDisabledUsers((prev) => prev.filter((u) => u.idUser !== userId))
+        setDisabledUsers((prev) => prev.filter((user) => user.idUser !== userId))
         setActiveUsers((prev) => [toggled, ...prev])
       }
 
-      setNotice('User status updated successfully.')
+      setNotice('Estado del usuario actualizado correctamente.')
       setError(null)
     } catch (error) {
       if (onAuthError(error)) return
@@ -241,72 +251,82 @@ export function AdminUsersPage({ token, searchQuery, onAuthError }: AdminUsersPa
   }
 
   return (
-    <div className="space-y-6">
-      <SectionTitle eyebrow="HU-013" title="Administrative User Management" description="Gestiona cuentas de estudiantes desde una tabla administrativa, crea nuevas cuentas colaboradoras y aplica desactivación lógica sin eliminar registros." />
+    <div className="space-y-5">
+      <section>
+        <h1 className="text-2xl font-semibold tracking-tight text-slate-50 xl:text-3xl">
+          Gestión de usuarios administrativos
+        </h1>
+        <p className="mt-1.5 max-w-4xl text-sm leading-6 text-slate-400 xl:text-base">
+          Gestiona las cuentas de estudiantes desde esta vista administrativa.
+        </p>
+      </section>
 
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-        <StatCard title="Active Students" value={isLoading ? '...' : String(activeUsers.length)} />
-        <StatCard title="Disabled Accounts" value={isLoading ? '...' : String(disabledUsers.length)} />
-        <StatCard title="Admin Scope" value="Students" />
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <StatCard title="Estudiantes activos" value={isLoading ? '...' : String(activeUsers.length)} icon={UserCheck} />
+        <StatCard title="Cuentas deshabilitadas" value={isLoading ? '...' : String(disabledUsers.length)} icon={UserX} />
+        <StatCard title="Alcance admin" value="Estudiantes" icon={Monitor} />
       </div>
 
       {(error || notice) && (
-        <Card className={`border-white/5 ${error ? 'bg-red-500/10' : 'bg-emerald-500/10'}`}>
-          <CardContent className="pt-6 text-sm text-white">
-            {error ?? notice}
-          </CardContent>
-        </Card>
+        <div className={`rounded-xl border px-4 py-3 text-sm ${
+          error
+            ? 'border-red-500/20 bg-red-500/10 text-red-300'
+            : 'border-emerald-500/20 bg-emerald-500/10 text-emerald-300'
+        }`}
+        >
+          {error ?? notice}
+        </div>
       )}
 
-      <div className="grid gap-6 xl:grid-cols-[1.1fr_1.6fr]">
-        <div className="space-y-6">
-          <Card className="border-white/5 bg-white/[0.03]">
-            <CardContent className="pt-6">
-              <CreateStudentForm form={form} isSubmitting={isSubmitting} onChange={handleFieldChange} onSubmit={handleCreateStudent} />
-            </CardContent>
-          </Card>
+      <div className="grid items-start gap-4 2xl:grid-cols-[0.95fr_1.9fr]">
+        <Card className="rounded-2xl border border-slate-800/90 bg-slate-900/55 py-0 shadow-sm shadow-black/20">
+          <CardContent className="p-5">
+            {isEditing ? (
+              <EditStudentForm
+                form={form}
+                isSubmitting={isSubmitting}
+                onChange={handleFieldChange}
+                onSubmit={handleUpdateStudent}
+                onCancel={resetFormMode}
+              />
+            ) : (
+              <CreateStudentForm
+                form={form}
+                isEditing={false}
+                isSubmitting={isSubmitting}
+                onChange={handleFieldChange}
+                onSubmit={handleCreateStudent}
+              />
+            )}
+          </CardContent>
+        </Card>
 
-          {editingUserId && (
-            <Card className="border-white/5 bg-white/[0.03]">
-              <CardContent className="pt-6">
-                <EditStudentForm
-                  form={editForm}
-                  isSubmitting={isSubmitting}
-                  username={editingUsername}
-                  onChange={handleEditFieldChange}
-                  onSubmit={handleUpdateStudent}
-                  onCancel={resetEditState}
-                />
-              </CardContent>
-            </Card>
-          )}
-        </div>
-
-        <div className="space-y-6">
-          <Card className="border-white/5 bg-white/[0.03]">
-            <CardContent className="pt-6">
+        <div className="space-y-4">
+          <Card className="rounded-2xl border border-slate-800/90 bg-slate-900/55 py-0 shadow-sm shadow-black/20">
+            <CardContent className="p-5">
               <UsersTable
-                title="Active Student Accounts"
+                title="Cuentas activas de estudiantes"
                 users={filteredActiveUsers}
                 isLoading={isLoading}
-                emptyMessage="No active student accounts available."
-                actionLabel="Disable"
+                emptyMessage="No hay cuentas activas de estudiantes."
+                actionLabel="Desactivar"
                 actionVariant="destructive"
                 showEdit
+                editingUserId={editingUserId}
                 onEdit={handleStartEdit}
                 onAction={handleToggleStatus}
               />
             </CardContent>
           </Card>
 
-          <Card className="border-white/5 bg-white/[0.03]">
-            <CardContent className="pt-6">
+          <Card className="rounded-2xl border border-slate-800/90 bg-slate-900/55 py-0 shadow-sm shadow-black/20">
+            <CardContent className="p-5">
               <UsersTable
-                title="Soft Deleted Student Accounts"
+                title="Cuentas de estudiantes deshabilitadas"
                 users={filteredDisabledUsers}
                 isLoading={isLoading}
-                emptyMessage="No disabled student accounts."
-                actionLabel="Reactivate"
+                emptyMessage="No hay cuentas de estudiantes deshabilitadas."
+                actionLabel="Reactivar"
                 actionVariant="outline"
                 onAction={handleToggleStatus}
               />

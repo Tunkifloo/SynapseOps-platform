@@ -40,7 +40,15 @@ export const getUserById = (token: string, userId: number) => (
 )
 
 export const updateUserByAdmin = (token: string, userId: number, payload: UserUpdatePayload) => (
-  sendJson<UserSummary>(`/users/${userId}`, token, 'PUT', payload).then(mapUserSummary)
+  sendJson<UserSummary>(`/users/${userId}`, token, 'PUT', {
+    name: payload.name,
+    paternalSurname: payload.paternalSurname,
+    maternalSurname: payload.maternalSurname,
+    dni: payload.dni || null,
+    email: payload.email,
+    phone: payload.phone || null,
+    role: payload.role,
+  }).then(mapUserSummary)
 )
 
 export const getMyProfile = (token: string) => (

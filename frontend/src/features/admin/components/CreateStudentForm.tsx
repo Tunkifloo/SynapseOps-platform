@@ -8,82 +8,141 @@ import type { CreateStudentFormData } from '../types'
 
 interface CreateStudentFormProps {
   form: CreateStudentFormData
+  isEditing: boolean
   isSubmitting: boolean
   onChange: (field: keyof CreateStudentFormData) => (event: ChangeEvent<HTMLInputElement>) => void
   onSubmit: (event: FormEvent<HTMLFormElement>) => Promise<void>
+  onCancel?: () => void
 }
 
 function FieldLabel({ children }: { children: string }) {
-  return <label className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">{children}</label>
+  return <label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">{children}</label>
 }
 
 function FormField({ children }: { children: ReactNode }) {
   return <div className="space-y-2">{children}</div>
 }
 
-export function CreateStudentForm({ form, isSubmitting, onChange, onSubmit }: CreateStudentFormProps) {
+const inputClassName = 'h-10 rounded-xl border-slate-700/80 bg-slate-950/35 text-sm text-slate-100 placeholder:text-slate-500 focus-visible:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-60'
+
+export function CreateStudentForm({
+  form,
+  isEditing,
+  isSubmitting,
+  onChange,
+  onSubmit,
+  onCancel,
+}: CreateStudentFormProps) {
   const [showPassword, setShowPassword] = useState(false)
 
   return (
-    <form className="grid gap-4 md:grid-cols-2" onSubmit={(event) => void onSubmit(event)}>
-      <FormField>
-        <FieldLabel>Username</FieldLabel>
-        <Input value={form.username} onChange={onChange('username')} required />
-      </FormField>
-      <FormField>
-        <FieldLabel>Password</FieldLabel>
-        <div className="relative">
-          <Input
-            type={showPassword ? 'text' : 'password'}
-            value={form.password}
-            onChange={onChange('password')}
-            minLength={7}
-            required
-            className="pr-10"
-          />
-          <button
-            type="button"
-            onClick={() => setShowPassword((prev) => !prev)}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
-            tabIndex={-1}
-          >
-            {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-          </button>
-        </div>
-      </FormField>
-      <FormField>
-        <FieldLabel>Name</FieldLabel>
-        <Input value={form.name} onChange={onChange('name')} required />
-      </FormField>
-      <FormField>
-        <FieldLabel>Paternal Surname</FieldLabel>
-        <Input value={form.paternalSurname} onChange={onChange('paternalSurname')} required />
-      </FormField>
-      <FormField>
-        <FieldLabel>Maternal Surname</FieldLabel>
-        <Input value={form.maternalSurname} onChange={onChange('maternalSurname')} />
-      </FormField>
-      <FormField>
-        <FieldLabel>Phone</FieldLabel>
-        <Input value={form.phone} onChange={onChange('phone')} placeholder="999999999" />
-      </FormField>
-      <FormField>
-        <FieldLabel>Student Code</FieldLabel>
-        <Input value={form.studentCode} onChange={onChange('studentCode')} placeholder="U20210001" required />
-      </FormField>
-      <FormField>
-        <FieldLabel>Career</FieldLabel>
-        <Input value={form.career} onChange={onChange('career')} placeholder="Ing. de Sistemas" />
-      </FormField>
-      <div className="md:col-span-2">
-        <FormField>
-          <FieldLabel>Email</FieldLabel>
-          <Input type="email" value={form.email} onChange={onChange('email')} required />
-        </FormField>
+    <form className="space-y-5" onSubmit={(event) => void onSubmit(event)}>
+      <div className="flex flex-wrap items-center gap-3">
+        <h2 className="text-lg font-semibold text-slate-50">
+          {isEditing ? 'Editar estudiante' : 'Crear estudiante'}
+        </h2>
+        {isEditing && (
+          <span className="rounded-full border border-blue-500/25 bg-blue-500/10 px-3 py-1 text-xs font-semibold text-blue-300">
+            Modo edición
+          </span>
+        )}
       </div>
-      <div className="md:col-span-2 flex justify-end">
-        <Button type="submit" disabled={isSubmitting}>
-          {isSubmitting ? 'Creating...' : 'Create Student'}
+
+      {isEditing && (
+        <p className="text-sm leading-6 text-slate-400">
+          Estás editando la cuenta seleccionada en la tabla.
+        </p>
+      )}
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <FormField>
+          <FieldLabel>Nombre de usuario</FieldLabel>
+          <Input
+            value={form.username}
+            onChange={onChange('username')}
+            required={!isEditing}
+            disabled={isEditing}
+            className={inputClassName}
+          />
+        </FormField>
+
+        <FormField>
+          <FieldLabel>Contraseña</FieldLabel>
+          <div className="relative">
+            <Input
+              type={showPassword ? 'text' : 'password'}
+              value={form.password}
+              onChange={onChange('password')}
+              minLength={7}
+              required={!isEditing}
+              disabled={isEditing}
+              className={`${inputClassName} pr-10`}
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((prev) => !prev)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 disabled:pointer-events-none"
+              tabIndex={-1}
+              disabled={isEditing}
+            >
+              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
+          </div>
+        </FormField>
+
+        <FormField>
+          <FieldLabel>Nombre</FieldLabel>
+          <Input value={form.name} onChange={onChange('name')} required className={inputClassName} />
+        </FormField>
+
+        <FormField>
+          <FieldLabel>Apellido paterno</FieldLabel>
+          <Input value={form.paternalSurname} onChange={onChange('paternalSurname')} required className={inputClassName} />
+        </FormField>
+
+        <FormField>
+          <FieldLabel>Apellido materno</FieldLabel>
+          <Input value={form.maternalSurname} onChange={onChange('maternalSurname')} className={inputClassName} />
+        </FormField>
+
+        <FormField>
+          <FieldLabel>Teléfono</FieldLabel>
+          <Input value={form.phone} onChange={onChange('phone')} placeholder="999999999" className={inputClassName} />
+        </FormField>
+
+        <FormField>
+          <FieldLabel>Código de estudiante</FieldLabel>
+          <Input value={form.studentCode} onChange={onChange('studentCode')} placeholder="U20210001" required className={inputClassName} />
+        </FormField>
+
+        <FormField>
+          <FieldLabel>Carrera</FieldLabel>
+          <Input value={form.career} onChange={onChange('career')} placeholder="Ing. de Sistemas" className={inputClassName} />
+        </FormField>
+
+        <div className="md:col-span-2">
+          <FormField>
+            <FieldLabel>Correo electrónico</FieldLabel>
+            <Input type="email" value={form.email} onChange={onChange('email')} required className={inputClassName} />
+          </FormField>
+        </div>
+      </div>
+
+      <div className="flex justify-end gap-3 border-t border-slate-800/80 pt-4">
+        {isEditing && (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onCancel}
+            className="border-slate-700/80 bg-slate-900/60 text-slate-200 hover:bg-slate-800"
+          >
+            Cancelar
+          </Button>
+        )}
+        <Button type="submit" disabled={isSubmitting} className="bg-blue-600 text-white hover:bg-blue-500">
+          {isSubmitting
+            ? isEditing ? 'Guardando...' : 'Creando...'
+            : isEditing ? 'Guardar cambios' : 'Crear estudiante'}
         </Button>
       </div>
     </form>
