@@ -210,28 +210,60 @@
       </div>
       <div class="rounded-2xl bg-white/[.03] border border-white/5 p-4">
         <p class="text-sm font-semibold text-white mb-3">Selected Workspace: Iris Classification</p>
-        <div class="grid grid-cols-2 gap-3 mb-4">
-          <div class="rounded-2xl bg-black/20 border border-white/5 p-3">
-            <p class="text-xs font-semibold text-white mb-2">Dataset</p>
-            <p class="text-[10px] text-slate-400 mb-2">iris.csv · 5.2 KB · ⬇ View</p>
-            <div class="flex gap-1"><span class="text-[10px] bg-blue-600/20 text-blue-400 px-2 py-1 rounded-2xl cursor-pointer">Upload</span><span class="text-[10px] bg-red-400/10 text-red-400 px-2 py-1 rounded-2xl cursor-pointer">Delete</span></div>
-            <p class="text-[10px] text-slate-500 mt-2">🔗 Desde URL: GitHub .git → .zip</p>
+
+        <!-- Dataset Panel (3 tabs reales) -->
+        <div class="rounded-xl bg-black/20 border border-white/5 p-3 mb-4">
+          <p class="text-xs font-semibold text-white mb-3">Dataset</p>
+
+          <!-- Dataset activo -->
+          <div class="flex items-start gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-3 mb-3">
+            <span class="text-emerald-400 mt-0.5 text-xs">✓</span>
+            <div class="flex-1 min-w-0">
+              <p class="text-[10px] font-bold uppercase tracking-widest text-emerald-400 mb-1">Dataset activo</p>
+              <p class="text-xs text-slate-300 break-all font-mono">C:\storage-dev\1\5\datasets\iris.zip</p>
+              <div class="mt-2 flex gap-2">
+                <span class="text-[10px] text-slate-400 underline cursor-pointer hover:text-white">Ver archivo</span>
+                <span class="text-[10px] text-red-400 underline cursor-pointer hover:text-red-300">Eliminar</span>
+              </div>
+            </div>
           </div>
-          <div class="rounded-2xl bg-black/20 border border-white/5 p-3">
-            <p class="text-xs font-semibold text-white mb-2">New Pipeline</p>
-            <input class="w-full h-8 rounded-3xl border border-white/10 bg-white/5 px-3 text-xs text-white outline-none mb-2" placeholder="Training Pipeline">
-            <span class="text-[10px] bg-blue-600/20 text-blue-400 px-2 py-1 rounded-2xl cursor-pointer">Create</span>
+
+          <!-- Tabs Keras | URL | File -->
+          <div class="flex gap-1 rounded-xl bg-white/[0.03] p-1 mb-3">
+            <span class="flex-1 text-center rounded-lg px-2 py-2 text-[10px] font-medium bg-blue-600 text-white shadow">🗄 Keras Built-in</span>
+            <span class="flex-1 text-center rounded-lg px-2 py-2 text-[10px] font-medium text-slate-500">🔗 HTTP URL</span>
+            <span class="flex-1 text-center rounded-lg px-2 py-2 text-[10px] font-medium text-slate-500">⬆ File Upload</span>
+          </div>
+
+          <!-- Keras mode (active) -->
+          <div class="space-y-2">
+            <p class="text-[10px] text-slate-500">Datasets de Keras cargados directamente en ml-engine al entrenar.</p>
+            <select class="w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-white outline-none">
+              <option>MNIST — Handwritten Digits (60k)</option>
+              <option>Fashion MNIST — Clothing (60k)</option>
+              <option>CIFAR-10 — Objects 10 classes (50k)</option>
+              <option>CIFAR-100 — Objects 100 classes (50k)</option>
+            </select>
+            <span class="block text-center rounded-4xl bg-blue-600 py-2 text-[10px] font-bold text-white cursor-pointer hover:bg-blue-500">Usar MNIST</span>
           </div>
         </div>
-        <p class="text-xs font-semibold text-white mb-2">Pipelines</p>
-        <div class="rounded-xl border border-white/5 bg-white/[.03] p-3 mb-2">
-          <p class="text-xs font-semibold text-white">Pipeline A <span class="text-[10px] text-slate-500">DRAFT</span></p>
-          <p class="text-[10px] text-slate-500 mt-0.5">Nodes: 3 · Exec: 2</p>
-          <div class="flex gap-1 mt-2">
-            <span class="text-[10px] border border-white/10 px-2 py-0.5 rounded-2xl text-slate-300">Rename</span>
-            <span class="text-[10px] bg-red-400/10 text-red-400 px-2 py-0.5 rounded-2xl">Delete</span>
-            <span class="text-[10px] bg-violet-400/10 text-violet-400 px-2 py-0.5 rounded-2xl font-bold">▶ Run</span>
-            <span class="text-[10px] bg-emerald-400/10 text-emerald-400 px-2 py-0.5 rounded-2xl">↗ Deploy</span>
+
+        <!-- Pipeline Panel -->
+        <div class="rounded-xl bg-black/20 border border-white/5 p-3">
+          <p class="text-xs font-semibold text-white mb-3">Pipelines</p>
+          <div class="rounded-xl bg-white/[0.03] border border-white/5 p-2 mb-2">
+            <input class="w-full h-8 rounded-3xl border border-white/10 bg-white/5 px-3 text-xs text-white outline-none mb-2" placeholder="Nuevo pipeline...">
+            <span class="text-[10px] bg-blue-600/20 text-blue-400 px-2 py-1 rounded-2xl cursor-pointer">+ Crear Pipeline</span>
+          </div>
+          <div class="rounded-xl border border-white/5 bg-white/[.03] p-3">
+            <p class="text-xs font-semibold text-white">Pipeline A <span class="text-[10px] text-slate-500">DRAFT</span></p>
+            <p class="text-[10px] text-slate-500 mt-0.5">Nodes: 3 · Exec: 2</p>
+            <div class="flex gap-1 mt-2">
+              <span class="text-[10px] border border-white/10 px-2 py-0.5 rounded-2xl text-slate-300">Rename</span>
+              <span class="text-[10px] bg-red-400/10 text-red-400 px-2 py-0.5 rounded-2xl">Delete</span>
+              <span class="text-[10px] bg-violet-400/10 text-violet-400 px-2 py-0.5 rounded-2xl font-bold">▶ Run</span>
+              <span class="text-[10px] bg-emerald-400/10 text-emerald-400 px-2 py-0.5 rounded-2xl">↗ Deploy</span>
+            </div>
           </div>
         </div>
       </div>
