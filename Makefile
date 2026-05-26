@@ -7,7 +7,7 @@
         docker-build clean all help
 
 BACKEND_DIR   := Backend/backend-orchestrator
-FRONTEND_DIR  := Frontend
+FRONTEND_DIR  := frontend
 ML_ENGINE_DIR := Backend/ml-engine
 
 BACKEND_IMAGE := synapseops/backend-orchestrator
