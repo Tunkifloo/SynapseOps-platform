@@ -10,7 +10,7 @@ import lombok.Setter;
 @Getter
 @Setter
 @NoArgsConstructor
-public class Collaborator extends User{
+public class Collaborator extends User {
     @Column(unique = true)
     private String studentCode;
     private String career;
