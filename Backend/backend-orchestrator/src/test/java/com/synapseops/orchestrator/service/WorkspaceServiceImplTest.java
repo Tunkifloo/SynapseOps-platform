@@ -148,6 +148,8 @@ class WorkspaceServiceImplTest {
         @DisplayName("Debe retornar workspace cuando el usuario es propietario")
         void shouldReturnWorkspaceForOwner() {
             when(workspaceRepository.findById(10L)).thenReturn(Optional.of(workspace));
+            when(userRepository.findByUsername("student_one"))
+                    .thenReturn(Optional.of(owner));
             when(workspaceMapper.toResponse(workspace)).thenReturn(workspaceResponse);
 
             StepVerifier.create(workspaceService.getWorkspaceById(10L, "student_one"))
@@ -159,6 +161,8 @@ class WorkspaceServiceImplTest {
         @DisplayName("Debe emitir AccessDeniedException si el usuario no es propietario")
         void shouldEmitErrorWhenNotOwner() {
             when(workspaceRepository.findById(10L)).thenReturn(Optional.of(workspace));
+            when(userRepository.findByUsername("student_two"))
+                    .thenReturn(Optional.of(otherUser));
 
             StepVerifier.create(workspaceService.getWorkspaceById(10L, "student_two"))
                     .expectError(AccessDeniedException.class)
@@ -184,6 +188,8 @@ class WorkspaceServiceImplTest {
         @DisplayName("Debe eliminar el workspace si el usuario es propietario")
         void shouldDeleteWorkspaceForOwner() {
             when(workspaceRepository.findById(10L)).thenReturn(Optional.of(workspace));
+            when(userRepository.findByUsername("student_one"))
+                    .thenReturn(Optional.of(owner));
 
             StepVerifier.create(workspaceService.deleteWorkspace(10L, "student_one"))
                     .verifyComplete();
@@ -195,6 +201,8 @@ class WorkspaceServiceImplTest {
         @DisplayName("Debe emitir AccessDeniedException si el usuario no es propietario")
         void shouldEmitErrorWhenNotOwner() {
             when(workspaceRepository.findById(10L)).thenReturn(Optional.of(workspace));
+            when(userRepository.findByUsername("student_two"))
+                    .thenReturn(Optional.of(otherUser));
 
             StepVerifier.create(workspaceService.deleteWorkspace(10L, "student_two"))
                     .expectError(AccessDeniedException.class)
