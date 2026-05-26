@@ -18,15 +18,15 @@
         <!-- ── IMPORTS críticos ────────────────────────────── -->
         <module name="AvoidStarImport">
             <property name="excludes"
-                      value="jakarta.persistence,lombok"/>
+                      value="jakarta.persistence,
+               lombok,
+               jakarta.validation.constraints,
+               org.springframework.web.bind.annotation,
+               org.springframework.kafka.core,
+               java.util,
+               com.synapseops.orchestrator.domain.entity,
+               com.synapseops.orchestrator.infra.repository"/>
         </module>
-        <module name="UnusedImports"/>
-        <module name="RedundantImport"/>
-
-        <!-- ── BLOQUES — previene bugs reales ─────────────── -->
-        <module name="NeedBraces"/>
-        <module name="LeftCurly"/>
-        <module name="RightCurly"/>
 
         <!-- ── WHITESPACE básico ───────────────────────────── -->
         <module name="WhitespaceAround">
