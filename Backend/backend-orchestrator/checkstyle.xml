@@ -1,0 +1,73 @@
+<?xml version="1.0"?>
+<!DOCTYPE module PUBLIC
+        "-//Checkstyle//DTD Checkstyle Configuration 1.3//EN"
+        "https://checkstyle.org/dtds/configuration_1_3.dtd">
+
+<!--
+    SynapseOps — Checkstyle CI
+    Sprint 1-2: solo errores críticos de estructura
+    Sprint 3: activar Javadoc y LineLength para release
+-->
+<module name="Checker">
+
+    <property name="severity" value="error"/>
+    <property name="fileExtensions" value="java"/>
+
+    <module name="TreeWalker">
+
+        <!-- ── IMPORTS críticos ────────────────────────────── -->
+        <module name="AvoidStarImport">
+            <property name="excludes"
+                      value="jakarta.persistence,lombok"/>
+        </module>
+        <module name="UnusedImports"/>
+        <module name="RedundantImport"/>
+
+        <!-- ── BLOQUES — previene bugs reales ─────────────── -->
+        <module name="NeedBraces"/>
+        <module name="LeftCurly"/>
+        <module name="RightCurly"/>
+
+        <!-- ── WHITESPACE básico ───────────────────────────── -->
+        <module name="WhitespaceAround">
+            <property name="allowEmptyTypes" value="true"/>
+            <property name="allowEmptyConstructors" value="true"/>
+            <property name="allowEmptyMethods" value="true"/>
+        </module>
+        <module name="NoWhitespaceBefore"/>
+        <module name="NoWhitespaceAfter"/>
+
+        <!-- ── NAMING ──────────────────────────────────────── -->
+        <module name="TypeName"/>
+        <module name="ConstantName"/>
+        <module name="LocalVariableName"/>
+        <module name="MemberName"/>
+        <module name="MethodName">
+            <!-- Permite nombres JPA como findByUser_IdUser -->
+            <property name="format"
+                      value="^[a-z][a-zA-Z0-9_]*$"/>
+        </module>
+        <module name="PackageName"/>
+
+        <!-- ── CÓDIGO DUPLICADO ────────────────────────────── -->
+        <module name="MultipleVariableDeclarations"/>
+
+        <!-- ── DESACTIVADOS HASTA SPRINT 3 (release) ──────── -->
+        <!--
+        <module name="JavadocMethod"/>
+        <module name="JavadocVariable"/>
+        <module name="JavadocPackage"/>
+        <module name="FinalParameters"/>
+        <module name="MagicNumber"/>
+        <module name="DesignForExtension"/>
+        <module name="LineLength"/>
+        <module name="MethodLength"/>
+        -->
+
+    </module>
+
+    <module name="NewlineAtEndOfFile">
+        <property name="severity" value="warning"/>
+    </module>
+
+</module>
