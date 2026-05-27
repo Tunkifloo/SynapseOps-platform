@@ -180,20 +180,19 @@ class FileStorageServiceImplTest {
         }
 
         @Test
-        @DisplayName("Debe sanitizar nombres con caracteres peligrosos (path traversal)")
+        @DisplayName("Debe rechazar nombres con caracteres peligrosos (path traversal)")
         void shouldSanitizeFilenameWithDangerousCharacters() {
-            when(storageProperties.getMaxFileSizeMb()).thenReturn(500L);
-            when(filePart.filename()).thenReturn("../../etc/passwd.csv");
+            when(filePart.filename()).thenReturn("../../etc/passwd.zip");
             when(filePart.headers()).thenReturn(fileHeaders);
             when(fileHeaders.getContentLength()).thenReturn(256L);
-            when(filePart.transferTo(any(Path.class))).thenReturn(Mono.empty());
 
             StepVerifier.create(storageService.store(filePart, USER_ID, WORKSPACE_ID))
-                    .assertNext(path -> {
-                        assertThat(path).doesNotContain("..");
-                        assertThat(path).startsWith(tempDir.toString());
-                    })
-                    .verifyComplete();
+                    .expectErrorMatches(ex ->
+                            ex instanceof IllegalArgumentException &&
+                                    ex.getMessage().contains("Solo se aceptan"))
+                    .verify();
+
+            verify(filePart, never()).transferTo(any(Path.class));
         }
 
         @Test

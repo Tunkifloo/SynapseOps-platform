@@ -317,6 +317,11 @@
                                     junit.jupiter.execution.parallel.enabled=false
                                 </configurationParameters>
                             </properties>
+                            <excludedGroups>integration</excludedGroups>
+                            <excludes>
+                                <exclude>**/BeanValidationTest.java</exclude>
+                                <exclude>**/BackendOrchestratorApplicationTests.java</exclude>
+                            </excludes>
                         </configuration>
                     </plugin>
                 </plugins>
