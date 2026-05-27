@@ -5,9 +5,11 @@ import com.synapseops.orchestrator.domain.dto.response.PipelineResponse;
 import com.synapseops.orchestrator.domain.entity.*;
 import com.synapseops.orchestrator.infra.exception.ResourceNotFoundException;
 import com.synapseops.orchestrator.infra.repository.PipelineRepository;
+import com.synapseops.orchestrator.infra.repository.UserRepository;
 import com.synapseops.orchestrator.infra.repository.WorkspaceRepository;
 import com.synapseops.orchestrator.mapper.PipelineMapper;
 import com.synapseops.orchestrator.service.impl.PipelineServiceImpl;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -22,6 +24,8 @@ import reactor.test.StepVerifier;
 import java.util.List;
 import java.util.Optional;
 
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
@@ -35,11 +39,16 @@ class PipelineServiceImplTest {
     WorkspaceRepository workspaceRepository;
     @Mock
     PipelineMapper pipelineMapper;
+    @Mock
+    UserRepository userRepository;
+    @Mock
+    JdbcTemplate jdbcTemplate;
 
     @InjectMocks
     PipelineServiceImpl pipelineService;
 
     private User owner;
+    private User otherUser;
     private Workspace workspace;
     private Pipeline pipeline;
     private PipelineResponse pipelineResponse;
@@ -50,6 +59,11 @@ class PipelineServiceImplTest {
         owner.setIdUser(1L);
         owner.setUsername("student_one");
         owner.setEnabled(true);
+
+        otherUser = new Admin();
+        otherUser.setIdUser(2L);
+        otherUser.setUsername("student_two");
+        otherUser.setEnabled(true);
 
         workspace = new Workspace();
         workspace.setIdWorkspace(10L);
@@ -76,6 +90,7 @@ class PipelineServiceImplTest {
         @DisplayName("Debe retornar pipelines del workspace cuando el usuario es propietario")
         void shouldReturnPipelinesForOwner() {
             when(workspaceRepository.findById(10L)).thenReturn(Optional.of(workspace));
+            when(userRepository.findByUsername("student_one")).thenReturn(Optional.of(owner));
             when(pipelineRepository.findByWorkspace_IdWorkspace(10L))
                     .thenReturn(List.of(pipeline));
             when(pipelineMapper.toResponse(pipeline)).thenReturn(pipelineResponse);
@@ -90,6 +105,7 @@ class PipelineServiceImplTest {
         @DisplayName("Debe emitir AccessDeniedException si el usuario no es propietario")
         void shouldEmitErrorWhenNotOwner() {
             when(workspaceRepository.findById(10L)).thenReturn(Optional.of(workspace));
+            when(userRepository.findByUsername("student_two")).thenReturn(Optional.of(otherUser));
 
             StepVerifier.create(
                             pipelineService.getPipelinesByWorkspace(10L, "student_two"))
@@ -108,6 +124,7 @@ class PipelineServiceImplTest {
         @DisplayName("Debe retornar pipeline cuando pertenece al workspace y el usuario es propietario")
         void shouldReturnPipelineForOwnerAndCorrectWorkspace() {
             when(pipelineRepository.findById(100L)).thenReturn(Optional.of(pipeline));
+            when(userRepository.findByUsername("student_one")).thenReturn(Optional.of(owner));
             when(pipelineMapper.toResponse(pipeline)).thenReturn(pipelineResponse);
 
             StepVerifier.create(
@@ -120,6 +137,7 @@ class PipelineServiceImplTest {
         @DisplayName("Debe emitir AccessDeniedException si el pipeline no pertenece al workspace")
         void shouldEmitErrorWhenPipelineNotInWorkspace() {
             when(pipelineRepository.findById(100L)).thenReturn(Optional.of(pipeline));
+            when(userRepository.findByUsername("student_one")).thenReturn(Optional.of(owner));
 
             StepVerifier.create(
                             pipelineService.getPipelineById(100L, 99L, "student_one"))
@@ -131,6 +149,7 @@ class PipelineServiceImplTest {
         @DisplayName("Debe emitir AccessDeniedException si el usuario no es propietario")
         void shouldEmitErrorWhenNotOwner() {
             when(pipelineRepository.findById(100L)).thenReturn(Optional.of(pipeline));
+            when(userRepository.findByUsername("student_two")).thenReturn(Optional.of(otherUser));
 
             StepVerifier.create(
                             pipelineService.getPipelineById(100L, 10L, "student_two"))
@@ -149,6 +168,7 @@ class PipelineServiceImplTest {
             PipelineRequest request = new PipelineRequest("Nuevo Pipeline");
 
             when(workspaceRepository.findById(10L)).thenReturn(Optional.of(workspace));
+            when(userRepository.findByUsername("student_one")).thenReturn(Optional.of(owner));
             when(pipelineRepository.save(any(Pipeline.class))).thenReturn(pipeline);
             when(pipelineMapper.toResponse(pipeline)).thenReturn(pipelineResponse);
 
@@ -167,6 +187,7 @@ class PipelineServiceImplTest {
         void shouldEmitErrorWhenNotOwner() {
             PipelineRequest request = new PipelineRequest("Nuevo Pipeline");
             when(workspaceRepository.findById(10L)).thenReturn(Optional.of(workspace));
+            when(userRepository.findByUsername("student_two")).thenReturn(Optional.of(otherUser));
 
             StepVerifier.create(
                             pipelineService.createPipeline(10L, request, "student_two"))
@@ -239,7 +260,7 @@ class PipelineServiceImplTest {
                                 pipelineService.deletePipeline(100L, 10L, "student_one"))
                         .verifyComplete();
 
-                verify(pipelineRepository).delete(pipeline);
+                verify(pipelineRepository, never()).delete(any());
             }
 
             @Test

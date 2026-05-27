@@ -51,14 +51,14 @@ class FileStorageServiceImplTest {
         @DisplayName("Debe almacenar un archivo CSV válido y retornar la ruta absoluta")
         void shouldStoreCsvFileSuccessfully() {
             when(storageProperties.getMaxFileSizeMb()).thenReturn(500L);
-            when(filePart.filename()).thenReturn("dataset.csv");
+            when(filePart.filename()).thenReturn("dataset.zip");
             when(filePart.headers()).thenReturn(fileHeaders);
             when(fileHeaders.getContentLength()).thenReturn(1024L);
             when(filePart.transferTo(any(Path.class))).thenReturn(Mono.empty());
 
             StepVerifier.create(storageService.store(filePart, USER_ID, WORKSPACE_ID))
                     .assertNext(path -> {
-                        assertThat(path).contains("dataset.csv");
+                        assertThat(path).contains("dataset.zip");
                         assertThat(path).contains(USER_ID.toString());
                         assertThat(path).contains(WORKSPACE_ID.toString());
                         assertThat(path).contains("datasets");
@@ -104,7 +104,7 @@ class FileStorageServiceImplTest {
             StepVerifier.create(storageService.store(filePart, USER_ID, WORKSPACE_ID))
                     .expectErrorMatches(ex ->
                             ex instanceof IllegalArgumentException &&
-                                    ex.getMessage().contains("Tipo de archivo no permitido"))
+                                    ex.getMessage().contains("Solo se aceptan"))
                     .verify();
 
             verify(filePart, never()).transferTo(any(Path.class));
@@ -118,7 +118,7 @@ class FileStorageServiceImplTest {
             StepVerifier.create(storageService.store(filePart, USER_ID, WORKSPACE_ID))
                     .expectErrorMatches(ex ->
                             ex instanceof IllegalArgumentException &&
-                                    ex.getMessage().contains("Tipo de archivo no permitido"))
+                                    ex.getMessage().contains("Solo se aceptan"))
                     .verify();
 
             verify(filePart, never()).transferTo(any(Path.class));
@@ -130,7 +130,7 @@ class FileStorageServiceImplTest {
             long maxBytes = 500L * 1024 * 1024;
 
             when(storageProperties.getMaxFileSizeMb()).thenReturn(500L);
-            when(filePart.filename()).thenReturn("dataset.csv");
+            when(filePart.filename()).thenReturn("dataset.zip");
             when(filePart.headers()).thenReturn(fileHeaders);
             when(fileHeaders.getContentLength()).thenReturn(maxBytes + 1);
 
@@ -149,7 +149,7 @@ class FileStorageServiceImplTest {
             long exactLimit = 500L * 1024 * 1024;
 
             when(storageProperties.getMaxFileSizeMb()).thenReturn(500L);
-            when(filePart.filename()).thenReturn("dataset.csv");
+            when(filePart.filename()).thenReturn("dataset.zip");
             when(filePart.headers()).thenReturn(fileHeaders);
             when(fileHeaders.getContentLength()).thenReturn(exactLimit);
             when(filePart.transferTo(any(Path.class))).thenReturn(Mono.empty());
@@ -163,7 +163,7 @@ class FileStorageServiceImplTest {
         @DisplayName("Debe crear los directorios intermedios si no existen")
         void shouldCreateDirectoriesIfNotExist() {
             when(storageProperties.getMaxFileSizeMb()).thenReturn(500L);
-            when(filePart.filename()).thenReturn("data.csv");
+            when(filePart.filename()).thenReturn("data.zip");
             when(filePart.headers()).thenReturn(fileHeaders);
             when(fileHeaders.getContentLength()).thenReturn(512L);
             when(filePart.transferTo(any(Path.class))).thenReturn(Mono.empty());
@@ -180,10 +180,10 @@ class FileStorageServiceImplTest {
         }
 
         @Test
-        @DisplayName("Debe sanitizar nombres con caracteres peligrosos (path traversal)")
+        @DisplayName("Debe rechazar nombres con caracteres peligrosos (path traversal)")
         void shouldSanitizeFilenameWithDangerousCharacters() {
             when(storageProperties.getMaxFileSizeMb()).thenReturn(500L);
-            when(filePart.filename()).thenReturn("../../etc/passwd.csv");
+            when(filePart.filename()).thenReturn("../../etc/passwd.zip");
             when(filePart.headers()).thenReturn(fileHeaders);
             when(fileHeaders.getContentLength()).thenReturn(256L);
             when(filePart.transferTo(any(Path.class))).thenReturn(Mono.empty());
@@ -200,7 +200,7 @@ class FileStorageServiceImplTest {
         @DisplayName("No debe validar tamaño si Content-Length es -1 (desconocido)")
         void shouldSkipSizeValidationWhenContentLengthUnknown() {
             when(storageProperties.getMaxFileSizeMb()).thenReturn(500L);
-            when(filePart.filename()).thenReturn("dataset.csv");
+            when(filePart.filename()).thenReturn("dataset.zip");
             when(filePart.headers()).thenReturn(fileHeaders);
             when(fileHeaders.getContentLength()).thenReturn(-1L);
             when(filePart.transferTo(any(Path.class))).thenReturn(Mono.empty());
@@ -223,11 +223,11 @@ class FileStorageServiceImplTest {
                     .resolve(WORKSPACE_ID.toString())
                     .resolve("datasets");
             Files.createDirectories(dir);
-            Files.createFile(dir.resolve("dataset.csv"));
+            Files.createFile(dir.resolve("dataset.zip"));
 
-            StepVerifier.create(storageService.getPath("dataset.csv", USER_ID, WORKSPACE_ID))
+            StepVerifier.create(storageService.getPath("dataset.zip", USER_ID, WORKSPACE_ID))
                     .assertNext(path -> {
-                        assertThat(path).contains("dataset.csv");
+                        assertThat(path).contains("dataset.zip");
                         assertThat(path).contains("datasets");
                     })
                     .verifyComplete();
@@ -258,12 +258,12 @@ class FileStorageServiceImplTest {
                     .resolve(WORKSPACE_ID.toString())
                     .resolve("datasets");
             Files.createDirectories(dir);
-            Path file = dir.resolve("dataset.csv");
+            Path file = dir.resolve("dataset.zip");
             Files.createFile(file);
 
             assertThat(Files.exists(file)).isTrue();
 
-            StepVerifier.create(storageService.delete("dataset.csv", USER_ID, WORKSPACE_ID))
+            StepVerifier.create(storageService.delete("dataset.zip", USER_ID, WORKSPACE_ID))
                     .verifyComplete();
 
             assertThat(Files.exists(file)).isFalse();
@@ -287,13 +287,13 @@ class FileStorageServiceImplTest {
                     .resolve(WORKSPACE_ID.toString())
                     .resolve("datasets");
             Files.createDirectories(dir1);
-            Files.createFile(dir1.resolve("dataset.csv"));
+            Files.createFile(dir1.resolve("dataset.zip"));
 
             StepVerifier.create(
-                            storageService.delete("dataset.csv", otherUserId, WORKSPACE_ID))
+                            storageService.delete("dataset.zip", otherUserId, WORKSPACE_ID))
                     .verifyComplete();
 
-            assertThat(Files.exists(dir1.resolve("dataset.csv"))).isTrue();
+            assertThat(Files.exists(dir1.resolve("dataset.zip"))).isTrue();
         }
     }
 }

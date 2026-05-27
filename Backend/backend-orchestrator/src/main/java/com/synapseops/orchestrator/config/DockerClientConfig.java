@@ -21,6 +21,7 @@ public class DockerClientConfig {
                         ? "npipe:////./pipe/docker_engine"
                         : "unix:///var/run/docker.sock")
                 .withDockerTlsVerify(false)
+                .withApiVersion("1.47")
                 .build();
 
         ApacheDockerHttpClient httpClient = new ApacheDockerHttpClient.Builder()

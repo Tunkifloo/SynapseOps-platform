@@ -33,7 +33,9 @@ public abstract class AbstractIntegrationTest {
             new PostgreSQLContainer<>(DockerImageName.parse("postgres:17-alpine"))
                     .withDatabaseName("orchestrator")
                     .withUsername("postgres")
-                    .withPassword("test_password");
+                    .withPassword("test_password")
+                    .withReuse(true);
+
 
     static {
         POSTGRES.start();

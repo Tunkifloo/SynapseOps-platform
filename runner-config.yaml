@@ -1,0 +1,9 @@
+runner:
+  name: synapseops-runner
+  labels:
+    - ubuntu-latest:docker://node:20-bullseye
+
+container:
+  network: cicd-network        
+  privileged: false
+  options: --add-host=gitea:192.168.100.10

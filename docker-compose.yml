@@ -1,5 +1,5 @@
 # SynapseOps — Docker Compose Principal
-# EN-013 · Sprint 1 · Distribución en laboratorio UPAO
+# Distribución en laboratorio UPAO
 
 # Uso:
 #   docker compose pull && docker compose up -d      ← laboratorio

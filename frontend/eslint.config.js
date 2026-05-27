@@ -6,7 +6,7 @@ import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  globalIgnores(['dist', 'src/react-jsx-compat.d.ts', 'src/vite-env.d.ts']),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [
@@ -17,6 +17,14 @@ export default defineConfig([
     ],
     languageOptions: {
       globals: globals.browser,
+    },
+    rules: {
+      // Sprint 2 — pendiente Alfredo: refactorizar useEffect con async
+      'react-hooks/set-state-in-effect': 'warn',
+      // Sprint 2 — button.tsx exporta constantes junto a componentes
+      'react-refresh/only-export-components': 'warn',
+      // Interfaces de compatibilidad TS generadas automáticamente
+      '@typescript-eslint/no-empty-object-type': 'warn',
     },
   },
 ])

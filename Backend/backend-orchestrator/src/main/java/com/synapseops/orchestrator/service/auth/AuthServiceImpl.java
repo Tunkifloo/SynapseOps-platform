@@ -44,21 +44,21 @@ public class AuthServiceImpl implements AuthService {
     public Mono<TokenResponse> login(LoginRequest request) {
         return Mono.fromCallable(() ->
                         userRepository.findByUsername(request.username())
-                                .orElse(null)
                 )
                 .subscribeOn(Schedulers.boundedElastic())
-                .flatMap(user -> {
-                    if (user == null) {
+                .switchIfEmpty(Mono.error(new BadCredentialsException("Credenciales inválidas.")))
+                .flatMap(optUser -> {
+                    if (optUser.isEmpty()) {
                         incrementFailedAttempts(request.username());
-                        return Mono.error(new IllegalArgumentException(
-                                "El usuario ingresado no existe en el sistema."));
+                        return Mono.error(new BadCredentialsException("Credenciales inválidas."));
                     }
+
+                    User user = optUser.get();
 
                     if (isAccountLocked(request.username())) {
                         return Mono.error(new AccountLockedException(
                                 "Cuenta bloqueada por múltiples intentos fallidos. Restablezca su contraseña."));
                     }
-
                     if (!user.isEnabled()) {
                         return Mono.error(new DisabledException(
                                 "Su cuenta ha sido deshabilitada. Contacte al administrador."));
@@ -69,7 +69,7 @@ public class AuthServiceImpl implements AuthService {
                                 - failedAttempts.get(request.username()).get();
                         if (remaining <= 0) {
                             return Mono.error(new AccountLockedException(
-                                    "Cuenta bloqueada por múltiples intentos fallidos. Restablezca su contraseña."));
+                                    "Cuenta bloqueada por múltiples intentos fallidos."));
                         }
                         return Mono.error(new BadCredentialsException(
                                 "La contraseña ingresada es incorrecta."));
