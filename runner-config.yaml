@@ -6,6 +6,4 @@ runner:
 container:
   network: cicd-network
   privileged: false
-  options: >-
-    --add-host=gitea:192.168.100.10
-    -v /var/run/docker.sock:/var/run/docker.sock
+  options: --add-host=gitea:192.168.100.10
