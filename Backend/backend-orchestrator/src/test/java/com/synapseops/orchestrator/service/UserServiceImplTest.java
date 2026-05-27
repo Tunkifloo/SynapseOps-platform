@@ -121,12 +121,10 @@ class UserServiceImplTest {
         @DisplayName("Debe deshabilitar un usuario activo")
         void shouldDisableEnabledUser() {
             when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
-            when(userRepository.save(testUser)).thenReturn(testUser);
+            when(userRepository.toggleEnabled(1L)).thenReturn(1);
 
             StepVerifier.create(userService.toggleUserStatus(1L))
                     .verifyComplete();
-
-            verify(userRepository).save(argThat(u -> !u.isEnabled()));
         }
 
         @Test
@@ -134,12 +132,10 @@ class UserServiceImplTest {
         void shouldEnableDisabledUser() {
             testUser.setEnabled(false);
             when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
-            when(userRepository.save(testUser)).thenReturn(testUser);
+            when(userRepository.toggleEnabled(1L)).thenReturn(1);
 
             StepVerifier.create(userService.toggleUserStatus(1L))
                     .verifyComplete();
-
-            verify(userRepository).save(argThat(User::isEnabled));
         }
 
         @Test

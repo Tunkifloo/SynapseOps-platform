@@ -32,6 +32,12 @@ build/
 ### VS Code ###
 .vscode/
 
+# Python
+ml-engine/.venv/
+ml-engine/__pycache__/
+ml-engine/*.pyc
+ml-engine/.env
+
 # Environment variables
 .env
 /.env
