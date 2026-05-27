@@ -4,7 +4,7 @@ run-name: "${{ gitea.actor }} → ${{ gitea.ref_name }} @ ${{ gitea.sha }}"
 
 on:
   push:
-    branches: [ main, develop, feature/* ]
+    branches: [ main, develop ]
   pull_request:
     branches: [ main ]
 
