@@ -29,7 +29,8 @@ services:
       - "3030:3030"
       - "222:22"
     networks:
-      - cicd-network
+      cicd-network:
+        ipv4_address: 192.168.100.10
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:3030/api/healthz"]
       interval: 10s
@@ -50,9 +51,11 @@ services:
       - GITEA_RUNNER_REGISTRATION_TOKEN=${RUNNER_TOKEN}
       - GITEA_RUNNER_NAME=synapseops-runner
       - GITEA_RUNNER_LABELS=ubuntu-latest:docker://node:20-bullseye
+      - CONFIG_FILE=/data/config.yaml 
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock   
       - runner_data:/data
+      - ./runner-config.yaml:/data/config.yaml
     networks:
       - cicd-network
 
@@ -64,3 +67,6 @@ networks:
   cicd-network:
     driver: bridge
     name: cicd-network
+    ipam:
+      config:
+        - subnet: 192.168.100.0/24
