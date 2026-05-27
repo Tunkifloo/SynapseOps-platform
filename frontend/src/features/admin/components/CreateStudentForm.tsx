@@ -16,7 +16,7 @@ interface CreateStudentFormProps {
 }
 
 function FieldLabel({ children }: { children: string }) {
-  return <label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">{children}</label>
+  return <label className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400 sm:text-[11px] sm:tracking-[0.14em]">{children}</label>
 }
 
 function FormField({ children }: { children: ReactNode }) {
@@ -36,7 +36,7 @@ export function CreateStudentForm({
   const [showPassword, setShowPassword] = useState(false)
 
   return (
-    <form className="space-y-5" onSubmit={(event) => void onSubmit(event)}>
+    <form className="space-y-4 sm:space-y-5" onSubmit={(event) => void onSubmit(event)}>
       <div className="flex flex-wrap items-center gap-3">
         <h2 className="text-lg font-semibold text-slate-50">
           {isEditing ? 'Editar estudiante' : 'Crear estudiante'}
@@ -54,7 +54,7 @@ export function CreateStudentForm({
         </p>
       )}
 
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-4 xl:grid-cols-2">
         <FormField>
           <FieldLabel>Nombre de usuario</FieldLabel>
           <Input
@@ -120,7 +120,7 @@ export function CreateStudentForm({
           <Input value={form.career} onChange={onChange('career')} placeholder="Ing. de Sistemas" className={inputClassName} />
         </FormField>
 
-        <div className="md:col-span-2">
+        <div className="xl:col-span-2">
           <FormField>
             <FieldLabel>Correo electrónico</FieldLabel>
             <Input type="email" value={form.email} onChange={onChange('email')} required className={inputClassName} />
@@ -128,18 +128,18 @@ export function CreateStudentForm({
         </div>
       </div>
 
-      <div className="flex justify-end gap-3 border-t border-slate-800/80 pt-4">
+      <div className="flex flex-col-reverse gap-3 border-t border-slate-800/80 pt-4 sm:flex-row sm:justify-end">
         {isEditing && (
           <Button
             type="button"
             variant="outline"
             onClick={onCancel}
-            className="border-slate-700/80 bg-slate-900/60 text-slate-200 hover:bg-slate-800"
+            className="w-full border-slate-700/80 bg-slate-900/60 text-slate-200 hover:bg-slate-800 sm:w-auto"
           >
             Cancelar
           </Button>
         )}
-        <Button type="submit" disabled={isSubmitting} className="bg-blue-600 text-white hover:bg-blue-500">
+        <Button type="submit" disabled={isSubmitting} className="w-full bg-blue-600 text-white hover:bg-blue-500 sm:w-auto">
           {isSubmitting
             ? isEditing ? 'Guardando...' : 'Creando...'
             : isEditing ? 'Guardar cambios' : 'Crear estudiante'}

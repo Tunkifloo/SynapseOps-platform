@@ -27,16 +27,16 @@ interface StatCardProps {
 
 function StatCard({ title, value, icon: Icon }: StatCardProps) {
   return (
-    <Card className="rounded-2xl border border-slate-800/90 bg-slate-900/55 py-0 shadow-sm shadow-black/20">
-      <CardContent className="flex items-center gap-4 p-4 xl:p-5">
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-blue-400/15 bg-blue-500/10 text-blue-400 xl:h-12 xl:w-12">
-          <Icon className="h-5 w-5" />
+    <Card className="min-w-0 rounded-2xl border border-slate-800/90 bg-slate-900/55 py-0 shadow-sm shadow-black/20">
+      <CardContent className="flex min-w-0 items-center gap-3 p-4 sm:gap-4 xl:p-5">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-blue-400/15 bg-blue-500/10 text-blue-400 sm:h-11 sm:w-11 xl:h-12 xl:w-12">
+          <Icon className="h-4 w-4 sm:h-5 sm:w-5" />
         </div>
         <div className="min-w-0">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500 sm:text-[11px]">
             {title}
           </p>
-          <div className="mt-1 truncate text-xl font-semibold tracking-tight text-slate-50 xl:text-2xl">
+          <div className="mt-1 truncate text-lg font-semibold tracking-tight text-slate-50 sm:text-xl xl:text-2xl">
             {value}
           </div>
         </div>
@@ -251,9 +251,9 @@ export function AdminUsersPage({ token, searchQuery, onAuthError }: AdminUsersPa
   }
 
   return (
-    <div className="space-y-5">
+    <div className="w-full space-y-4 sm:space-y-5">
       <section>
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-50 xl:text-3xl">
+        <h1 className="text-xl font-semibold tracking-tight text-slate-50 sm:text-2xl xl:text-3xl">
           Gestión de usuarios administrativos
         </h1>
         <p className="mt-1.5 max-w-4xl text-sm leading-6 text-slate-400 xl:text-base">
@@ -261,7 +261,7 @@ export function AdminUsersPage({ token, searchQuery, onAuthError }: AdminUsersPa
         </p>
       </section>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2 sm:gap-4 xl:grid-cols-3">
         <StatCard title="Estudiantes activos" value={isLoading ? '...' : String(activeUsers.length)} icon={UserCheck} />
         <StatCard title="Cuentas deshabilitadas" value={isLoading ? '...' : String(disabledUsers.length)} icon={UserX} />
         <StatCard title="Alcance admin" value="Estudiantes" icon={Monitor} />
@@ -278,9 +278,9 @@ export function AdminUsersPage({ token, searchQuery, onAuthError }: AdminUsersPa
         </div>
       )}
 
-      <div className="grid items-start gap-4 2xl:grid-cols-[0.95fr_1.9fr]">
+      <div className="grid min-w-0 items-start gap-4 2xl:grid-cols-[minmax(360px,0.9fr)_minmax(0,1.9fr)]">
         <Card className="rounded-2xl border border-slate-800/90 bg-slate-900/55 py-0 shadow-sm shadow-black/20">
-          <CardContent className="p-5">
+          <CardContent className="p-4 sm:p-5">
             {isEditing ? (
               <EditStudentForm
                 form={form}
@@ -303,7 +303,7 @@ export function AdminUsersPage({ token, searchQuery, onAuthError }: AdminUsersPa
 
         <div className="space-y-4">
           <Card className="rounded-2xl border border-slate-800/90 bg-slate-900/55 py-0 shadow-sm shadow-black/20">
-            <CardContent className="p-5">
+            <CardContent className="p-4 sm:p-5">
               <UsersTable
                 title="Cuentas activas de estudiantes"
                 users={filteredActiveUsers}
@@ -320,7 +320,7 @@ export function AdminUsersPage({ token, searchQuery, onAuthError }: AdminUsersPa
           </Card>
 
           <Card className="rounded-2xl border border-slate-800/90 bg-slate-900/55 py-0 shadow-sm shadow-black/20">
-            <CardContent className="p-5">
+            <CardContent className="p-4 sm:p-5">
               <UsersTable
                 title="Cuentas de estudiantes deshabilitadas"
                 users={filteredDisabledUsers}
