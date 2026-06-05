@@ -37,6 +37,15 @@ public class PipelineResultProcessor {
                 return;
             }
 
+            // Idempotencia: Kafka es at-least-once. Si la ejecución ya está en estado
+            // terminal, este resultado es una redelivery → se ignora sin reprocesar.
+            if (execution.getStatus() == ExecutionStatus.COMPLETED
+                    || execution.getStatus() == ExecutionStatus.FAILED) {
+                log.warn("Resultado ignorado (idempotencia) — executionId={} ya en estado terminal {}",
+                        executionId, execution.getStatus());
+                return;
+            }
+
             Pipeline pipeline = execution.getPipeline();
 
             if ("SUCCESS".equals(status)) {
@@ -50,15 +59,22 @@ public class PipelineResultProcessor {
                 executionRepository.save(execution);
                 log.info("Ejecución COMPLETADA — id={} runId={}", executionId, runId);
 
-                MLArtifact artifact = new MLArtifact();
-                artifact.setRunId(runId);
-                artifact.setArtifactPath(artifactPath);
-                artifact.setModelVersion(modelVersion);
-                artifact.setHyperparameters(hyperparamsJson);
-                artifact.setMetrics(metricsJson);
-                artifact.setExecution(execution);
-                artifactRepository.save(artifact);
-                log.info("MLArtifact persistido — runId={} version={}", runId, modelVersion);
+                // Segunda red de seguridad: el run_id es único en BD. Si ya existe un
+                // artefacto para este run (redelivery con execution aún no terminal),
+                // no se inserta un duplicado que violaría la restricción unique.
+                if (artifactRepository.findByRunId(runId).isPresent()) {
+                    log.warn("MLArtifact duplicado ignorado — runId={} ya persistido", runId);
+                } else {
+                    MLArtifact artifact = new MLArtifact();
+                    artifact.setRunId(runId);
+                    artifact.setArtifactPath(artifactPath);
+                    artifact.setModelVersion(modelVersion);
+                    artifact.setHyperparameters(hyperparamsJson);
+                    artifact.setMetrics(metricsJson);
+                    artifact.setExecution(execution);
+                    artifactRepository.save(artifact);
+                    log.info("MLArtifact persistido — runId={} version={}", runId, modelVersion);
+                }
 
                 pipeline.setStatus(PipelineStatus.COMPLETED);
                 pipelineRepository.save(pipeline);

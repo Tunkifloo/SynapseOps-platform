@@ -15,6 +15,9 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.config.TopicBuilder;
 import org.springframework.kafka.core.*;
+import org.springframework.kafka.listener.DeadLetterPublishingRecoverer;
+import org.springframework.kafka.listener.DefaultErrorHandler;
+import org.springframework.util.backoff.FixedBackOff;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -35,6 +38,14 @@ public class KafkaConfig {
     @Bean
     public org.apache.kafka.clients.admin.NewTopic pipelineResultsTopic() {
         return TopicBuilder.name("mlops.pipeline.results")
+                .partitions(1).replicas(1).build();
+    }
+
+    @Bean
+    public org.apache.kafka.clients.admin.NewTopic pipelineResultsDltTopic() {
+        // Dead Letter Topic: mensajes de resultado que fallan tras los reintentos
+        // aterrizan aquí en vez de perderse o bloquear la partición (poison-pill).
+        return TopicBuilder.name("mlops.pipeline.results.DLT")
                 .partitions(1).replicas(1).build();
     }
 
@@ -73,12 +84,35 @@ public class KafkaConfig {
         return new DefaultKafkaConsumerFactory<>(props);
     }
 
+    /**
+     * Publica a "<topic>.DLT" los registros que no se pudieron procesar.
+     * Reutiliza el KafkaTemplate existente (String/String).
+     */
     @Bean
-    public ConcurrentKafkaListenerContainerFactory<String, String> kafkaListenerContainerFactory() {
+    public DeadLetterPublishingRecoverer deadLetterRecoverer(KafkaTemplate<String, String> kafkaTemplate) {
+        return new DeadLetterPublishingRecoverer(kafkaTemplate);
+    }
+
+    /**
+     * Manejo de errores del consumidor: reintenta 3 veces con 2s de backoff y, si
+     * persiste el fallo, enruta el mensaje al DLT (evita poison-pill y pérdida silenciosa).
+     * Los errores de deserialización/validación no se reintentan (van directo al DLT).
+     */
+    @Bean
+    public DefaultErrorHandler kafkaErrorHandler(DeadLetterPublishingRecoverer recoverer) {
+        DefaultErrorHandler handler = new DefaultErrorHandler(recoverer, new FixedBackOff(2000L, 3L));
+        handler.addNotRetryableExceptions(IllegalArgumentException.class);
+        return handler;
+    }
+
+    @Bean
+    public ConcurrentKafkaListenerContainerFactory<String, String> kafkaListenerContainerFactory(
+            DefaultErrorHandler kafkaErrorHandler) {
         ConcurrentKafkaListenerContainerFactory<String, String> factory =
                 new ConcurrentKafkaListenerContainerFactory<>();
         factory.setConsumerFactory(consumerFactory());
         factory.getContainerProperties().setMissingTopicsFatal(false);
+        factory.setCommonErrorHandler(kafkaErrorHandler);
         return factory;
     }
 

@@ -134,8 +134,8 @@ public class DatasetController {
         String kerasDataset = body.get("kerasDataset");
 
         if (kerasDataset != null && !kerasDataset.isBlank()) {
-            List<String> supported = List.of(
-                    "mnist", "fashion_mnist", "cifar10", "cifar100");
+            // Solo datasets que el ml-engine carga de forma fiable sin TensorFlow.
+            List<String> supported = List.of("mnist", "fashion_mnist");
 
             if (!supported.contains(kerasDataset.toLowerCase())) {
                 return Mono.just(ResponseEntity.badRequest()
