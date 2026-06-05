@@ -4,6 +4,8 @@ import com.synapseops.orchestrator.domain.dto.request.ForgotPasswordRequest;
 import com.synapseops.orchestrator.domain.dto.request.LoginRequest;
 import com.synapseops.orchestrator.domain.dto.request.UserRegistrationRequest;
 import com.synapseops.orchestrator.domain.dto.response.TokenResponse;
+import com.synapseops.orchestrator.domain.dto.response.UserResponse;
+import com.synapseops.orchestrator.domain.entity.Collaborator;
 import com.synapseops.orchestrator.domain.entity.Role;
 import com.synapseops.orchestrator.domain.entity.User;
 import com.synapseops.orchestrator.infra.exception.AccountLockedException;
@@ -24,14 +26,21 @@ import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
 
 @Service
 @RequiredArgsConstructor
 public class AuthServiceImpl implements AuthService {
 
     private static final int MAX_FAILED_ATTEMPTS = 3;
-    private final ConcurrentHashMap<String, AtomicInteger> failedAttempts = new ConcurrentHashMap<>();
+    // Ventana de bloqueo: tras MAX intentos, la cuenta queda bloqueada este tiempo
+    // y luego se libera automáticamente (evita bloqueo permanente y fuga de memoria).
+    private static final long LOCK_WINDOW_MS = 15 * 60 * 1000L;
+    private final ConcurrentHashMap<String, LoginAttempts> failedAttempts = new ConcurrentHashMap<>();
+
+    private static final class LoginAttempts {
+        int count;
+        long windowStartMs;
+    }
 
     private final UserRepository userRepository;
     private final JwtService jwtService;
@@ -44,32 +53,33 @@ public class AuthServiceImpl implements AuthService {
     public Mono<TokenResponse> login(LoginRequest request) {
         return Mono.fromCallable(() ->
                         userRepository.findByUsername(request.username())
-                                .orElse(null)
                 )
                 .subscribeOn(Schedulers.boundedElastic())
-                .flatMap(user -> {
-                    if (user == null) {
-                        incrementFailedAttempts(request.username());
-                        return Mono.error(new IllegalArgumentException(
-                                "El usuario ingresado no existe en el sistema."));
+                .switchIfEmpty(Mono.error(new BadCredentialsException("Credenciales inválidas.")))
+                .flatMap(optUser -> {
+                    if (optUser.isEmpty()) {
+                        // No se contabiliza: evita poblar el mapa con usuarios inexistentes
+                        // (vector de fuga de memoria / DoS).
+                        return Mono.error(new BadCredentialsException("Credenciales inválidas."));
                     }
+
+                    User user = optUser.get();
 
                     if (isAccountLocked(request.username())) {
                         return Mono.error(new AccountLockedException(
                                 "Cuenta bloqueada por múltiples intentos fallidos. Restablezca su contraseña."));
                     }
-
                     if (!user.isEnabled()) {
                         return Mono.error(new DisabledException(
                                 "Su cuenta ha sido deshabilitada. Contacte al administrador."));
                     }
                     if (!passwordEncoder.matches(request.password(), user.getPassword())) {
                         incrementFailedAttempts(request.username());
-                        int remaining = MAX_FAILED_ATTEMPTS
-                                - failedAttempts.get(request.username()).get();
+                        LoginAttempts a = failedAttempts.get(request.username());
+                        int remaining = MAX_FAILED_ATTEMPTS - (a == null ? 0 : a.count);
                         if (remaining <= 0) {
                             return Mono.error(new AccountLockedException(
-                                    "Cuenta bloqueada por múltiples intentos fallidos. Restablezca su contraseña."));
+                                    "Cuenta bloqueada por múltiples intentos fallidos."));
                         }
                         return Mono.error(new BadCredentialsException(
                                 "La contraseña ingresada es incorrecta."));
@@ -81,15 +91,16 @@ public class AuthServiceImpl implements AuthService {
     }
 
     @Override
-    public Mono<TokenResponse> register(UserRegistrationRequest request) {
+    public Mono<UserResponse> register(UserRegistrationRequest request) {
         return Mono.fromCallable(() -> {
                     validateUniqueConstraints(request);
                     validateCollaboratorFields(request);
                     User user = userFactory.createUser(request.role());
                     userMapper.populateUserFromRequest(user, request,
                             passwordEncoder.encode(request.password()));
-                    userRepository.save(user);
-                    return new TokenResponse(jwtService.getToken(user));
+                    // Devuelve los datos del usuario creado (sin token): el colaborador
+                    // inicia sesión por su cuenta. El admin no recibe credenciales ajenas.
+                    return userMapper.toResponse(userRepository.save(user));
                 })
                 .subscribeOn(Schedulers.boundedElastic());
     }
@@ -106,6 +117,12 @@ public class AuthServiceImpl implements AuthService {
                         throw new IllegalArgumentException(
                                 "No se puede restablecer la contraseña de una cuenta deshabilitada.");
                     }
+
+                    // Verificación de identidad: el correo debe coincidir y, para
+                    // colaboradores, también el código de estudiante. Mensaje genérico
+                    // para no filtrar qué dato falló.
+                    verifyIdentity(user, request);
+
                     if (passwordEncoder.matches(request.newPassword(),
                             user.getPassword())) {
                         throw new IllegalArgumentException(
@@ -138,8 +155,15 @@ public class AuthServiceImpl implements AuthService {
     }
 
     private void incrementFailedAttempts(String username) {
-        failedAttempts.computeIfAbsent(username, k -> new AtomicInteger(0))
-                .incrementAndGet();
+        long now = System.currentTimeMillis();
+        failedAttempts.compute(username, (k, v) -> {
+            if (v == null || now - v.windowStartMs > LOCK_WINDOW_MS) {
+                v = new LoginAttempts();
+                v.windowStartMs = now;
+            }
+            v.count++;
+            return v;
+        });
     }
 
     private void clearFailedAttempts(String username) {
@@ -147,8 +171,31 @@ public class AuthServiceImpl implements AuthService {
     }
 
     private boolean isAccountLocked(String username) {
-        AtomicInteger attempts = failedAttempts.get(username);
-        return attempts != null && attempts.get() >= MAX_FAILED_ATTEMPTS;
+        LoginAttempts a = failedAttempts.get(username);
+        if (a == null) return false;
+        if (System.currentTimeMillis() - a.windowStartMs > LOCK_WINDOW_MS) {
+            failedAttempts.remove(username);   // evicción de ventana expirada
+            return false;
+        }
+        return a.count >= MAX_FAILED_ATTEMPTS;
+    }
+
+    private void verifyIdentity(User user, ForgotPasswordRequest request) {
+        boolean emailMatches = user.getEmail() != null
+                && user.getEmail().equalsIgnoreCase(request.email());
+        boolean identityOk = emailMatches;
+
+        if (user instanceof Collaborator collaborator) {
+            boolean codeMatches = request.studentCode() != null
+                    && !request.studentCode().isBlank()
+                    && request.studentCode().equals(collaborator.getStudentCode());
+            identityOk = emailMatches && codeMatches;
+        }
+
+        if (!identityOk) {
+            throw new IllegalArgumentException(
+                    "Los datos proporcionados no coinciden con la cuenta.");
+        }
     }
 
     private void validateUniqueConstraints(UserRegistrationRequest request) {

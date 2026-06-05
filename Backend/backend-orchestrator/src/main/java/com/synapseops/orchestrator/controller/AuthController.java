@@ -4,6 +4,7 @@ import com.synapseops.orchestrator.domain.dto.request.ForgotPasswordRequest;
 import com.synapseops.orchestrator.domain.dto.request.LoginRequest;
 import com.synapseops.orchestrator.domain.dto.request.UserRegistrationRequest;
 import com.synapseops.orchestrator.domain.dto.response.TokenResponse;
+import com.synapseops.orchestrator.domain.dto.response.UserResponse;
 import com.synapseops.orchestrator.service.auth.AuthService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -59,15 +60,16 @@ public class AuthController {
     @ApiResponses({
             @ApiResponse(responseCode = "201", description = "Usuario creado"),
             @ApiResponse(responseCode = "400", description = "Datos inválidos"),
-            @ApiResponse(responseCode = "403", description = "Solo ADMIN")
+            @ApiResponse(responseCode = "403", description = "Solo ADMIN"),
+            @ApiResponse(responseCode = "409", description = "Username o correo ya en uso")
     })
     @PostMapping("/register")
     @PreAuthorize("hasRole('ADMIN')")
     @SecurityRequirement(name = "bearerAuth")
-    public Mono<ResponseEntity<TokenResponse>> register(
+    public Mono<ResponseEntity<UserResponse>> register(
             @Valid @RequestBody UserRegistrationRequest request) {
         return authService.register(request)
-                .map(token -> ResponseEntity.status(HttpStatus.CREATED).body(token));
+                .map(user -> ResponseEntity.status(HttpStatus.CREATED).body(user));
     }
 
     @Operation(summary = "Cerrar sesión",

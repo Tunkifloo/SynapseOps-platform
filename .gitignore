@@ -32,6 +32,12 @@ build/
 ### VS Code ###
 .vscode/
 
+# Python
+ml-engine/.venv/
+ml-engine/__pycache__/
+ml-engine/*.pyc
+ml-engine/.env
+
 # Environment variables
 .env
 /.env
@@ -39,3 +45,13 @@ build/
 # Logs
 /logs
 /logs/backend-orchestrator.log
+
+# Agents
+/.agents
+/.claude
+/graphify-out
+CLAUDE.md
+/docs
+
+# Storage
+/storage-dev

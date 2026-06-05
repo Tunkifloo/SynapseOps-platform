@@ -4,6 +4,7 @@ CNN adaptativa al input_shape detectado por ingestion.
 """
 import logging
 from pathlib import Path
+from typing import Optional
 
 import numpy as np
 
@@ -28,6 +29,8 @@ class TensorFlowStrategy(TrainingStrategy):
         y_val:   np.ndarray,
         hyperparams: HyperParams,
         output_dir: str,
+        X_test: Optional[np.ndarray] = None,
+        y_test: Optional[np.ndarray] = None,
     ) -> TrainingResult:
         import tensorflow as tf
 
@@ -52,6 +55,14 @@ class TensorFlowStrategy(TrainingStrategy):
                 verbose=1,
             )
 
+        # Evaluación final sobre el split de test (si lo hay).
+        test_accuracy = test_loss = None
+        if X_test is not None and y_test is not None and len(X_test) > 0:
+            with tf.device(device):
+                tl, ta = model.evaluate(X_test, y_test, verbose=0)
+            test_loss, test_accuracy = float(tl), float(ta)
+            log.info("Evaluación en test — loss=%.4f acc=%.4f", test_loss, test_accuracy)
+
         artifact_path = str(Path(output_dir) / "model.keras")
         model.save(artifact_path)
         log.info("Modelo TF guardado: %s", artifact_path)
@@ -68,6 +79,8 @@ class TensorFlowStrategy(TrainingStrategy):
             artifact_path=artifact_path,
             final_accuracy=float(hist["accuracy"][-1]),
             final_loss=float(hist["loss"][-1]),
+            test_accuracy=test_accuracy,
+            test_loss=test_loss,
         )
 
     def _build_cnn(self, hp: HyperParams):

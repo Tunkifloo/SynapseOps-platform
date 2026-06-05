@@ -82,13 +82,22 @@ class PipelineExecutor:
             }
 
     def _run(self, job: PipelineJob) -> dict:
+        # ── Paso 0: Validar arquitectura (solo CNN soportada por ahora) ───────
+        if job.architecture.lower() != "cnn":
+            raise ValueError(
+                f"Arquitectura '{job.architecture}' no soportada. "
+                f"Actualmente solo está disponible 'cnn'.")
+
         # ── Paso 1: Cargar dataset (delegado a ingestion) ─────────────────────
-        X_train, y_train, X_val, y_val, input_shape, num_classes = \
-            load_dataset(job.dataset_path, job.workspace_id, job.execution_id)
+        bundle = load_dataset(job.dataset_path, job.workspace_id, job.execution_id)
+        X_train, y_train = bundle.X_train, bundle.y_train
+        X_val,   y_val   = bundle.X_val,   bundle.y_val
+        input_shape, num_classes = bundle.input_shape, bundle.num_classes
 
         # Actualizar num_classes con el valor real del dataset
         job.num_classes = num_classes
-        log.info("Dataset listo: shape=%s classes=%d", input_shape, num_classes)
+        log.info("Dataset listo: shape=%s classes=%d test=%s",
+                 input_shape, num_classes, bundle.X_test is not None)
 
         # ── Paso 2: Iniciar MLflow run ────────────────────────────────────────
         experiment_id = self._mlflow.get_or_create_experiment(
@@ -120,7 +129,8 @@ class PipelineExecutor:
         output_dir = self._prepare_output_dir(job)
         strategy   = self._select_strategy(job.framework)
         result: TrainingResult = strategy.train(
-            X_train, y_train, X_val, y_val, hp, output_dir)
+            X_train, y_train, X_val, y_val, hp, output_dir,
+            X_test=bundle.X_test, y_test=bundle.y_test)
 
         # ── Paso 4: Loguear métricas en MLflow ────────────────────────────────
         for step, (acc, loss) in enumerate(
@@ -134,6 +144,11 @@ class PipelineExecutor:
         ):
             self._mlflow.log_metric("val_accuracy", float(acc), step=step)
             self._mlflow.log_metric("val_loss",     float(loss), step=step)
+
+        # Métricas del split de test (evaluación final, si el dataset lo incluye).
+        if result.test_accuracy is not None:
+            self._mlflow.log_metric("test_accuracy", float(result.test_accuracy))
+            self._mlflow.log_metric("test_loss",     float(result.test_loss))
 
         # ── Paso 5: Registrar artefacto en MLflow ─────────────────────────────
         mlflow.log_artifact(result.artifact_path, artifact_path="model")
@@ -162,6 +177,8 @@ class PipelineExecutor:
             "metrics": {
                 "final_accuracy": result.final_accuracy,
                 "final_loss":     result.final_loss,
+                "test_accuracy":  result.test_accuracy,
+                "test_loss":      result.test_loss,
             },
         }
 

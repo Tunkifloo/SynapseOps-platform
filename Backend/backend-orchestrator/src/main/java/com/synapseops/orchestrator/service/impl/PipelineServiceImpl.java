@@ -59,7 +59,7 @@ public class PipelineServiceImpl implements PipelineService {
             Long workspaceId, PipelineRequest request, String username) {
         return Mono.fromCallable(() -> {
             Workspace workspace = resolveWorkspace(workspaceId);
-            verifyAccess(workspace, username);
+            verifyOwnership(workspace, username);
 
             Pipeline pipeline = new Pipeline();
             pipeline.setName(request.name());

@@ -10,7 +10,6 @@ import java.util.List;
 import java.util.Optional;
 
 public interface PipelineExecutionRepository extends JpaRepository<PipelineExecution, Long> {
-    List<PipelineExecution> findByPipeline_IdPipelineOrderByStartedAtDesc(Long pipelineId);
     Optional<PipelineExecution> findByMlflowRunId(String mlflowRunId);
     List<PipelineExecution> findByStatus(ExecutionStatus status);
 

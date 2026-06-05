@@ -428,7 +428,7 @@ GET    /api/v1/workspaces/{wId}/pipelines/{pId}/executions/{eId}
 
 GET    /api/v1/users
 POST   /api/v1/users
-PATCH  /api/v1/users/{id}/toggle-status
+PATCH  /api/v1/users/{id}            # body: {"enabled": bool} — activar/desactivar (idempotente)
 
 GET    /api/v1/mlflow/health
 GET    /api/v1/mlflow/experiments

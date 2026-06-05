@@ -1,4 +1,4 @@
-import { fetchJson, sendJson, sendVoid } from '@/shared/api/client'
+import { fetchJson, sendJson } from '@/shared/api/client'
 import type { Role } from '@/types'
 
 import type {
@@ -72,6 +72,6 @@ export const createStudent = (token: string, payload: CreateStudentFormData) => 
   })
 )
 
-export const toggleUserStatus = (token: string, userId: number) => (
-  sendVoid(`/users/${userId}/toggle-status`, token, 'PATCH')
+export const setUserStatus = (token: string, userId: number, enabled: boolean) => (
+  sendJson<UserSummary>(`/users/${userId}`, token, 'PATCH', { enabled }).then(mapUserSummary)
 )
