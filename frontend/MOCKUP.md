@@ -119,10 +119,10 @@ sequenceDiagram
     B-->>U: UserSummary
     U-->>A: refresh tablas
 
-    Note over A: Soft delete
-    A->>U: toggleUserStatus(token, id)
-    U->>B: PATCH /users/{id}/toggle-status
-    B-->>U: void
+    Note over A: Soft delete (idempotente)
+    A->>U: setUserStatus(token, id, enabled)
+    U->>B: PATCH /users/{id}  {enabled}
+    B-->>U: UserSummary
     U-->>A: refresh tablas
 ```
 

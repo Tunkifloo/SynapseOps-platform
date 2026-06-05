@@ -10,8 +10,6 @@ type DatasetMode = 'keras' | 'url' | 'file'
 const KERAS_DATASETS = [
   { value: 'mnist',        label: 'MNIST — Handwritten Digits (60k)' },
   { value: 'fashion_mnist', label: 'Fashion MNIST — Clothing (60k)' },
-  { value: 'cifar10',      label: 'CIFAR-10 — Objects 10 classes (50k)' },
-  { value: 'cifar100',     label: 'CIFAR-100 — Objects 100 classes (50k)' },
 ]
 
 interface DatasetPanelProps {

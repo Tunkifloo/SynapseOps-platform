@@ -6,7 +6,7 @@ import {
   getUserById,
   listCollaborators,
   listDisabledUsers,
-  toggleUserStatus,
+  setUserStatus,
   updateUserByAdmin,
 } from '@/features/admin-users/api'
 import { CreateStudentForm } from '@/features/admin-users/components/CreateStudentForm'
@@ -221,8 +221,9 @@ export function AdminUsersPage({ token, searchQuery, onAuthError }: AdminUsersPa
       const target = activeUser ?? disabledUser
       if (!target) return
 
-      await toggleUserStatus(token, userId)
-      const toggled = { ...target, enabled: !target.enabled }
+      const nextEnabled = !target.enabled
+      await setUserStatus(token, userId, nextEnabled)
+      const toggled = { ...target, enabled: nextEnabled }
 
       if (target.enabled) {
         setActiveUsers((prev) => prev.filter((u) => u.idUser !== userId))
