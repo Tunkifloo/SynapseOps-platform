@@ -5,6 +5,7 @@ import com.synapseops.orchestrator.domain.dto.request.ExecutionRequest;
 import com.synapseops.orchestrator.domain.dto.response.ExecutionResponse;
 import com.synapseops.orchestrator.domain.entity.*;
 import com.synapseops.orchestrator.infra.exception.ResourceNotFoundException;
+import com.synapseops.orchestrator.infra.exception.ServiceUnavailableException;
 import com.synapseops.orchestrator.infra.kafka.PipelineEventPublisher;
 import com.synapseops.orchestrator.infra.repository.*;
 import com.synapseops.orchestrator.service.ExecutionService;
@@ -34,7 +35,7 @@ public class ExecutionServiceImpl implements ExecutionService {
 
             Pipeline pipeline = pipelineRepository.findByIdWithWorkspace(pipelineId)
                     .orElseThrow(() -> new ResourceNotFoundException(
-                            "Pipeline no encontrado: " + pipelineId));
+                            "Pipeline", pipelineId));
 
             Workspace workspace = pipeline.getWorkspace();
 
@@ -70,11 +71,29 @@ public class ExecutionServiceImpl implements ExecutionService {
                     request.epochs(),
                     request.batchSize(),
                     request.learningRate(),
-                    request.numClasses(),
+                    // El ML Engine autodetecta el real; este valor es solo orientativo.
+                    request.numClasses() != null ? request.numClasses() : 0,
                     request.modelName(),
                     "normalization"
             );
-            eventPublisher.publishPipelineJob(job);
+
+            // Compensación síncrona (dual-write): la escritura en BD y la publicación a
+            // Kafka no son atómicas. Si no se confirma la publicación, se revierte el
+            // estado a FAILED para no dejar la ejecución colgada en RUNNING para siempre.
+            // Una eventual entrega tardía es inofensiva: el PipelineResultProcessor
+            // descarta resultados de ejecuciones ya en estado terminal (idempotencia).
+            try {
+                eventPublisher.publishPipelineJob(job);
+            } catch (RuntimeException ex) {
+                execution.fail();
+                executionRepository.save(execution);
+                pipeline.setStatus(PipelineStatus.FAILED);
+                pipelineRepository.save(pipeline);
+                log.error("Publicación a Kafka falló — executionId={} marcada FAILED: {}",
+                        execution.getIdExecution(), ex.getMessage());
+                throw new ServiceUnavailableException(
+                        "No se pudo encolar el trabajo de entrenamiento. Inténtalo de nuevo.", ex);
+            }
 
             log.info("Ejecución lanzada — executionId={} pipeline={} dataset={}",
                     execution.getIdExecution(), pipelineId, datasetPath);
@@ -100,7 +119,7 @@ public class ExecutionServiceImpl implements ExecutionService {
             PipelineExecution exec = executionRepository
                     .findByIdWithDetails(executionId)
                     .orElseThrow(() -> new ResourceNotFoundException(
-                            "Ejecución no encontrada: " + executionId));
+                            "Ejecución no encontrada con ID: " + executionId));
 
             if (!exec.getPipeline().getWorkspace().getUser()
                     .getUsername().equals(username)) {
@@ -116,7 +135,7 @@ public class ExecutionServiceImpl implements ExecutionService {
         return Mono.fromCallable(() -> {
                     Pipeline pipeline = pipelineRepository.findById(pipelineId)
                             .orElseThrow(() -> new ResourceNotFoundException(
-                                    "Pipeline no encontrado: " + pipelineId));
+                                    "Pipeline", pipelineId));
 
                     if (!pipeline.getWorkspace().getUser().getUsername().equals(username)) {
                         throw new AccessDeniedException("Sin permisos.");

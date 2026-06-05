@@ -17,5 +17,5 @@ public interface UserService {
     Mono<UserResponse> updateUserByAdmin(Long id, UserUpdateRequest request);
     Mono<UserResponse> updateMyProfile(String username, UserProfileUpdateRequest request);
     Mono<Void> updatePassword(String username, PasswordUpdateRequest request);
-    Mono<Void> toggleUserStatus(Long id);
+    Mono<UserResponse> setUserEnabled(Long id, boolean enabled);
 }

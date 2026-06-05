@@ -119,13 +119,13 @@ public class FileStorageServiceImpl implements FileStorageService {
                 try (java.util.zip.ZipInputStream zis = new java.util.zip.ZipInputStream(
                         new java.io.FileInputStream(tempFile.toFile()))) {
                     java.util.zip.ZipEntry entry;
+                    // Recorre TODO el zip: basta con que exista al menos una imagen.
+                    // Los archivos auxiliares (README, labels.csv, .DS_Store, etc.) se ignoran,
+                    // de modo que los datasets estructurados train/val/test no se rechazan.
                     while ((entry = zis.getNextEntry()) != null) {
                         String name = entry.getName().toLowerCase();
                         if (name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg")) {
                             return true;
-                        }
-                        if (!name.endsWith("/")) {
-                            return false;
                         }
                     }
                 }

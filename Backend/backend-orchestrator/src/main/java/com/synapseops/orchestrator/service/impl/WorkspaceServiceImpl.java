@@ -76,7 +76,7 @@ public class WorkspaceServiceImpl implements WorkspaceService {
             Long id, WorkspaceRequest request, String username) {
         return Mono.fromCallable(() -> {
             Workspace workspace = resolveWorkspace(id);
-            verifyAccess(workspace, username);
+            verifyOwnership(workspace, username);
 
             if (request.name() != null
                     && !request.name().equals(workspace.getName())
@@ -95,7 +95,7 @@ public class WorkspaceServiceImpl implements WorkspaceService {
     public Mono<Void> deleteWorkspace(Long id, String username) {
         return Mono.fromCallable(() -> {
             Workspace workspace = resolveWorkspace(id);
-            verifyAccess(workspace, username);
+            verifyOwnership(workspace, username);
             jdbcTemplate.update("DELETE FROM workspaces WHERE id_workspace = ?",
                     workspace.getIdWorkspace());
             return true;
@@ -120,11 +120,20 @@ public class WorkspaceServiceImpl implements WorkspaceService {
                 .orElseThrow(() -> new ResourceNotFoundException("Workspace no encontrado con ID: " + id));
     }
 
+    /** Lectura: el ADMIN puede ver cualquier workspace (auditoría); el resto, solo el propio. */
     private void verifyAccess(Workspace workspace, String username) {
         User user = resolveUser(username);
         if (user.getRole() == Role.ADMIN) return;
         if (!workspace.getUser().getUsername().equals(username)) {
-            throw new AccessDeniedException("No tienes permiso para acceder/modificar este workspace.");
+            throw new AccessDeniedException("No tienes permiso para acceder a este workspace.");
+        }
+    }
+
+    /** Escritura: solo el dueño puede modificar/eliminar. El ADMIN no gestiona recursos ajenos. */
+    private void verifyOwnership(Workspace workspace, String username) {
+        if (!workspace.getUser().getUsername().equals(username)) {
+            throw new AccessDeniedException(
+                    "Solo el propietario puede modificar o eliminar este workspace.");
         }
     }
 }
