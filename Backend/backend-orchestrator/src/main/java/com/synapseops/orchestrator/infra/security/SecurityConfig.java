@@ -42,10 +42,22 @@ public class SecurityConfig {
                 )
                 .exceptionHandling(ex -> ex
                         .authenticationEntryPoint((exchange, e) -> {
-                            exchange.getResponse()
-                                    .setStatusCode(
-                                            org.springframework.http.HttpStatus.UNAUTHORIZED);
-                            return exchange.getResponse().setComplete();
+                            var response = exchange.getResponse();
+                            // Si la respuesta ya está comprometida (p. ej. el entry point se
+                            // invoca al completar un Flux ya autenticado), no se pueden mutar
+                            // los headers (son read-only) → completar sin escribir cuerpo.
+                            if (response.isCommitted()) {
+                                return response.setComplete();
+                            }
+                            response.setStatusCode(org.springframework.http.HttpStatus.UNAUTHORIZED);
+                            response.getHeaders().setContentType(
+                                    org.springframework.http.MediaType.APPLICATION_PROBLEM_JSON);
+                            String body = """
+                                    {"type":"/errors/authentication","title":"No autenticado",\
+                                    "status":401,"detail":"Se requiere un token de autenticación válido."}""";
+                            var buffer = response.bufferFactory()
+                                    .wrap(body.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                            return response.writeWith(reactor.core.publisher.Mono.just(buffer));
                         })
                 )
                 .addFilterBefore(jwtAuthenticationWebFilter,

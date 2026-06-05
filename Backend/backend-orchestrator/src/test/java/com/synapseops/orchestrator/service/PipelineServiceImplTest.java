@@ -168,7 +168,6 @@ class PipelineServiceImplTest {
             PipelineRequest request = new PipelineRequest("Nuevo Pipeline");
 
             when(workspaceRepository.findById(10L)).thenReturn(Optional.of(workspace));
-            when(userRepository.findByUsername("student_one")).thenReturn(Optional.of(owner));
             when(pipelineRepository.save(any(Pipeline.class))).thenReturn(pipeline);
             when(pipelineMapper.toResponse(pipeline)).thenReturn(pipelineResponse);
 
@@ -187,7 +186,6 @@ class PipelineServiceImplTest {
         void shouldEmitErrorWhenNotOwner() {
             PipelineRequest request = new PipelineRequest("Nuevo Pipeline");
             when(workspaceRepository.findById(10L)).thenReturn(Optional.of(workspace));
-            when(userRepository.findByUsername("student_two")).thenReturn(Optional.of(otherUser));
 
             StepVerifier.create(
                             pipelineService.createPipeline(10L, request, "student_two"))
