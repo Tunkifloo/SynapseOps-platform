@@ -28,4 +28,7 @@ Pillow
 # ── Observabilidad ────────────────────────────────────────
 prometheus-client
 
+# ── Testing ───────────────────────────────────────────────
+pytest
+
 --extra-index-url https://download.pytorch.org/whl/cpu

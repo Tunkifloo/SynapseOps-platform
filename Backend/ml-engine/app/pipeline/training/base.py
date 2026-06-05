@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
-from typing import Tuple
+from dataclasses import dataclass
+from typing import Optional, Tuple
 import numpy as np
 
 
@@ -21,6 +21,9 @@ class TrainingResult:
     artifact_path:  str     # path local del modelo guardado
     final_accuracy: float
     final_loss:     float
+    # Métricas sobre el split de test (si el dataset lo incluye).
+    test_accuracy:  Optional[float] = None
+    test_loss:      Optional[float] = None
 
 
 class TrainingStrategy(ABC):
@@ -39,5 +42,7 @@ class TrainingStrategy(ABC):
         y_val:   np.ndarray,
         hyperparams: HyperParams,
         output_dir:  str,
+        X_test:  Optional[np.ndarray] = None,
+        y_test:  Optional[np.ndarray] = None,
     ) -> TrainingResult:
         pass

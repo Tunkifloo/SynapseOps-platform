@@ -4,6 +4,7 @@ CNN adaptativa al input_shape detectado por ingestion.
 """
 import logging
 from pathlib import Path
+from typing import Optional
 
 import numpy as np
 
@@ -28,6 +29,8 @@ class PyTorchStrategy(TrainingStrategy):
         y_val:   np.ndarray,
         hyperparams: HyperParams,
         output_dir: str,
+        X_test: Optional[np.ndarray] = None,
+        y_test: Optional[np.ndarray] = None,
     ) -> TrainingResult:
         import torch
         import torch.nn as nn
@@ -88,6 +91,18 @@ class PyTorchStrategy(TrainingStrategy):
             log.info("Epoch %d/%d loss=%.4f acc=%.4f val_acc=%.4f",
                      epoch + 1, hyperparams.epochs, avg_loss, acc, vacc)
 
+        # Evaluación final sobre el split de test (si lo hay).
+        test_accuracy = test_loss = None
+        if X_test is not None and y_test is not None and len(X_test) > 0:
+            Xte = torch.tensor(np.transpose(X_test, (0, 3, 1, 2)), dtype=torch.float32).to(device)
+            yte = torch.tensor(y_test, dtype=torch.long).to(device)
+            model.eval()
+            with torch.no_grad():
+                out = model(Xte)
+                test_loss = float(criterion(out, yte).item())
+                test_accuracy = float((out.argmax(1) == yte).float().mean().item())
+            log.info("Evaluación en test — loss=%.4f acc=%.4f", test_loss, test_accuracy)
+
         artifact_path = str(Path(output_dir) / "model.pt")
         torch.save({
             "state_dict":  model.state_dict(),
@@ -102,6 +117,8 @@ class PyTorchStrategy(TrainingStrategy):
             artifact_path=artifact_path,
             final_accuracy=history["accuracy"][-1],
             final_loss=history["loss"][-1],
+            test_accuracy=test_accuracy,
+            test_loss=test_loss,
         )
 
     def _build_cnn(self, hp: HyperParams):
