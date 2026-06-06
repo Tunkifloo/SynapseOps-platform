@@ -29,6 +29,7 @@ import { PipelinesPanel } from '@/features/workspaces/components/PipelinesPanel'
 import { WorkspaceForm } from '@/features/workspaces/components/WorkspaceForm'
 import { ExecutionPanel } from '@/features/executions/components/ExecutionPanel'
 import { WorkspaceModelsPanel } from '@/features/mlflow/components/WorkspaceModelsPanel'
+import { ConfirmDialog } from '@/shared/components/ConfirmDialog'
 import {
   emptyPipelineForm,
   emptyWorkspaceForm,
@@ -99,6 +100,10 @@ export function WorkspacesPage({ token, searchQuery, onAuthError }: WorkspacesPa
   const [notice, setNotice] = useState<string | null>(null)
   const [selectedPipelineForExec, setSelectedPipelineForExec] = useState<PipelineSummary | null>(null)
   const [workspacePage, setWorkspacePage] = useState(1)
+  // RN-007: confirmación explícita para acciones destructivas.
+  const [confirm, setConfirm] = useState<
+    { title: string; description: string; confirmLabel: string; onConfirm: () => Promise<void> } | null
+  >(null)
 
   const selectedWorkspace = workspaces.find((workspace) => workspace.idWorkspace === selectedWorkspaceId) ?? null
 
@@ -312,6 +317,31 @@ export function WorkspacesPage({ token, searchQuery, onAuthError }: WorkspacesPa
     }
   }
 
+  // RN-007: abren el modal de confirmación; el borrado real se ejecuta al confirmar.
+  const askDeleteWorkspace = (id: number, name: string) =>
+    setConfirm({
+      title: 'Eliminar proyecto',
+      description: `Se eliminará "${name}" junto con sus pipelines, datasets y ejecuciones. Esta acción no se puede deshacer.`,
+      confirmLabel: 'Eliminar proyecto',
+      onConfirm: () => handleDeleteWorkspace(id),
+    })
+
+  const askDeletePipeline = (id: number, name: string) =>
+    setConfirm({
+      title: 'Eliminar pipeline',
+      description: `Se eliminará el pipeline "${name}" y su topología guardada. Esta acción no se puede deshacer.`,
+      confirmLabel: 'Eliminar pipeline',
+      onConfirm: () => handleDeletePipeline(id),
+    })
+
+  const askDeleteDataset = () =>
+    setConfirm({
+      title: 'Eliminar dataset',
+      description: 'Se eliminará el dataset asignado a este proyecto. Esta acción no se puede deshacer.',
+      confirmLabel: 'Eliminar dataset',
+      onConfirm: () => handleDeleteDataset(),
+    })
+
   return (
     <div className="space-y-5">
       <section>
@@ -423,7 +453,7 @@ export function WorkspacesPage({ token, searchQuery, onAuthError }: WorkspacesPa
                             className="text-xs text-red-400 hover:text-red-300"
                             onClick={(event) => {
                               event.stopPropagation()
-                              void handleDeleteWorkspace(workspace.idWorkspace)
+                              askDeleteWorkspace(workspace.idWorkspace, workspace.name)
                             }}
                           >
                             Eliminar
@@ -474,7 +504,7 @@ export function WorkspacesPage({ token, searchQuery, onAuthError }: WorkspacesPa
                 token={token}
                 onFileChange={(event) => setDatasetFile(event.target.files?.[0] ?? null)}
                 onSubmit={handleDatasetUpload}
-                onDelete={handleDeleteDataset}
+                onDelete={() => { askDeleteDataset(); return Promise.resolve() }}
                 onUrlDownload={handleUrlDownload}
               />
             ) : (
@@ -505,7 +535,11 @@ export function WorkspacesPage({ token, searchQuery, onAuthError }: WorkspacesPa
                 onStartRename={(pipeline) => { setRenamingPipelineId(pipeline.idPipeline); setRenameValue(pipeline.name) }}
                 onCancelRename={() => { setRenamingPipelineId(null); setRenameValue('') }}
                 onSaveRename={handleSaveRename}
-                onDelete={handleDeletePipeline}
+                onDelete={(pipelineId) => {
+                  const target = pipelines.find((p) => p.idPipeline === pipelineId)
+                  askDeletePipeline(pipelineId, target?.name ?? 'pipeline')
+                  return Promise.resolve()
+                }}
                 onSelectForExec={setSelectedPipelineForExec}
               />
             ) : (
@@ -543,6 +577,15 @@ export function WorkspacesPage({ token, searchQuery, onAuthError }: WorkspacesPa
           />
         </section>
       )}
+
+      <ConfirmDialog
+        open={!!confirm}
+        onOpenChange={(open) => { if (!open) setConfirm(null) }}
+        title={confirm?.title ?? ''}
+        description={confirm?.description ?? ''}
+        confirmLabel={confirm?.confirmLabel}
+        onConfirm={async () => { await confirm?.onConfirm() }}
+      />
     </div>
   )
 }
