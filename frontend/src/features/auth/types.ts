@@ -10,6 +10,18 @@ export interface ForgotPasswordRequest {
   newPassword: string
 }
 
+export interface SignupPayload {
+  username: string
+  name: string
+  paternalSurname: string
+  maternalSurname?: string
+  email: string
+  phone?: string
+  studentCode: string
+  career: string
+  password: string
+}
+
 export interface JwtClaims {
   sub?: string
   role?: string

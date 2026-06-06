@@ -52,6 +52,7 @@ ml-engine/.env
 /graphify-out
 CLAUDE.md
 /docs
+/design-system
 
 # Storage
 /storage-dev

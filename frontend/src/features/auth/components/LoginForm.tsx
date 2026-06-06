@@ -1,5 +1,6 @@
 import { useState, type ChangeEvent, type FormEvent } from 'react'
 import { Eye, EyeOff } from 'lucide-react'
+import { Link } from 'react-router-dom'
 
 import { Button } from '@/shared/components/ui/button'
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/shared/components/ui/card'
@@ -95,6 +96,13 @@ export function LoginForm({
               {isLoading ? 'Autenticando...' : 'Iniciar sesión'}
             </Button>
           </CardFooter>
+
+          <p className="px-0 pt-5 text-center text-sm text-slate-400">
+            ¿No tienes cuenta?{' '}
+            <Link to="/signup" className="font-semibold text-blue-400 hover:text-blue-300">
+              Regístrate
+            </Link>
+          </p>
         </form>
       </Card>
     </div>

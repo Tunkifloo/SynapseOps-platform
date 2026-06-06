@@ -2,6 +2,7 @@ package com.synapseops.orchestrator.service;
 
 import com.synapseops.orchestrator.domain.dto.request.ForgotPasswordRequest;
 import com.synapseops.orchestrator.domain.dto.request.LoginRequest;
+import com.synapseops.orchestrator.domain.dto.request.SignupRequest;
 import com.synapseops.orchestrator.domain.dto.request.UserRegistrationRequest;
 import com.synapseops.orchestrator.domain.dto.response.TokenResponse;
 import com.synapseops.orchestrator.domain.dto.response.UserResponse;
@@ -164,6 +165,50 @@ class AuthServiceImplTest {
             when(userRepository.existsByEmail("a@b.pe")).thenReturn(false);
 
             StepVerifier.create(authService.register(request))
+                    .expectError(IllegalArgumentException.class)
+                    .verify();
+        }
+    }
+
+    @Nested
+    @DisplayName("signup()")
+    class Signup {
+
+        @Test
+        @DisplayName("Auto-registro público → crea COLLABORATOR y retorna UserResponse")
+        void shouldCreateCollaborator() {
+            var request = new SignupRequest(
+                    "nuevo_est", "password1", "Ana", "Pérez", "López",
+                    "ana@upao.edu.pe", "987654321", "0201910050", "Ing. de Sistemas");
+            var created = new Collaborator();
+            var response = new UserResponse(11L, "nuevo_est", "Ana", "ana@upao.edu.pe",
+                    Role.COLLABORATOR, "Pérez", "López", "987654321", true, "0201910050", "Ing. de Sistemas");
+
+            when(userRepository.existsByUsername("nuevo_est")).thenReturn(false);
+            when(userRepository.existsByEmail("ana@upao.edu.pe")).thenReturn(false);
+            when(userFactory.createUser(Role.COLLABORATOR)).thenReturn(created);
+            when(passwordEncoder.encode("password1")).thenReturn("enc");
+            when(userRepository.save(created)).thenReturn(created);
+            when(userMapper.toResponse(created)).thenReturn(response);
+
+            StepVerifier.create(authService.signup(request))
+                    .expectNextMatches(r -> r.role() == Role.COLLABORATOR)
+                    .verifyComplete();
+
+            // Nunca debe poder autocrearse un ADMIN por esta vía.
+            verify(userFactory).createUser(Role.COLLABORATOR);
+        }
+
+        @Test
+        @DisplayName("Correo duplicado → IllegalArgumentException")
+        void shouldFailOnDuplicateEmail() {
+            var request = new SignupRequest(
+                    "x", "password1", "N", "P", "M",
+                    "dup@upao.edu.pe", "987654321", "0201910051", "Ing.");
+            when(userRepository.existsByUsername("x")).thenReturn(false);
+            when(userRepository.existsByEmail("dup@upao.edu.pe")).thenReturn(true);
+
+            StepVerifier.create(authService.signup(request))
                     .expectError(IllegalArgumentException.class)
                     .verify();
         }

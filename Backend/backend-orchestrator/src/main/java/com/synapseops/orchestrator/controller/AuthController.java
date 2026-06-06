@@ -2,6 +2,7 @@ package com.synapseops.orchestrator.controller;
 
 import com.synapseops.orchestrator.domain.dto.request.ForgotPasswordRequest;
 import com.synapseops.orchestrator.domain.dto.request.LoginRequest;
+import com.synapseops.orchestrator.domain.dto.request.SignupRequest;
 import com.synapseops.orchestrator.domain.dto.request.UserRegistrationRequest;
 import com.synapseops.orchestrator.domain.dto.response.TokenResponse;
 import com.synapseops.orchestrator.domain.dto.response.UserResponse;
@@ -53,6 +54,20 @@ public class AuthController {
             @Valid @RequestBody ForgotPasswordRequest request) {
         return authService.forgotPassword(request)
                 .thenReturn(ResponseEntity.ok("Contraseña restablecida con éxito."));
+    }
+
+    @Operation(summary = "Auto-registro público (Sign Up)",
+            description = "Endpoint público. Crea una cuenta de estudiante con rol COLLABORATOR.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "201", description = "Cuenta creada — inicie sesión"),
+            @ApiResponse(responseCode = "400", description = "Datos inválidos"),
+            @ApiResponse(responseCode = "409", description = "Username o correo ya en uso")
+    })
+    @PostMapping("/signup")
+    public Mono<ResponseEntity<UserResponse>> signup(
+            @Valid @RequestBody SignupRequest request) {
+        return authService.signup(request)
+                .map(user -> ResponseEntity.status(HttpStatus.CREATED).body(user));
     }
 
     @Operation(summary = "Registrar nuevo colaborador",

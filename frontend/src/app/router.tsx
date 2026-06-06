@@ -5,6 +5,7 @@ import type { Role } from '@/types'
 import { ForbiddenPage } from '@/features/_shared/ForbiddenPage'
 import { DashboardPage } from '@/features/dashboard/pages/DashboardPage'
 import { LoginPage } from '@/features/auth/pages/LoginPage'
+import { SignUpPage } from '@/features/auth/pages/SignUpPage'
 import { ForgotPasswordPage } from '@/features/auth/pages/ForgotPasswordPage'
 import { AdminUsersPage } from '@/features/admin/pages/AdminUsersPage'
 import { WorkspacesPage } from '@/features/workspaces/pages/WorkspacesPage'
@@ -72,6 +73,8 @@ export function AppRouter() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={!isAuthenticated ? <LoginPage /> : <Navigate to="/dashboard" replace />} />
+
+        <Route path="/signup" element={!isAuthenticated ? <SignUpPage /> : <Navigate to="/dashboard" replace />} />
 
         <Route path="/forgot-password" element={!isAuthenticated ? <ForgotPasswordPage /> : <Navigate to="/dashboard" replace />} />
 

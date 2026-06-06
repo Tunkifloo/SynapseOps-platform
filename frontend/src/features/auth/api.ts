@@ -1,7 +1,7 @@
 import { authorizedRequest, request, requestJson } from '@/shared/api/client'
 import { AUTH_BASE_URL } from '@/shared/api/env'
 
-import type { ForgotPasswordRequest, LoginRequest, LoginResponse } from './types'
+import type { ForgotPasswordRequest, LoginRequest, LoginResponse, SignupPayload } from './types'
 
 export const login = async (username: string, password: string) => {
   const payload: LoginRequest = { username, password }
@@ -18,6 +18,17 @@ export const forgotPassword = async (username: string, newPassword: string) => {
   await request(`${AUTH_BASE_URL}/forgot-password`, {
     method: 'POST',
     body: JSON.stringify(payload),
+  })
+}
+
+export const signup = async (payload: SignupPayload) => {
+  await request(`${AUTH_BASE_URL}/signup`, {
+    method: 'POST',
+    body: JSON.stringify({
+      ...payload,
+      maternalSurname: payload.maternalSurname || null,
+      phone: payload.phone || null,
+    }),
   })
 }
 
