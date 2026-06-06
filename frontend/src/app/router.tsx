@@ -11,6 +11,7 @@ import { AdminUsersPage } from '@/features/admin/pages/AdminUsersPage'
 import { WorkspacesPage } from '@/features/workspaces/pages/WorkspacesPage'
 import { PipelineBuilderPage } from '@/features/pipelines/pages/PipelineBuilderPage'
 import { MlflowPage } from '@/features/mlflow/pages/MlflowPage'
+import { ProfilePage } from '@/features/profile/pages/ProfilePage'
 import { AppShell } from '@/shared/layout/AppShell'
 import { useAppStore } from '@/store/useAppStore'
 import { useProtectedSession } from '@/features/auth/hooks/useProtectedSession'
@@ -47,7 +48,7 @@ interface PageProps {
 }
 
 interface ShellPageProps {
-  section: 'dashboard' | 'workspaces' | 'builder' | 'admin' | 'mlflow'
+  section: 'dashboard' | 'workspaces' | 'builder' | 'admin' | 'mlflow' | 'profile'
   renderPage: (props: PageProps) => ReactNode
 }
 
@@ -131,6 +132,20 @@ export function AppRouter() {
                 )}
               />
             </RoleRoute>
+          }
+        />
+
+        <Route
+          path="/profile"
+          element={
+            <ProtectedRoute isAuthenticated={isAuthenticated}>
+              <ShellPage
+                section="profile"
+                renderPage={({ token, onAuthError }) => (
+                  <ProfilePage token={token} onAuthError={onAuthError} />
+                )}
+              />
+            </ProtectedRoute>
           }
         />
 
