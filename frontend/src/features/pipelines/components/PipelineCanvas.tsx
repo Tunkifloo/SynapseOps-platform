@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type DragEvent } from 'react'
+import { useCallback, useEffect, useMemo, useState, type DragEvent } from 'react'
 import ReactFlow, {
   addEdge,
   Background,
@@ -19,6 +19,7 @@ import { launchExecution, getExecution } from '@/features/executions/api'
 import type { ExecutionRequest } from '@/features/executions/types'
 import { NODE_KIND_MAP, type NodeKind } from '@/features/pipelines/nodeKinds'
 import { defaultConfig, type NodeConfig } from '@/features/pipelines/nodeConfig'
+import { loadCanvas, saveCanvas } from '@/features/pipelines/canvasApi'
 import { PipelineNode, type PipelineNodeData, type PipelineNodeStatus } from './PipelineNode'
 import { NodePalette } from './NodePalette'
 import { NodeConfigPanel } from './NodeConfigPanel'
@@ -75,6 +76,7 @@ export function PipelineCanvas({
   const [nodes, setNodes, onNodesChange] = useNodesState<PipelineNodeData>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
   const { screenToFlowPosition } = useReactFlow()
   const storeWorkspace = useAppStore((s) => s.currentWorkspace)
   const projectName = workspace?.name ?? storeWorkspace
@@ -225,19 +227,45 @@ export function PipelineCanvas({
     setSelectedNodeId(null)
   }, [setNodes, setEdges])
 
-  const handleSavePipeline = useCallback(() => {
-    try {
-      localStorage.setItem(
-        `synapseops:canvas:${projectName}`,
-        JSON.stringify({ nodes, edges })
-      )
-      notify.success('Pipeline guardado', {
-        description: 'Borrador local — la persistencia en servidor llega en HU-024.',
-      })
-    } catch {
-      notify.error('No se pudo guardar el borrador local.')
+  // HU-024: persiste la topología en el backend (vinculada al pipeline).
+  const handleSavePipeline = useCallback(async () => {
+    if (!token || !workspace || !pipelineId) {
+      notify.warning('Selecciona un proyecto y un pipeline para guardar.')
+      return
     }
-  }, [nodes, edges, projectName])
+    setSaving(true)
+    try {
+      await saveCanvas(token, workspace.idWorkspace, pipelineId, { nodes, edges })
+      notify.success('Pipeline guardado', { description: 'Topología persistida en el servidor.' })
+    } catch {
+      notify.error('No se pudo guardar el pipeline.')
+    } finally {
+      setSaving(false)
+    }
+  }, [token, workspace, pipelineId, nodes, edges])
+
+  // HU-024: carga la topología guardada al abrir/cambiar de pipeline.
+  useEffect(() => {
+    if (!token || !workspace || !pipelineId) return
+    const wsId = workspace.idWorkspace
+    let cancelled = false
+    void (async () => {
+      try {
+        const canvas = await loadCanvas(token, wsId, pipelineId)
+        if (cancelled) return
+        setNodes(canvas.nodes)
+        setEdges(canvas.edges)
+        setSelectedNodeId(null)
+      } catch {
+        // Error de red ya notificado por el cliente HTTP; se deja el lienzo actual.
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+    // Solo recarga al cambiar de pipeline/workspace (no en cada refresh de objeto).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, workspace?.idWorkspace, pipelineId])
 
   const handleSaveConfig = useCallback(
     (label: string, config: NodeConfig, status: PipelineNodeStatus, error?: string) => {
@@ -316,8 +344,9 @@ export function PipelineCanvas({
           <CanvasToolbar
             projectName={projectName}
             nodeCount={nodes.length}
+            saving={saving}
             onClear={handleClear}
-            onSave={handleSavePipeline}
+            onSave={() => void handleSavePipeline()}
           />
           <MiniMap pannable zoomable />
         </ReactFlow>

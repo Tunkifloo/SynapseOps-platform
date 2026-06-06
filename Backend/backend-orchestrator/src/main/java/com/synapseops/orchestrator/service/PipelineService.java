@@ -11,4 +11,6 @@ public interface PipelineService {
     Mono<PipelineResponse> createPipeline(Long workspaceId, PipelineRequest request, String username);
     Mono<PipelineResponse> renamePipeline(Long id, Long workspaceId, PipelineRequest request, String username);
     Mono<Void> deletePipeline(Long id, Long workspaceId, String username);
+    Mono<Void> saveCanvas(Long id, Long workspaceId, String canvasJson, String username);
+    Mono<String> getCanvas(Long id, Long workspaceId, String username);
 }
