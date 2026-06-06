@@ -24,7 +24,7 @@ interface SessionUser {
   role: Role
 }
 
-type Section = 'dashboard' | 'workspaces' | 'builder' | 'admin' | 'mlflow'
+type Section = 'dashboard' | 'workspaces' | 'builder' | 'admin' | 'mlflow' | 'profile'
 
 interface NavigationItem {
   key: Section
@@ -182,21 +182,31 @@ export function AppShell({
             </div>
 
             <div className="ml-auto flex items-center gap-3">
-              <div className="hidden min-w-0 text-right sm:block">
-                <p className="truncate text-sm font-semibold text-foreground">{displayName}</p>
-                <p className="truncate text-xs text-muted-foreground">@{user?.username ?? '—'}</p>
-              </div>
+              <button
+                type="button"
+                onClick={() => navigate('/profile')}
+                aria-label="Ver mi perfil"
+                aria-current={section === 'profile' ? 'page' : undefined}
+                className={cn(
+                  'flex items-center gap-3 rounded-full p-1 pr-1.5 transition-colors hover:bg-muted sm:pr-2',
+                  section === 'profile' && 'bg-muted'
+                )}
+              >
+                <div
+                  className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/20 text-sm font-semibold text-primary ring-1 ring-primary/25"
+                  aria-hidden="true"
+                >
+                  {avatarLetter}
+                </div>
+                <div className="hidden min-w-0 text-left sm:block">
+                  <p className="truncate text-sm font-semibold text-foreground">{displayName}</p>
+                  <p className="truncate text-xs text-muted-foreground">@{user?.username ?? '—'}</p>
+                </div>
+              </button>
 
               <Badge variant={user?.role === 'ADMIN' ? 'info' : 'secondary'} className="hidden sm:inline-flex">
                 {user?.role ?? '—'}
               </Badge>
-
-              <div
-                className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/20 text-sm font-semibold text-primary ring-1 ring-primary/25"
-                aria-hidden="true"
-              >
-                {avatarLetter}
-              </div>
 
               <Button
                 variant="ghost"
