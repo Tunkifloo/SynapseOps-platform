@@ -1,4 +1,5 @@
 import { API_BASE_URL } from './env'
+import { notify } from '@/shared/notify'
 
 export interface ProblemDetail {
   detail?: string
@@ -29,13 +30,25 @@ export const request = async (url: string, init: RequestInit = {}) => {
     headers.set('Content-Type', 'application/json')
   }
 
-  const response = await fetch(url, {
-    ...init,
-    headers,
-  })
+  let response: Response
+  try {
+    response = await fetch(url, { ...init, headers })
+  } catch (networkError) {
+    // Fallo de red / servidor inalcanzable → notificación global (HU-020).
+    notify.error('Sin conexión con el servidor', {
+      description: 'Verifica tu red e inténtalo de nuevo.',
+    })
+    throw networkError
+  }
 
   if (!response.ok) {
-    throw new ApiError(response.status, await getProblemDetail(response))
+    const message = await getProblemDetail(response)
+    // Solo los errores INESPERADOS (5xx, incl. 503 del orquestador) se notifican
+    // globalmente; los 4xx se manejan inline (validación de formularios, guards).
+    if (response.status >= 500) {
+      notify.error('Error del servidor', { description: message })
+    }
+    throw new ApiError(response.status, message)
   }
 
   return response

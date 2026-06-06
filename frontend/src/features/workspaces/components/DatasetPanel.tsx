@@ -1,8 +1,8 @@
 import { useState, type ChangeEvent, type FormEvent } from 'react'
 import { Database, Link, Upload, CheckCircle } from 'lucide-react'
 
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { Button } from '@/shared/components/ui/button'
+import { Input } from '@/shared/components/ui/input'
 import { API_BASE_URL } from '@/shared/api/env'
 
 type DatasetMode = 'keras' | 'url' | 'file'
@@ -169,7 +169,7 @@ export function DatasetPanel({
               <Input
                   type="text"
                   value={urlValue}
-                  onChange={(e) => setUrl(e.target.value)}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) => setUrl(e.target.value)}
                   placeholder="https://github.com/user/repo o https://ejemplo.com/data.zip"
                   className="bg-white/[0.04] border-white/10 text-white text-xs"
               />
