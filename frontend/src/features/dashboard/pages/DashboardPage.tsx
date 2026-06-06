@@ -7,6 +7,7 @@ import { Badge } from '@/shared/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui/card'
 import { Spinner } from '@/shared/components/ui/spinner'
 import { listMyWorkspaces } from '@/features/workspaces/api'
+import { listWorkspaceModels } from '@/features/mlflow/api'
 import type { WorkspaceSummary } from '@/features/workspaces/types'
 import { useAppStore } from '@/store/useAppStore'
 import type { Role } from '@/types'
@@ -61,6 +62,8 @@ export function DashboardPage({ token, currentWorkspace, searchQuery, onAuthErro
   const [workspaces, setWorkspaces] = useState<WorkspaceSummary[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [modelCounts, setModelCounts] = useState<Record<number, number>>({})
+  const [totalModels, setTotalModels] = useState(0)
   const setWorkspace = useAppStore((state) => state.setWorkspace)
   const navigate = useNavigate()
 
@@ -87,6 +90,34 @@ export function DashboardPage({ token, currentWorkspace, searchQuery, onAuthErro
       cancelled = true
     }
   }, [currentWorkspace, onAuthError, setWorkspace, token])
+
+  // Conteo de modelos registrados por workspace (dato real de Sprint 2; el
+  // estado de despliegue de contenedores es Sprint 3). Best-effort: si un
+  // workspace falla, se omite sin romper el resto del dashboard.
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      if (workspaces.length === 0) {
+        if (!cancelled) { setModelCounts({}); setTotalModels(0) }
+        return
+      }
+      const results = await Promise.allSettled(
+        workspaces.map((w) => listWorkspaceModels(token, w.idWorkspace))
+      )
+      if (cancelled) return
+      const counts: Record<number, number> = {}
+      let total = 0
+      results.forEach((result, index) => {
+        if (result.status === 'fulfilled') {
+          counts[workspaces[index].idWorkspace] = result.value.length
+          total += result.value.length
+        }
+      })
+      setModelCounts(counts)
+      setTotalModels(total)
+    })()
+    return () => { cancelled = true }
+  }, [token, workspaces])
 
   const datasetsLoaded = useMemo(
     () => workspaces.filter((w) => !!w.datasetPath).length,
@@ -143,8 +174,8 @@ export function DashboardPage({ token, currentWorkspace, searchQuery, onAuthErro
           icon={Database}
         />
         <StatCard
-          title="Modelos desplegados"
-          value="0"
+          title="Modelos registrados"
+          value={isLoading ? '—' : String(totalModels)}
           hint="Despliegue dinámico — Sprint 3"
           icon={Rocket}
         />
@@ -217,7 +248,13 @@ export function DashboardPage({ token, currentWorkspace, searchQuery, onAuthErro
                     <Badge variant={ws.datasetPath ? 'success' : 'secondary'}>
                       {ws.datasetPath ? 'Dataset listo' : 'Sin dataset'}
                     </Badge>
-                    <Badge variant="secondary">Sin desplegar</Badge>
+                    {(modelCounts[ws.idWorkspace] ?? 0) > 0 ? (
+                      <Badge variant="info">
+                        {modelCounts[ws.idWorkspace]} modelo{modelCounts[ws.idWorkspace] === 1 ? '' : 's'}
+                      </Badge>
+                    ) : (
+                      <Badge variant="secondary">Sin desplegar</Badge>
+                    )}
                   </div>
                 </button>
               ))}
