@@ -1,4 +1,4 @@
-import { useCallback, type DragEvent } from 'react'
+import { useCallback, useState, type DragEvent } from 'react'
 import ReactFlow, {
   addEdge,
   Background,
@@ -16,8 +16,10 @@ import 'reactflow/dist/style.css'
 
 import { notify } from '@/shared/notify'
 import { NODE_KIND_MAP, type NodeKind } from '@/features/pipelines/nodeKinds'
+import { defaultConfig, type NodeConfig } from '@/features/pipelines/nodeConfig'
 import { PipelineNode, type PipelineNodeData } from './PipelineNode'
 import { NodePalette } from './NodePalette'
+import { NodeConfigPanel } from './NodeConfigPanel'
 
 const nodeTypes = { pipelineNode: PipelineNode }
 
@@ -51,7 +53,22 @@ function wouldCreateCycle(edges: Edge[], source: string, target: string): boolea
 export function PipelineCanvas() {
   const [nodes, setNodes, onNodesChange] = useNodesState<PipelineNodeData>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const { screenToFlowPosition } = useReactFlow()
+
+  const selectedNode = nodes.find((n) => n.id === selectedNodeId) ?? null
+
+  const handleSaveConfig = useCallback(
+    (label: string, config: NodeConfig) => {
+      setNodes((nds) =>
+        nds.map((n) =>
+          n.id === selectedNodeId ? { ...n, data: { ...n.data, label, config } } : n
+        )
+      )
+      notify.success('Configuración guardada', { description: 'Aplicada al nodo del lienzo.' })
+    },
+    [selectedNodeId, setNodes]
+  )
 
   const onConnect = useCallback(
     (connection: Connection) => {
@@ -84,7 +101,7 @@ export function PipelineCanvas() {
         id: nextId(),
         type: 'pipelineNode',
         position,
-        data: { label: config.label, kind },
+        data: { label: config.label, kind, config: defaultConfig(kind) },
       }
       setNodes((nds) => nds.concat(node))
     },
@@ -105,6 +122,8 @@ export function PipelineCanvas() {
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
+          onNodeClick={(_, node) => setSelectedNodeId(node.id)}
+          onPaneClick={() => setSelectedNodeId(null)}
           nodeTypes={nodeTypes}
           defaultEdgeOptions={{ animated: true }}
           fitView
@@ -114,6 +133,15 @@ export function PipelineCanvas() {
           <Controls />
           <MiniMap pannable zoomable />
         </ReactFlow>
+
+        {selectedNode && (
+          <NodeConfigPanel
+            key={selectedNode.id}
+            data={selectedNode.data}
+            onSave={handleSaveConfig}
+            onClose={() => setSelectedNodeId(null)}
+          />
+        )}
       </div>
     </div>
   )

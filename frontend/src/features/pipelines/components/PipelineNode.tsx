@@ -2,6 +2,7 @@ import { Handle, Position, type NodeProps } from 'reactflow'
 
 import { cn } from '@/lib/utils'
 import { NODE_KIND_MAP, type NodeKind } from '@/features/pipelines/nodeKinds'
+import type { NodeConfig } from '@/features/pipelines/nodeConfig'
 
 /** Estados visuales del nodo (HU-019 los usará en vivo). */
 export type PipelineNodeStatus = 'idle' | 'running' | 'success' | 'error'
@@ -10,6 +11,7 @@ export interface PipelineNodeData {
   label: string
   kind: NodeKind
   status?: PipelineNodeStatus
+  config?: NodeConfig
 }
 
 const statusRing: Record<PipelineNodeStatus, string> = {
