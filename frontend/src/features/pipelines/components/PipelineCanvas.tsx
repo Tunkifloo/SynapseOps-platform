@@ -1,9 +1,8 @@
-import { useCallback, useState, type DragEvent } from 'react'
+import { useCallback, useMemo, useState, type DragEvent } from 'react'
 import ReactFlow, {
   addEdge,
   Background,
   BackgroundVariant,
-  Controls,
   MiniMap,
   useEdgesState,
   useNodesState,
@@ -15,11 +14,13 @@ import ReactFlow, {
 import 'reactflow/dist/style.css'
 
 import { notify } from '@/shared/notify'
+import { useAppStore } from '@/store/useAppStore'
 import { NODE_KIND_MAP, type NodeKind } from '@/features/pipelines/nodeKinds'
 import { defaultConfig, type NodeConfig } from '@/features/pipelines/nodeConfig'
-import { PipelineNode, type PipelineNodeData } from './PipelineNode'
+import { PipelineNode, type PipelineNodeData, type PipelineNodeStatus } from './PipelineNode'
 import { NodePalette } from './NodePalette'
 import { NodeConfigPanel } from './NodeConfigPanel'
+import { CanvasToolbar } from './CanvasToolbar'
 
 const nodeTypes = { pipelineNode: PipelineNode }
 
@@ -55,14 +56,53 @@ export function PipelineCanvas() {
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const { screenToFlowPosition } = useReactFlow()
+  const projectName = useAppStore((s) => s.currentWorkspace)
 
   const selectedNode = nodes.find((n) => n.id === selectedNodeId) ?? null
 
+  // Aristas coloreadas según el estado del nodo origen (HU-019):
+  // success → verde, running → azul animado, error → rojo.
+  const displayEdges = useMemo(() => {
+    const statusOf = new Map(nodes.map((n) => [n.id, n.data.status]))
+    return edges.map((edge) => {
+      const status = statusOf.get(edge.source)
+      if (status === 'success')
+        return { ...edge, animated: false, style: { stroke: 'var(--success)', strokeWidth: 2 } }
+      if (status === 'running')
+        return { ...edge, animated: true, style: { stroke: 'var(--info)', strokeWidth: 2 } }
+      if (status === 'error')
+        return { ...edge, animated: false, style: { stroke: 'var(--destructive)', strokeWidth: 2 } }
+      return edge
+    })
+  }, [edges, nodes])
+
+  const handleClear = useCallback(() => {
+    setNodes([])
+    setEdges([])
+    setSelectedNodeId(null)
+  }, [setNodes, setEdges])
+
+  const handleSavePipeline = useCallback(() => {
+    try {
+      localStorage.setItem(
+        `synapseops:canvas:${projectName}`,
+        JSON.stringify({ nodes, edges })
+      )
+      notify.success('Pipeline guardado', {
+        description: 'Borrador local — la persistencia en servidor llega en HU-024.',
+      })
+    } catch {
+      notify.error('No se pudo guardar el borrador local.')
+    }
+  }, [nodes, edges, projectName])
+
   const handleSaveConfig = useCallback(
-    (label: string, config: NodeConfig) => {
+    (label: string, config: NodeConfig, status: PipelineNodeStatus, error?: string) => {
       setNodes((nds) =>
         nds.map((n) =>
-          n.id === selectedNodeId ? { ...n, data: { ...n.data, label, config } } : n
+          n.id === selectedNodeId
+            ? { ...n, data: { ...n.data, label, config, status, error } }
+            : n
         )
       )
       notify.success('Configuración guardada', { description: 'Aplicada al nodo del lienzo.' })
@@ -118,7 +158,7 @@ export function PipelineCanvas() {
       >
         <ReactFlow
           nodes={nodes}
-          edges={edges}
+          edges={displayEdges}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
@@ -130,7 +170,12 @@ export function PipelineCanvas() {
           proOptions={{ hideAttribution: true }}
         >
           <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="var(--border)" />
-          <Controls />
+          <CanvasToolbar
+            projectName={projectName}
+            nodeCount={nodes.length}
+            onClear={handleClear}
+            onSave={handleSavePipeline}
+          />
           <MiniMap pannable zoomable />
         </ReactFlow>
 

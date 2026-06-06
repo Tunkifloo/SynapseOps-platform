@@ -18,13 +18,20 @@ import {
   type FieldDef,
   type NodeConfig,
 } from '@/features/pipelines/nodeConfig'
-import type { PipelineNodeData } from './PipelineNode'
+import type { PipelineNodeData, PipelineNodeStatus } from './PipelineNode'
 
 interface NodeConfigPanelProps {
   data: PipelineNodeData
-  onSave: (label: string, config: NodeConfig) => void
+  onSave: (label: string, config: NodeConfig, status: PipelineNodeStatus, error?: string) => void
   onClose: () => void
 }
+
+const STATUS_OPTIONS: { value: PipelineNodeStatus; label: string }[] = [
+  { value: 'idle', label: 'Inactivo' },
+  { value: 'running', label: 'En ejecución' },
+  { value: 'success', label: 'Completado' },
+  { value: 'error', label: 'Error' },
+]
 
 /**
  * Panel lateral derecho de configuración de nodos (HU-021).
@@ -41,6 +48,8 @@ export function NodeConfigPanel({ data, onSave, onClose }: NodeConfigPanelProps)
     ...defaultConfig(data.kind),
     ...(data.config ?? {}),
   })
+  const [status, setStatus] = useState<PipelineNodeStatus>(data.status ?? 'idle')
+  const [errorMsg, setErrorMsg] = useState(data.error ?? '')
 
   const setField = (name: string, value: string | number) =>
     setConfig((prev) => ({ ...prev, [name]: value }))
@@ -120,13 +129,54 @@ export function NodeConfigPanel({ data, onSave, onClose }: NodeConfigPanelProps)
             El despliegue dinámico se configura en el Sprint 3.
           </p>
         )}
+
+        <div className="space-y-1.5 border-t border-border pt-4">
+          <Label htmlFor="cfg-status">Estado (vista previa)</Label>
+          <Select value={status} onValueChange={(v) => setStatus(v as PipelineNodeStatus)}>
+            <SelectTrigger id="cfg-status">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {STATUS_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-[11px] text-muted-foreground">
+            Se actualizará automáticamente durante la ejecución (HU-005 / HU-023).
+          </p>
+        </div>
+
+        {status === 'error' && (
+          <div className="space-y-1.5">
+            <Label htmlFor="cfg-error">Mensaje de error</Label>
+            <Input
+              id="cfg-error"
+              value={errorMsg}
+              onChange={(e) => setErrorMsg(e.target.value)}
+              placeholder="Resumen del error"
+            />
+          </div>
+        )}
       </div>
 
       <footer className="flex items-center justify-end gap-2 border-t border-border p-4">
         <Button variant="ghost" onClick={onClose}>
           Cancelar
         </Button>
-        <Button variant="cta" onClick={() => onSave(label.trim() || cfg.label, config)}>
+        <Button
+          variant="cta"
+          onClick={() =>
+            onSave(
+              label.trim() || cfg.label,
+              config,
+              status,
+              status === 'error' ? errorMsg : undefined
+            )
+          }
+        >
           Guardar
         </Button>
       </footer>
