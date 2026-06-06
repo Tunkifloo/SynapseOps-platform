@@ -1,0 +1,343 @@
+import { useCallback, useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import {
+  Box,
+  CalendarClock,
+  ChevronDown,
+  ChevronRight,
+  Hash,
+  Loader2,
+  Rocket,
+  Trash2,
+} from 'lucide-react'
+
+import { Card, CardContent } from '@/shared/components/ui/card'
+import { Badge } from '@/shared/components/ui/badge'
+import { Button } from '@/shared/components/ui/button'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/shared/components/ui/select'
+import { notify } from '@/shared/notify'
+import { setDeployHandoff } from '@/features/pipelines/deployHandoff'
+import type { MlflowModelVersion, ModelStage } from '../api'
+import { DeleteVersionDialog } from './DeleteVersionDialog'
+
+export interface RegistryModel {
+  name: string
+  latestVersion: string
+  latestRunId?: string
+  ownedVersions?: number
+}
+
+/**
+ * Capa de datos inyectable: el mismo UI sirve para el registro global (ADMIN,
+ * solo-lectura) y el registro por workspace (dueño, CRUD completo). Las acciones
+ * de escritura se omiten si la función correspondiente no se provee.
+ */
+export interface RegistryApi {
+  listModels: () => Promise<RegistryModel[]>
+  getVersions: (modelName: string) => Promise<MlflowModelVersion[]>
+  deleteVersion?: (modelName: string, version: string) => Promise<void>
+  transitionStage?: (modelName: string, version: string, stage: ModelStage) => Promise<unknown>
+  getMetrics?: (runId: string) => Promise<{ accuracy: number | null; loss: number | null }>
+  allowDeploy?: boolean
+}
+
+interface ModelRegistryProps {
+  api: RegistryApi
+  onAuthError: (error: unknown) => boolean
+}
+
+const STAGES: ModelStage[] = ['None', 'Staging', 'Production', 'Archived']
+
+function stageVariant(stage: string): 'success' | 'warning' | 'secondary' | 'outline' {
+  switch (stage) {
+    case 'Production': return 'success'
+    case 'Staging':    return 'warning'
+    case 'Archived':   return 'secondary'
+    default:           return 'outline'
+  }
+}
+
+function formatDate(ms: number): string {
+  if (!ms) return '—'
+  return new Date(ms).toLocaleString('es-PE', {
+    day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+  })
+}
+
+interface VersionCardProps {
+  api: RegistryApi
+  modelName: string
+  version: MlflowModelVersion
+  onAuthError: (error: unknown) => boolean
+  onChanged: () => void
+}
+
+function VersionCard({ api, modelName, version, onAuthError, onChanged }: VersionCardProps) {
+  const navigate = useNavigate()
+  const [accuracy, setAccuracy] = useState<number | null>(version.accuracy ?? null)
+  const [loss, setLoss] = useState<number | null>(version.loss ?? null)
+  const [stage, setStage] = useState<string>(version.stage)
+  const [isPromoting, setIsPromoting] = useState(false)
+  const [confirmOpen, setConfirmOpen] = useState(false)
+
+  const hasEmbeddedMetrics = version.accuracy != null || version.loss != null
+
+  useEffect(() => {
+    if (hasEmbeddedMetrics || !api.getMetrics) return
+    let active = true
+    api.getMetrics(version.runId)
+      .then((m) => { if (active) { setAccuracy(m.accuracy); setLoss(m.loss) } })
+      .catch(() => { /* métricas informativas */ })
+    return () => { active = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [version.runId])
+
+  const handleDeploy = () => {
+    setDeployHandoff({ runId: version.runId, modelName, version: version.version })
+    notify.info('Modelo seleccionado para despliegue', {
+      description: `${modelName} · v${version.version} — configúralo en el nodo de Despliegue del pipeline.`,
+    })
+    navigate('/builder')
+  }
+
+  const handlePromote = async (next: string) => {
+    if (next === stage || !api.transitionStage) return
+    setIsPromoting(true)
+    try {
+      await api.transitionStage(modelName, version.version, next as ModelStage)
+      setStage(next)
+      notify.success('Stage actualizado', { description: `${modelName} · v${version.version} → ${next}` })
+      onChanged()
+    } catch (err) {
+      if (!onAuthError(err)) notify.error('No se pudo actualizar el stage')
+    } finally {
+      setIsPromoting(false)
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!api.deleteVersion) return
+    await api.deleteVersion(modelName, version.version)
+    notify.success('Versión eliminada', {
+      description: `${modelName} · v${version.version} se eliminó del Registry.`,
+    })
+    onChanged()
+  }
+
+  return (
+    <div className="rounded-xl border border-slate-800/80 bg-slate-950/40 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-semibold text-slate-50">Versión {version.version}</span>
+            <Badge variant={stageVariant(stage)}>{stage}</Badge>
+          </div>
+          <p className="flex items-center gap-1.5 font-mono text-[11px] text-slate-500">
+            <Hash className="size-3" />
+            <span className="max-w-[220px] truncate" title={version.runId}>{version.runId}</span>
+          </p>
+          <p className="flex items-center gap-1.5 text-[11px] text-slate-500">
+            <CalendarClock className="size-3" />
+            {formatDate(version.creationTimestamp)}
+          </p>
+        </div>
+
+        <div className="flex flex-col items-end gap-1">
+          <span className="text-[10px] uppercase tracking-[0.14em] text-slate-500">Accuracy</span>
+          <span className="text-base font-semibold text-emerald-400">
+            {accuracy != null ? accuracy.toFixed(4) : '—'}
+          </span>
+          <span className="text-[10px] text-slate-500">
+            loss {loss != null ? loss.toFixed(4) : '—'}
+          </span>
+        </div>
+      </div>
+
+      {(api.allowDeploy || api.transitionStage || api.deleteVersion) && (
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          {api.allowDeploy && (
+            <Button type="button" size="sm" variant="cta" className="h-8" onClick={handleDeploy}>
+              <Rocket className="mr-1.5 size-3.5" />
+              Desplegar
+            </Button>
+          )}
+
+          {api.transitionStage && (
+            <Select value={stage} onValueChange={(v) => void handlePromote(v)} disabled={isPromoting}>
+              <SelectTrigger className="h-8 w-[150px] text-xs" aria-label="Cambiar stage">
+                {isPromoting
+                  ? <span className="flex items-center gap-1.5"><Loader2 className="size-3 animate-spin" /> Aplicando…</span>
+                  : <SelectValue placeholder="Stage" />}
+              </SelectTrigger>
+              <SelectContent>
+                {STAGES.map((s) => (
+                  <SelectItem key={s} value={s} className="text-xs">{s}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+
+          {api.deleteVersion && (
+            <Button
+              type="button"
+              size="sm"
+              variant="destructive"
+              className="ml-auto h-8"
+              onClick={() => setConfirmOpen(true)}
+              aria-label={`Eliminar versión ${version.version}`}
+            >
+              <Trash2 className="mr-1.5 size-3.5" />
+              Eliminar
+            </Button>
+          )}
+        </div>
+      )}
+
+      {api.deleteVersion && (
+        <DeleteVersionDialog
+          open={confirmOpen}
+          onOpenChange={setConfirmOpen}
+          modelName={modelName}
+          version={version.version}
+          onConfirm={handleDelete}
+        />
+      )}
+    </div>
+  )
+}
+
+export function ModelRegistry({ api, onAuthError }: ModelRegistryProps) {
+  const [models, setModels] = useState<RegistryModel[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [expanded, setExpanded] = useState<string | null>(null)
+  const [versions, setVersions] = useState<Record<string, MlflowModelVersion[]>>({})
+  const [loadingVersions, setLoadingVersions] = useState(false)
+
+  const loadModels = useCallback(async () => {
+    setIsLoading(true)
+    try {
+      setModels(await api.listModels())
+    } catch (err) {
+      if (!onAuthError(err)) setModels([])
+    } finally {
+      setIsLoading(false)
+    }
+  }, [api, onAuthError])
+
+  const loadVersions = useCallback(async (modelName: string) => {
+    setLoadingVersions(true)
+    try {
+      setVersions((prev) => ({ ...prev, [modelName]: [] }))
+      const vers = await api.getVersions(modelName)
+      setVersions((prev) => ({ ...prev, [modelName]: vers }))
+    } catch (err) {
+      if (!onAuthError(err)) setVersions((prev) => ({ ...prev, [modelName]: [] }))
+    } finally {
+      setLoadingVersions(false)
+    }
+  }, [api, onAuthError])
+
+  /* eslint-disable react-hooks/exhaustive-deps, react-hooks/set-state-in-effect */
+  useEffect(() => { void loadModels() }, [api])
+
+  useEffect(() => {
+    const refresh = () => { void loadModels(); if (expanded) void loadVersions(expanded) }
+    window.addEventListener('synapseops:refresh-mlflow', refresh)
+    return () => window.removeEventListener('synapseops:refresh-mlflow', refresh)
+  }, [loadModels, loadVersions, expanded])
+  /* eslint-enable react-hooks/exhaustive-deps, react-hooks/set-state-in-effect */
+
+  const toggle = (modelName: string) => {
+    if (expanded === modelName) { setExpanded(null); return }
+    setExpanded(modelName)
+    if (!versions[modelName]) void loadVersions(modelName)
+  }
+
+  return (
+    <Card className="rounded-2xl border border-slate-700/70 bg-slate-950/25 py-0 shadow-sm shadow-black/20">
+      <CardContent className="space-y-4 p-5">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="flex size-10 items-center justify-center rounded-xl border border-blue-500/20 bg-blue-500/10 text-blue-300">
+              <Box className="size-5" />
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-slate-50">Modelos registrados</h3>
+              <p className="text-xs text-slate-500">Versiones, métricas y stage desde el Model Registry de MLflow</p>
+            </div>
+          </div>
+          <span className="rounded-full bg-blue-500/10 px-4 py-1.5 text-sm font-semibold text-slate-100">
+            {models.length}
+          </span>
+        </div>
+
+        {isLoading ? (
+          <div className="flex min-h-36 items-center justify-center text-sm text-slate-500">
+            <Loader2 className="mr-2 size-4 animate-spin" /> Cargando modelos…
+          </div>
+        ) : models.length === 0 ? (
+          <div className="flex min-h-36 flex-col items-center justify-center rounded-xl border border-dashed border-blue-400/25 bg-slate-950/20 px-6 py-5 text-center">
+            <Box className="mb-3 size-9 text-slate-600" />
+            <p className="text-base font-semibold text-slate-50">No hay modelos registrados.</p>
+            <p className="mt-3 max-w-sm text-sm leading-6 text-slate-400">
+              Los modelos aparecerán aquí cuando un pipeline complete un entrenamiento y registre el artefacto.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {models.map((model) => (
+              <div key={model.name} className="rounded-xl border border-slate-800/80 bg-slate-950/30">
+                <button
+                  onClick={() => toggle(model.name)}
+                  className="flex w-full cursor-pointer items-center justify-between px-4 py-3 text-left transition-colors hover:bg-slate-900/40"
+                >
+                  <div>
+                    <p className="text-sm font-semibold text-slate-50">{model.name}</p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Última versión: <span className="text-blue-300">v{model.latestVersion}</span>
+                      {model.ownedVersions != null && (
+                        <span className="ml-2 text-slate-600">· {model.ownedVersions} versión(es)</span>
+                      )}
+                    </p>
+                  </div>
+                  {expanded === model.name
+                    ? <ChevronDown className="size-4 text-slate-400" />
+                    : <ChevronRight className="size-4 text-slate-400" />}
+                </button>
+
+                {expanded === model.name && (
+                  <div className="space-y-3 border-t border-slate-800/80 p-4">
+                    {loadingVersions && (versions[model.name]?.length ?? 0) === 0 && (
+                      <p className="flex items-center gap-2 text-xs text-slate-500">
+                        <Loader2 className="size-3 animate-spin" /> Cargando versiones…
+                      </p>
+                    )}
+                    {!loadingVersions && versions[model.name]?.length === 0 && (
+                      <p className="text-xs text-slate-500">Este modelo no tiene versiones.</p>
+                    )}
+                    {versions[model.name]?.map((version) => (
+                      <VersionCard
+                        key={version.version}
+                        api={api}
+                        modelName={model.name}
+                        version={version}
+                        onAuthError={onAuthError}
+                        onChanged={() => void loadVersions(model.name)}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}

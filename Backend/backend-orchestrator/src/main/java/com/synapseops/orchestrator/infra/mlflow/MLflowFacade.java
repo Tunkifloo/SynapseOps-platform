@@ -142,17 +142,103 @@ public class MLflowFacade {
             if (versions.isArray()) {
                 for (JsonNode v : versions) {
                     Map<String, Object> ver = new HashMap<>();
-                    ver.put("version", v.path("version").asText());
-                    ver.put("runId",   v.path("run_id").asText());
-                    ver.put("status",  v.path("status").asText());
-                    ver.put("stage",   v.path("current_stage").asText("None"));
+                    ver.put("version",           v.path("version").asText());
+                    ver.put("runId",             v.path("run_id").asText());
+                    ver.put("status",            v.path("status").asText());
+                    ver.put("stage",             v.path("current_stage").asText("None"));
+                    ver.put("creationTimestamp", v.path("creation_timestamp").asLong(0));
+                    ver.put("description",       v.path("description").asText(""));
                     result.add(ver);
                 }
             }
         } catch (Exception e) {
             log.error("Error parseando versiones: {}", e.getMessage());
         }
+        // Orden descendente por número de versión (la más reciente primero).
+        result.sort((a, b) -> parseIntSafe(b.get("version")) - parseIntSafe(a.get("version")));
         return result;
+    }
+
+    private int parseIntSafe(Object value) {
+        try { return Integer.parseInt(String.valueOf(value)); }
+        catch (NumberFormatException e) { return 0; }
+    }
+
+    /**
+     * Elimina una versión registrada del Model Registry y, de forma best-effort,
+     * el run subyacente (con sus artefactos) para mantener a MLflow como única
+     * fuente de verdad (HU-027). El run se resuelve a partir de la versión.
+     */
+    public Mono<Void> deleteModelVersion(String modelName, String version) {
+        return getRunIdForVersion(modelName, version)
+                .flatMap(runId -> webClient.post()
+                        .uri("/api/2.0/mlflow/model-versions/delete")
+                        .bodyValue(Map.of("name", modelName, "version", version))
+                        .retrieve()
+                        .bodyToMono(String.class)
+                        .doOnSuccess(r -> log.info("Versión eliminada — modelo={} v{}", modelName, version))
+                        .then(deleteRunBestEffort(runId)))
+                .then();
+    }
+
+    public Mono<String> getRunIdForVersion(String modelName, String version) {
+        return webClient.get()
+                .uri(uri -> uri
+                        .path("/api/2.0/mlflow/model-versions/get")
+                        .queryParam("name", modelName)
+                        .queryParam("version", version)
+                        .build())
+                .retrieve()
+                .bodyToMono(String.class)
+                .map(json -> {
+                    try {
+                        return objectMapper.readTree(json)
+                                .path("model_version").path("run_id").asText("");
+                    } catch (Exception e) { return ""; }
+                })
+                .onErrorReturn("");
+    }
+
+    private Mono<Void> deleteRunBestEffort(String runId) {
+        if (runId == null || runId.isBlank()) {
+            return Mono.empty();
+        }
+        return webClient.post()
+                .uri("/api/2.0/mlflow/runs/delete")
+                .bodyValue(Map.of("run_id", runId))
+                .retrieve()
+                .bodyToMono(String.class)
+                .doOnSuccess(r -> log.info("Run eliminado (artefactos) — runId={}", runId))
+                .onErrorResume(e -> {
+                    log.warn("No se pudo eliminar el run {} (best-effort): {}", runId, e.getMessage());
+                    return Mono.empty();
+                })
+                .then();
+    }
+
+    /**
+     * Promueve/transiciona una versión a un stage del Model Registry
+     * (None | Staging | Production | Archived). Es metadata de registro,
+     * no implica el despliegue del contenedor de inferencia (Sprint 3).
+     */
+    public Mono<Map<String, Object>> transitionStage(String modelName, String version, String stage) {
+        return webClient.post()
+                .uri("/api/2.0/mlflow/model-versions/transition-stage")
+                .bodyValue(Map.of(
+                        "name", modelName,
+                        "version", version,
+                        "stage", stage,
+                        "archive_existing_versions", "Production".equalsIgnoreCase(stage)))
+                .retrieve()
+                .bodyToMono(String.class)
+                .map(json -> {
+                    Map<String, Object> out = new HashMap<>();
+                    out.put("name", modelName);
+                    out.put("version", version);
+                    out.put("stage", stage);
+                    return out;
+                })
+                .doOnSuccess(r -> log.info("Stage actualizado — modelo={} v{} → {}", modelName, version, stage));
     }
 
     public Mono<String> getArtifactUri(String runId) {

@@ -1,0 +1,33 @@
+import { useMemo } from 'react'
+
+import {
+  deleteWorkspaceModelVersion,
+  getWorkspaceModelVersions,
+  listWorkspaceModels,
+  transitionWorkspaceModelStage,
+} from '../api'
+import { ModelRegistry, type RegistryApi } from './ModelRegistry'
+
+interface WorkspaceModelsPanelProps {
+  token: string
+  workspaceId: number
+  onAuthError: (error: unknown) => boolean
+}
+
+/**
+ * Registro de modelos con alcance de workspace (HU-027). CRUD completo para el
+ * dueño (COLLABORATOR o ADMIN propietario); el backend aplica DN-3. Las métricas
+ * vienen embebidas desde ml_artifacts (no requiere el endpoint ADMIN de MLflow).
+ */
+export function WorkspaceModelsPanel({ token, workspaceId, onAuthError }: WorkspaceModelsPanelProps) {
+  const api: RegistryApi = useMemo(() => ({
+    listModels: () => listWorkspaceModels(token, workspaceId),
+    getVersions: (name) => getWorkspaceModelVersions(token, workspaceId, name),
+    deleteVersion: (name, version) => deleteWorkspaceModelVersion(token, workspaceId, name, version),
+    transitionStage: (name, version, stage) =>
+      transitionWorkspaceModelStage(token, workspaceId, name, version, stage),
+    allowDeploy: true,
+  }), [token, workspaceId])
+
+  return <ModelRegistry api={api} onAuthError={onAuthError} />
+}

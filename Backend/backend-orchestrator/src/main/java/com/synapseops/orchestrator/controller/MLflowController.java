@@ -112,4 +112,10 @@ public class MLflowController {
         return mlflowFacade.getArtifactUri(runId)
                 .map(ResponseEntity::ok);
     }
+
+    // NOTA (HU-027 / DN-3): la gestión con escritura (eliminar / transicionar
+    // stage) NO se expone aquí. La consola global /mlflow es solo-lectura de
+    // gobierno para ADMIN. Toda mutación pasa por el registro con alcance de
+    // workspace (WorkspaceModelController), que verifica propiedad: el ADMIN es
+    // solo-lectura sobre lo ajeno.
 }

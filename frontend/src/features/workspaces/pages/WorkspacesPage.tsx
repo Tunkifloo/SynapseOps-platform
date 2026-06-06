@@ -28,6 +28,7 @@ import { DatasetPanel } from '@/features/workspaces/components/DatasetPanel'
 import { PipelinesPanel } from '@/features/workspaces/components/PipelinesPanel'
 import { WorkspaceForm } from '@/features/workspaces/components/WorkspaceForm'
 import { ExecutionPanel } from '@/features/executions/components/ExecutionPanel'
+import { WorkspaceModelsPanel } from '@/features/mlflow/components/WorkspaceModelsPanel'
 import {
   emptyPipelineForm,
   emptyWorkspaceForm,
@@ -525,6 +526,22 @@ export function WorkspacesPage({ token, searchQuery, onAuthError }: WorkspacesPa
           hasDataset={!!selectedWorkspace.datasetPath}
           onAuthError={onAuthError}
         />
+      )}
+
+      {selectedWorkspace && (
+        <section className="space-y-3">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-50">Modelos del proyecto</h2>
+            <p className="text-sm text-slate-400">
+              Artefactos versionados registrados en MLflow para este workspace. Gestiona stage, despliegue y versiones.
+            </p>
+          </div>
+          <WorkspaceModelsPanel
+            token={token}
+            workspaceId={selectedWorkspace.idWorkspace}
+            onAuthError={onAuthError}
+          />
+        </section>
       )}
     </div>
   )
