@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.synapseops.orchestrator.domain.entity.*;
 import com.synapseops.orchestrator.infra.repository.*;
+import com.synapseops.orchestrator.infra.sse.ExecutionEventBus;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -18,6 +19,7 @@ public class PipelineResultProcessor {
     private final PipelineRepository          pipelineRepository;
     private final MLArtifactRepository        artifactRepository;
     private final ObjectMapper                objectMapper;
+    private final ExecutionEventBus           executionEventBus;
 
     @Transactional
     public void process(String message) {
@@ -80,13 +82,22 @@ public class PipelineResultProcessor {
                 pipelineRepository.save(pipeline);
                 log.info("Pipeline COMPLETADO — executionId={}", executionId);
 
+                executionEventBus.publish(executionId, "INFO",
+                        "Entrenamiento COMPLETADO — runId=" + runId
+                                + (modelVersion.isBlank() ? "" : " · versión " + modelVersion),
+                        true);
+
             } else {
                 execution.fail();
                 executionRepository.save(execution);
                 pipeline.setStatus(PipelineStatus.FAILED);
                 pipelineRepository.save(pipeline);
-                log.error("Pipeline FALLIDO — executionId={} error={}",
-                        executionId, result.path("error").asText());
+                String errorMsg = result.path("error").asText("");
+                log.error("Pipeline FALLIDO — executionId={} error={}", executionId, errorMsg);
+
+                executionEventBus.publish(executionId, "ERROR",
+                        "Entrenamiento FALLIDO" + (errorMsg.isBlank() ? "" : ": " + errorMsg),
+                        true);
             }
 
         } catch (Exception e) {

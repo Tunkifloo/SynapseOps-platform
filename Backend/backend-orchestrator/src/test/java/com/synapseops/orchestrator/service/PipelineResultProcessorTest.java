@@ -6,6 +6,7 @@ import com.synapseops.orchestrator.infra.kafka.PipelineResultProcessor;
 import com.synapseops.orchestrator.infra.repository.MLArtifactRepository;
 import com.synapseops.orchestrator.infra.repository.PipelineExecutionRepository;
 import com.synapseops.orchestrator.infra.repository.PipelineRepository;
+import com.synapseops.orchestrator.infra.sse.ExecutionEventBus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -25,6 +26,7 @@ class PipelineResultProcessorTest {
     @Mock PipelineExecutionRepository executionRepository;
     @Mock PipelineRepository pipelineRepository;
     @Mock MLArtifactRepository artifactRepository;
+    @Mock ExecutionEventBus executionEventBus;
 
     PipelineResultProcessor processor;
 
@@ -39,7 +41,8 @@ class PipelineResultProcessorTest {
     @BeforeEach
     void setUp() {
         processor = new PipelineResultProcessor(
-                executionRepository, pipelineRepository, artifactRepository, new ObjectMapper());
+                executionRepository, pipelineRepository, artifactRepository, new ObjectMapper(),
+                executionEventBus);
 
         pipeline = new Pipeline();
         pipeline.setIdPipeline(100L);

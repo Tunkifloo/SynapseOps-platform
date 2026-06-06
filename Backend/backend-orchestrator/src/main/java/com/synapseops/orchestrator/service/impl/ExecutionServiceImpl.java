@@ -7,6 +7,7 @@ import com.synapseops.orchestrator.domain.entity.*;
 import com.synapseops.orchestrator.infra.exception.ResourceNotFoundException;
 import com.synapseops.orchestrator.infra.exception.ServiceUnavailableException;
 import com.synapseops.orchestrator.infra.kafka.PipelineEventPublisher;
+import com.synapseops.orchestrator.infra.sse.ExecutionEventBus;
 import com.synapseops.orchestrator.infra.repository.*;
 import com.synapseops.orchestrator.service.ExecutionService;
 import lombok.RequiredArgsConstructor;
@@ -25,6 +26,7 @@ public class ExecutionServiceImpl implements ExecutionService {
     private final PipelineRepository          pipelineRepository;
     private final PipelineExecutionRepository executionRepository;
     private final PipelineEventPublisher      eventPublisher;
+    private final ExecutionEventBus           executionEventBus;
 
     @Override
     public Mono<ExecutionResponse> launchExecution(Long pipelineId,
@@ -82,13 +84,18 @@ public class ExecutionServiceImpl implements ExecutionService {
             // estado a FAILED para no dejar la ejecución colgada en RUNNING para siempre.
             // Una eventual entrega tardía es inofensiva: el PipelineResultProcessor
             // descarta resultados de ejecuciones ya en estado terminal (idempotencia).
+            String execId = String.valueOf(execution.getIdExecution());
             try {
                 eventPublisher.publishPipelineJob(job);
+                executionEventBus.publish(execId, "INFO",
+                        "Job publicado en Kafka — entrenamiento en curso…");
             } catch (RuntimeException ex) {
                 execution.fail();
                 executionRepository.save(execution);
                 pipeline.setStatus(PipelineStatus.FAILED);
                 pipelineRepository.save(pipeline);
+                executionEventBus.publish(execId, "ERROR",
+                        "No se pudo encolar el trabajo en Kafka.", true);
                 log.error("Publicación a Kafka falló — executionId={} marcada FAILED: {}",
                         execution.getIdExecution(), ex.getMessage());
                 throw new ServiceUnavailableException(

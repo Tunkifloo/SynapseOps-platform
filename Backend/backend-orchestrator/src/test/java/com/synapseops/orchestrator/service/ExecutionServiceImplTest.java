@@ -7,6 +7,7 @@ import com.synapseops.orchestrator.infra.exception.ServiceUnavailableException;
 import com.synapseops.orchestrator.infra.kafka.PipelineEventPublisher;
 import com.synapseops.orchestrator.infra.repository.PipelineExecutionRepository;
 import com.synapseops.orchestrator.infra.repository.PipelineRepository;
+import com.synapseops.orchestrator.infra.sse.ExecutionEventBus;
 import com.synapseops.orchestrator.service.impl.ExecutionServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -30,6 +31,7 @@ class ExecutionServiceImplTest {
     @Mock PipelineRepository pipelineRepository;
     @Mock PipelineExecutionRepository executionRepository;
     @Mock PipelineEventPublisher eventPublisher;
+    @Mock ExecutionEventBus executionEventBus;
 
     @InjectMocks ExecutionServiceImpl executionService;
 

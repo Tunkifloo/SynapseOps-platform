@@ -20,15 +20,11 @@ public class JwtAuthenticationWebFilter implements WebFilter {
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
-        String authHeader = exchange.getRequest()
-                .getHeaders()
-                .getFirst(HttpHeaders.AUTHORIZATION);
-
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+        String jwt = resolveToken(exchange);
+        if (jwt == null) {
             return chain.filter(exchange);
         }
 
-        String jwt = authHeader.substring(7);
         String username = jwtService.getUsernameFromToken(jwt);
 
         if (username == null) {
@@ -49,5 +45,18 @@ public class JwtAuthenticationWebFilter implements WebFilter {
                                     .withAuthentication(authToken));
                 })
                 .switchIfEmpty(chain.filter(exchange));
+    }
+
+    /**
+     * Obtiene el JWT del header Authorization o, como fallback, del query param
+     * `token` (necesario para SSE/EventSource, que no permite cabeceras custom).
+     */
+    private String resolveToken(ServerWebExchange exchange) {
+        String authHeader = exchange.getRequest().getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            return authHeader.substring(7);
+        }
+        String queryToken = exchange.getRequest().getQueryParams().getFirst("token");
+        return (queryToken != null && !queryToken.isBlank()) ? queryToken : null;
     }
 }

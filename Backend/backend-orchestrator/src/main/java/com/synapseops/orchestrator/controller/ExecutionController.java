@@ -2,6 +2,8 @@ package com.synapseops.orchestrator.controller;
 
 import com.synapseops.orchestrator.domain.dto.request.ExecutionRequest;
 import com.synapseops.orchestrator.domain.dto.response.ExecutionResponse;
+import com.synapseops.orchestrator.infra.sse.ExecutionEventBus;
+import com.synapseops.orchestrator.infra.sse.ExecutionLogEvent;
 import com.synapseops.orchestrator.service.ExecutionService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -11,12 +13,15 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.security.Principal;
+import java.time.Duration;
 
 @RestController
 @RequestMapping("/api/v1/workspaces/{workspaceId}/pipelines/{pipelineId}")
@@ -26,6 +31,7 @@ import java.security.Principal;
 public class ExecutionController {
 
     private final ExecutionService executionService;
+    private final ExecutionEventBus executionEventBus;
 
     @Operation(summary = "Lanzar re-entrenamiento",
             description = "Crea PipelineExecution, publica en Kafka → ml-engine entrena.")
@@ -71,5 +77,31 @@ public class ExecutionController {
         return principal.flatMap(p ->
                         executionService.getExecution(executionId, p.getName()))
                 .map(ResponseEntity::ok);
+    }
+
+    @Operation(summary = "Stream de logs en tiempo real (SSE — HU-023 / ADR-002)",
+            description = "text/event-stream con eventos de log/estado de la ejecución. "
+                    + "EventSource autentica con ?token=<JWT> (no admite cabeceras).")
+    @GetMapping(value = "/executions/{executionId}/logs",
+            produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public Flux<ServerSentEvent<ExecutionLogEvent>> streamLogs(
+            @PathVariable Long workspaceId,
+            @PathVariable Long pipelineId,
+            @PathVariable Long executionId) {
+
+        Flux<ServerSentEvent<ExecutionLogEvent>> events = executionEventBus
+                .stream(String.valueOf(executionId))
+                .map(event -> ServerSentEvent.<ExecutionLogEvent>builder(event)
+                        .id(event.timestamp())
+                        .event("log")
+                        .build());
+
+        // Heartbeat (comentario SSE) para mantener viva la conexión tras proxies.
+        Flux<ServerSentEvent<ExecutionLogEvent>> heartbeat = Flux.interval(Duration.ofSeconds(20))
+                .map(tick -> ServerSentEvent.<ExecutionLogEvent>builder()
+                        .comment("keep-alive")
+                        .build());
+
+        return events.mergeWith(heartbeat);
     }
 }

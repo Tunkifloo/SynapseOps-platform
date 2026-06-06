@@ -24,6 +24,7 @@ import { PipelineNode, type PipelineNodeData, type PipelineNodeStatus } from './
 import { NodePalette } from './NodePalette'
 import { NodeConfigPanel } from './NodeConfigPanel'
 import { CanvasToolbar } from './CanvasToolbar'
+import { LogConsole } from './LogConsole'
 
 const nodeTypes = { pipelineNode: PipelineNode }
 
@@ -77,6 +78,7 @@ export function PipelineCanvas({
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [activeExecutionId, setActiveExecutionId] = useState<number | null>(null)
   const { screenToFlowPosition } = useReactFlow()
   const storeWorkspace = useAppStore((s) => s.currentWorkspace)
   const projectName = workspace?.name ?? storeWorkspace
@@ -153,6 +155,7 @@ export function PipelineCanvas({
         try {
           const exec = await launchExecution(token, wsId, pipelineId, payload)
           executionId = exec.idExecution
+          setActiveExecutionId(executionId) // abre la consola SSE (HU-023)
           notify.info('Entrenamiento iniciado', { description: `Ejecución #${executionId}` })
         } catch (err) {
           patchNode('error', err instanceof Error ? err.message : 'No se pudo lanzar el entrenamiento.')
@@ -320,13 +323,14 @@ export function PipelineCanvas({
   )
 
   return (
-    <div className="flex h-full min-h-0 gap-3">
-      <NodePalette />
-      <div
-        className="relative min-h-0 flex-1 overflow-hidden rounded-2xl border border-border bg-card/20"
-        onDrop={onDrop}
-        onDragOver={onDragOver}
-      >
+    <div className="flex h-full min-h-0 flex-col gap-3">
+      <div className="flex min-h-0 flex-1 gap-3">
+        <NodePalette />
+        <div
+          className="relative min-h-0 flex-1 overflow-hidden rounded-2xl border border-border bg-card/20"
+          onDrop={onDrop}
+          onDragOver={onDragOver}
+        >
         <ReactFlow
           nodes={nodes}
           edges={displayEdges}
@@ -351,17 +355,27 @@ export function PipelineCanvas({
           <MiniMap pannable zoomable />
         </ReactFlow>
 
-        {selectedNode && (
-          <NodeConfigPanel
-            key={selectedNode.id}
-            data={selectedNode.data}
-            ingest={ingestContext}
-            train={trainContext}
-            onSave={handleSaveConfig}
-            onClose={() => setSelectedNodeId(null)}
-          />
-        )}
+          {selectedNode && (
+            <NodeConfigPanel
+              key={selectedNode.id}
+              data={selectedNode.data}
+              ingest={ingestContext}
+              train={trainContext}
+              onSave={handleSaveConfig}
+              onClose={() => setSelectedNodeId(null)}
+            />
+          )}
+        </div>
       </div>
+
+      {token && workspace && pipelineId && activeExecutionId != null && (
+        <LogConsole
+          token={token}
+          workspaceId={workspace.idWorkspace}
+          pipelineId={pipelineId}
+          executionId={activeExecutionId}
+        />
+      )}
     </div>
   )
 }
