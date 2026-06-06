@@ -106,6 +106,36 @@ export const NODE_FIELDS: Record<NodeKind, FieldDef[]> = {
   deploy: [],
 }
 
+/**
+ * Valida la configuración de un nodo según su esquema (HU-003/HU-004/HU-005).
+ * Devuelve el primer mensaje de error, o `null` si es válida.
+ */
+export function validateConfig(kind: NodeKind, config: NodeConfig): string | null {
+  for (const field of NODE_FIELDS[kind]) {
+    if (field.showIf && !field.showIf(config)) continue
+    const value = config[field.name]
+
+    if (field.type === 'number') {
+      const n = Number(value)
+      if (value === '' || value === undefined || Number.isNaN(n)) {
+        return `${field.label}: ingresa un valor numérico.`
+      }
+      if (field.min !== undefined && n < field.min) return `${field.label}: mínimo ${field.min}.`
+      if (field.max !== undefined && n > field.max) return `${field.label}: máximo ${field.max}.`
+    } else if (field.type === 'select') {
+      if (value === undefined || value === '') return `${field.label}: selecciona una opción.`
+    } else {
+      if (value === undefined || String(value).trim() === '') {
+        return `${field.label}: este campo es obligatorio.`
+      }
+      if (field.name === 'learningRate' && Number.isNaN(Number(value))) {
+        return 'Learning rate: debe ser un número (p. ej. 0.001).'
+      }
+    }
+  }
+  return null
+}
+
 export const defaultConfig = (kind: NodeKind): NodeConfig => {
   switch (kind) {
     case 'ingest':

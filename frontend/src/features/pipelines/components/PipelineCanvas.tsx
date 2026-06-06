@@ -15,6 +15,8 @@ import 'reactflow/dist/style.css'
 
 import { notify } from '@/shared/notify'
 import { useAppStore } from '@/store/useAppStore'
+import { launchExecution, getExecution } from '@/features/executions/api'
+import type { ExecutionRequest } from '@/features/executions/types'
 import { NODE_KIND_MAP, type NodeKind } from '@/features/pipelines/nodeKinds'
 import { defaultConfig, type NodeConfig } from '@/features/pipelines/nodeConfig'
 import { PipelineNode, type PipelineNodeData, type PipelineNodeStatus } from './PipelineNode'
@@ -54,15 +56,22 @@ function wouldCreateCycle(edges: Edge[], source: string, target: string): boolea
 export interface CanvasWorkspace {
   idWorkspace: number
   name: string
+  datasetPath?: string | null
 }
 
 interface PipelineCanvasProps {
   token?: string
   workspace?: CanvasWorkspace | null
+  pipelineId?: number | null
   onWorkspaceRefresh?: () => void
 }
 
-export function PipelineCanvas({ token, workspace, onWorkspaceRefresh }: PipelineCanvasProps) {
+export function PipelineCanvas({
+  token,
+  workspace,
+  pipelineId,
+  onWorkspaceRefresh,
+}: PipelineCanvasProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState<PipelineNodeData>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
@@ -97,6 +106,102 @@ export function PipelineCanvas({ token, workspace, onWorkspaceRefresh }: Pipelin
       : undefined
 
   const selectedNode = nodes.find((n) => n.id === selectedNodeId) ?? null
+
+  // HU-005: lanza la ejecución real y refleja el estado en vivo (polling).
+  const runTraining = useCallback(
+    (nodeId: string, cfg: NodeConfig) => {
+      if (!token || !workspace || !pipelineId) return
+      const wsId = workspace.idWorkspace
+
+      const patchNode = (
+        status: PipelineNodeStatus,
+        error?: string,
+        extra?: Record<string, string>
+      ) =>
+        setNodes((nds) =>
+          nds.map((n) =>
+            n.id === nodeId
+              ? {
+                  ...n,
+                  data: {
+                    ...n.data,
+                    status,
+                    error,
+                    config: extra ? { ...n.data.config, ...extra } : n.data.config,
+                  },
+                }
+              : n
+          )
+        )
+
+      patchNode('running')
+
+      const payload: ExecutionRequest = {
+        framework: (cfg.framework as 'tensorflow' | 'pytorch') ?? 'tensorflow',
+        architecture: 'cnn',
+        epochs: Number(cfg.epochs) || 5,
+        batchSize: Number(cfg.batchSize) || 32,
+        learningRate: Number(cfg.learningRate) || 0.001,
+        numClasses: 10, // el ml-engine autodetecta el real
+        modelName: String(cfg.modelName || 'modelo'),
+      }
+
+      void (async () => {
+        let executionId: number
+        try {
+          const exec = await launchExecution(token, wsId, pipelineId, payload)
+          executionId = exec.idExecution
+          notify.info('Entrenamiento iniciado', { description: `Ejecución #${executionId}` })
+        } catch (err) {
+          patchNode('error', err instanceof Error ? err.message : 'No se pudo lanzar el entrenamiento.')
+          return
+        }
+
+        let attempts = 0
+        const MAX_ATTEMPTS = 120 // ~6 min a 3s
+        const poll = async () => {
+          attempts += 1
+          try {
+            const exec = await getExecution(token, wsId, pipelineId, executionId)
+            if (exec.status === 'COMPLETED') {
+              patchNode('success', undefined, {
+                runId: exec.mlflowRunId ?? '',
+                modelVersion: exec.modelVersion ?? '',
+                metrics: exec.metrics ?? '',
+              })
+              notify.success('Entrenamiento completado', {
+                description: exec.mlflowRunId ? `Run ${exec.mlflowRunId}` : undefined,
+              })
+              return
+            }
+            if (exec.status === 'FAILED') {
+              patchNode('error', 'El entrenamiento falló (revisa MLflow / logs).')
+              return
+            }
+          } catch {
+            // Error transitorio al consultar: se reintenta.
+          }
+          if (attempts < MAX_ATTEMPTS) {
+            window.setTimeout(() => void poll(), 3000)
+          } else {
+            patchNode('error', 'Tiempo de espera agotado consultando el estado.')
+          }
+        }
+        window.setTimeout(() => void poll(), 3000)
+      })()
+    },
+    [token, workspace, pipelineId, setNodes]
+  )
+
+  const trainContext =
+    token && workspace && pipelineId
+      ? {
+          canRun: !!workspace.datasetPath,
+          onExecute: (cfg: NodeConfig) => {
+            if (selectedNodeId) runTraining(selectedNodeId, cfg)
+          },
+        }
+      : undefined
 
   // Aristas coloreadas según el estado del nodo origen (HU-019):
   // success → verde, running → azul animado, error → rojo.
@@ -222,6 +327,7 @@ export function PipelineCanvas({ token, workspace, onWorkspaceRefresh }: Pipelin
             key={selectedNode.id}
             data={selectedNode.data}
             ingest={ingestContext}
+            train={trainContext}
             onSave={handleSaveConfig}
             onClose={() => setSelectedNodeId(null)}
           />

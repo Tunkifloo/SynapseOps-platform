@@ -15,11 +15,14 @@ import { NODE_KIND_MAP } from '@/features/pipelines/nodeKinds'
 import {
   NODE_FIELDS,
   defaultConfig,
+  validateConfig,
   type FieldDef,
   type NodeConfig,
 } from '@/features/pipelines/nodeConfig'
 import type { PipelineNodeData, PipelineNodeStatus } from './PipelineNode'
 import { IngestActions } from './IngestActions'
+import { TrainActions } from './TrainActions'
+import { TrainMetrics } from './TrainMetrics'
 
 export interface IngestContext {
   token: string
@@ -27,9 +30,15 @@ export interface IngestContext {
   onAssigned: (descriptor: string) => void
 }
 
+export interface TrainContext {
+  canRun: boolean
+  onExecute: (config: NodeConfig) => void
+}
+
 interface NodeConfigPanelProps {
   data: PipelineNodeData
   ingest?: IngestContext
+  train?: TrainContext
   onSave: (label: string, config: NodeConfig, status: PipelineNodeStatus, error?: string) => void
   onClose: () => void
 }
@@ -46,7 +55,7 @@ const STATUS_OPTIONS: { value: PipelineNodeStatus; label: string }[] = [
  * Debe montarse con `key={node.id}` para reinicializar el formulario al cambiar de nodo.
  * "Guardar" aplica al estado del lienzo; cerrar/Cancelar descarta los cambios.
  */
-export function NodeConfigPanel({ data, ingest, onSave, onClose }: NodeConfigPanelProps) {
+export function NodeConfigPanel({ data, ingest, train, onSave, onClose }: NodeConfigPanelProps) {
   const cfg = NODE_KIND_MAP[data.kind]
   const Icon = cfg.icon
   const fields = NODE_FIELDS[data.kind]
@@ -58,9 +67,21 @@ export function NodeConfigPanel({ data, ingest, onSave, onClose }: NodeConfigPan
   })
   const [status, setStatus] = useState<PipelineNodeStatus>(data.status ?? 'idle')
   const [errorMsg, setErrorMsg] = useState(data.error ?? '')
+  const [validationError, setValidationError] = useState<string | null>(null)
 
-  const setField = (name: string, value: string | number) =>
+  const setField = (name: string, value: string | number) => {
+    setValidationError(null)
     setConfig((prev) => ({ ...prev, [name]: value }))
+  }
+
+  const handleSave = () => {
+    const error = validateConfig(data.kind, config)
+    if (error) {
+      setValidationError(error)
+      return
+    }
+    onSave(label.trim() || cfg.label, config, status, status === 'error' ? errorMsg : undefined)
+  }
 
   const renderField = (field: FieldDef) => {
     if (field.showIf && !field.showIf(config)) return null
@@ -138,6 +159,17 @@ export function NodeConfigPanel({ data, ingest, onSave, onClose }: NodeConfigPan
           </p>
         )}
 
+        {data.kind === 'split' && (
+          <p className="rounded-lg bg-card/40 px-3 py-2 text-xs text-muted-foreground">
+            Train <span className="font-mono text-foreground">{Number(config.trainRatio) || 0}%</span>{' '}
+            · Validación/Test{' '}
+            <span className="font-mono text-foreground">
+              {100 - (Number(config.trainRatio) || 0)}%
+            </span>{' '}
+            (estratificado por clase en el ML engine).
+          </p>
+        )}
+
         {data.kind === 'ingest' && ingest && (
           <IngestActions
             token={ingest.token}
@@ -147,6 +179,14 @@ export function NodeConfigPanel({ data, ingest, onSave, onClose }: NodeConfigPan
             url={String(config.url ?? '')}
             onAssigned={ingest.onAssigned}
           />
+        )}
+
+        {data.kind === 'train' && (
+          <TrainMetrics status={data.status} metrics={data.config?.metrics} runId={data.config?.runId} />
+        )}
+
+        {data.kind === 'train' && train && (
+          <TrainActions config={config} canRun={train.canRun} onExecute={train.onExecute} />
         )}
 
         <div className="space-y-1.5 border-t border-border pt-4">
@@ -179,23 +219,22 @@ export function NodeConfigPanel({ data, ingest, onSave, onClose }: NodeConfigPan
             />
           </div>
         )}
+
+        {validationError && (
+          <p
+            role="alert"
+            className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm font-medium text-destructive"
+          >
+            {validationError}
+          </p>
+        )}
       </div>
 
       <footer className="flex items-center justify-end gap-2 border-t border-border p-4">
         <Button variant="ghost" onClick={onClose}>
           Cancelar
         </Button>
-        <Button
-          variant="cta"
-          onClick={() =>
-            onSave(
-              label.trim() || cfg.label,
-              config,
-              status,
-              status === 'error' ? errorMsg : undefined
-            )
-          }
-        >
+        <Button variant="cta" onClick={handleSave}>
           Guardar
         </Button>
       </footer>

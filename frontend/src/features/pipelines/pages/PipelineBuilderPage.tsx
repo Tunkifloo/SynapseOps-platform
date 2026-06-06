@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ReactFlowProvider } from 'reactflow'
-import { FolderPlus } from 'lucide-react'
+import { FolderPlus, Plus } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
 import { Button } from '@/shared/components/ui/button'
@@ -13,8 +13,13 @@ import {
 } from '@/shared/components/ui/select'
 import { Spinner } from '@/shared/components/ui/spinner'
 import { Badge } from '@/shared/components/ui/badge'
-import { listMyWorkspaces } from '@/features/workspaces/api'
-import type { WorkspaceSummary } from '@/features/workspaces/types'
+import { notify } from '@/shared/notify'
+import {
+  createPipeline,
+  listMyWorkspaces,
+  listWorkspacePipelines,
+} from '@/features/workspaces/api'
+import type { PipelineSummary, WorkspaceSummary } from '@/features/workspaces/types'
 import { PipelineCanvas } from '@/features/pipelines/components/PipelineCanvas'
 
 interface PipelineBuilderPageProps {
@@ -23,56 +28,87 @@ interface PipelineBuilderPageProps {
 }
 
 /**
- * Página del lienzo low-code (HU-001) vinculada a un workspace (HU-002):
- * el proyecto seleccionado da contexto a los nodos (p. ej. ingesta de dataset).
+ * Lienzo low-code (HU-001) vinculado a un workspace (HU-002) y a un pipeline
+ * (HU-005): el proyecto + pipeline dan contexto a los nodos (ingesta, entrenamiento).
  */
 export function PipelineBuilderPage({ token, onAuthError }: PipelineBuilderPageProps) {
   const [workspaces, setWorkspaces] = useState<WorkspaceSummary[]>([])
-  const [activeId, setActiveId] = useState<number | null>(null)
+  const [activeWsId, setActiveWsId] = useState<number | null>(null)
+  const [pipelines, setPipelines] = useState<PipelineSummary[]>([])
+  const [activePipelineId, setActivePipelineId] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
+  const [creating, setCreating] = useState(false)
   const navigate = useNavigate()
 
-  const load = useCallback(async () => {
+  const loadWorkspaces = useCallback(async () => {
     try {
       const data = await listMyWorkspaces(token)
       setWorkspaces(data)
-      setActiveId((prev) => prev ?? data[0]?.idWorkspace ?? null)
+      setActiveWsId((prev) => prev ?? data[0]?.idWorkspace ?? null)
     } catch (err) {
-      if (!onAuthError(err)) {
-        // El error de red/servidor ya lo notifica el cliente HTTP (HU-020).
-      }
+      onAuthError(err)
     } finally {
       setLoading(false)
     }
   }, [token, onAuthError])
 
-  useEffect(() => {
-    void load()
-  }, [load])
+  const loadPipelines = useCallback(
+    async (wsId: number) => {
+      try {
+        const data = await listWorkspacePipelines(token, wsId)
+        setPipelines(data)
+        setActivePipelineId(data[0]?.idPipeline ?? null)
+      } catch (err) {
+        onAuthError(err)
+      }
+    },
+    [token, onAuthError]
+  )
 
-  const activeWorkspace = workspaces.find((w) => w.idWorkspace === activeId) ?? null
+  useEffect(() => {
+    void loadWorkspaces()
+  }, [loadWorkspaces])
+
+  useEffect(() => {
+    if (activeWsId) void loadPipelines(activeWsId)
+  }, [activeWsId, loadPipelines])
+
+  const activeWorkspace = workspaces.find((w) => w.idWorkspace === activeWsId) ?? null
+
+  const handleCreatePipeline = async () => {
+    if (!activeWsId) return
+    setCreating(true)
+    try {
+      const created = await createPipeline(token, activeWsId, {
+        name: `Pipeline ${pipelines.length + 1}`,
+      })
+      await loadPipelines(activeWsId)
+      setActivePipelineId(created.idPipeline)
+      notify.success('Pipeline creado', { description: created.name })
+    } catch (err) {
+      if (!onAuthError(err)) notify.error('No se pudo crear el pipeline.')
+    } finally {
+      setCreating(false)
+    }
+  }
 
   return (
     <div className="flex h-[calc(100svh-8rem)] min-h-[480px] flex-col gap-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <h1 className="font-heading text-2xl font-bold tracking-tight text-foreground">
             Lienzo del pipeline
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Arrastra nodos, conéctalos de izquierda a derecha y configúralos para el proyecto activo.
+            Arrastra nodos, conéctalos y ejecuta el entrenamiento para el proyecto activo.
           </p>
         </div>
 
         {!loading && workspaces.length > 0 && (
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">Proyecto:</span>
-            <Select
-              value={activeId ? String(activeId) : ''}
-              onValueChange={(v) => setActiveId(Number(v))}
-            >
-              <SelectTrigger className="w-56">
-                <SelectValue placeholder="Selecciona un proyecto" />
+          <div className="flex flex-wrap items-center gap-2">
+            <Select value={activeWsId ? String(activeWsId) : ''} onValueChange={(v) => setActiveWsId(Number(v))}>
+              <SelectTrigger className="w-48" aria-label="Proyecto">
+                <SelectValue placeholder="Proyecto" />
               </SelectTrigger>
               <SelectContent>
                 {workspaces.map((w) => (
@@ -82,6 +118,29 @@ export function PipelineBuilderPage({ token, onAuthError }: PipelineBuilderPageP
                 ))}
               </SelectContent>
             </Select>
+
+            <Select
+              value={activePipelineId ? String(activePipelineId) : ''}
+              onValueChange={(v) => setActivePipelineId(Number(v))}
+              disabled={pipelines.length === 0}
+            >
+              <SelectTrigger className="w-44" aria-label="Pipeline">
+                <SelectValue placeholder={pipelines.length === 0 ? 'Sin pipelines' : 'Pipeline'} />
+              </SelectTrigger>
+              <SelectContent>
+                {pipelines.map((p) => (
+                  <SelectItem key={p.idPipeline} value={String(p.idPipeline)}>
+                    {p.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Button variant="outline" size="sm" loading={creating} onClick={() => void handleCreatePipeline()}>
+              <Plus />
+              Pipeline
+            </Button>
+
             {activeWorkspace && (
               <Badge variant={activeWorkspace.datasetPath ? 'success' : 'secondary'}>
                 {activeWorkspace.datasetPath ? 'Dataset listo' : 'Sin dataset'}
@@ -114,7 +173,8 @@ export function PipelineBuilderPage({ token, onAuthError }: PipelineBuilderPageP
             <PipelineCanvas
               token={token}
               workspace={activeWorkspace}
-              onWorkspaceRefresh={() => void load()}
+              pipelineId={activePipelineId}
+              onWorkspaceRefresh={() => void loadWorkspaces()}
             />
           </ReactFlowProvider>
         )}
