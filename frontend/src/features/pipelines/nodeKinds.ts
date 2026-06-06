@@ -22,7 +22,7 @@ export const NODE_KINDS: NodeKindConfig[] = [
   { kind: 'preprocess', label: 'Preprocesamiento', icon: SlidersHorizontal, description: 'Normalizar / redimensionar' },
   { kind: 'split', label: 'Split', icon: Split, description: 'Train / Val / Test' },
   { kind: 'train', label: 'Entrenamiento', icon: BrainCircuit, description: 'CNN · Kafka → ml-engine' },
-  { kind: 'deploy', label: 'Despliegue', icon: Rocket, description: 'model-service (Sprint 3)' },
+  { kind: 'deploy', label: 'Despliegue', icon: Rocket, description: 'Modelo versionado · puerto auto' },
 ]
 
 export const NODE_KIND_MAP: Record<NodeKind, NodeKindConfig> = Object.fromEntries(

@@ -66,6 +66,7 @@ interface PipelineCanvasProps {
   workspace?: CanvasWorkspace | null
   pipelineId?: number | null
   onWorkspaceRefresh?: () => void
+  onAuthError?: (error: unknown) => boolean
 }
 
 export function PipelineCanvas({
@@ -73,6 +74,7 @@ export function PipelineCanvas({
   workspace,
   pipelineId,
   onWorkspaceRefresh,
+  onAuthError,
 }: PipelineCanvasProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState<PipelineNodeData>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
@@ -205,6 +207,18 @@ export function PipelineCanvas({
           onExecute: (cfg: NodeConfig) => {
             if (selectedNodeId) runTraining(selectedNodeId, cfg)
           },
+        }
+      : undefined
+
+  // Contexto para el Nodo de Despliegue (HU-028): modelos del workspace + handoff.
+  const deployContext =
+    token && workspace
+      ? {
+          token,
+          workspaceId: workspace.idWorkspace,
+          pipelineId: pipelineId ?? null,
+          projectName,
+          onAuthError: onAuthError ?? (() => false),
         }
       : undefined
 
@@ -361,6 +375,7 @@ export function PipelineCanvas({
               data={selectedNode.data}
               ingest={ingestContext}
               train={trainContext}
+              deploy={deployContext}
               onSave={handleSaveConfig}
               onClose={() => setSelectedNodeId(null)}
             />

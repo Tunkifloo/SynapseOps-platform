@@ -23,6 +23,7 @@ import type { PipelineNodeData, PipelineNodeStatus } from './PipelineNode'
 import { IngestActions } from './IngestActions'
 import { TrainActions } from './TrainActions'
 import { TrainMetrics } from './TrainMetrics'
+import { DeployActions } from './DeployActions'
 
 export interface IngestContext {
   token: string
@@ -35,10 +36,19 @@ export interface TrainContext {
   onExecute: (config: NodeConfig) => void
 }
 
+export interface DeployContext {
+  token: string
+  workspaceId: number
+  pipelineId: number | null
+  projectName: string
+  onAuthError: (error: unknown) => boolean
+}
+
 interface NodeConfigPanelProps {
   data: PipelineNodeData
   ingest?: IngestContext
   train?: TrainContext
+  deploy?: DeployContext
   onSave: (label: string, config: NodeConfig, status: PipelineNodeStatus, error?: string) => void
   onClose: () => void
 }
@@ -55,7 +65,7 @@ const STATUS_OPTIONS: { value: PipelineNodeStatus; label: string }[] = [
  * Debe montarse con `key={node.id}` para reinicializar el formulario al cambiar de nodo.
  * "Guardar" aplica al estado del lienzo; cerrar/Cancelar descarta los cambios.
  */
-export function NodeConfigPanel({ data, ingest, train, onSave, onClose }: NodeConfigPanelProps) {
+export function NodeConfigPanel({ data, ingest, train, deploy, onSave, onClose }: NodeConfigPanelProps) {
   const cfg = NODE_KIND_MAP[data.kind]
   const Icon = cfg.icon
   const fields = NODE_FIELDS[data.kind]
@@ -72,6 +82,11 @@ export function NodeConfigPanel({ data, ingest, train, onSave, onClose }: NodeCo
   const setField = (name: string, value: string | number) => {
     setValidationError(null)
     setConfig((prev) => ({ ...prev, [name]: value }))
+  }
+
+  const mergeConfig = (patch: NodeConfig) => {
+    setValidationError(null)
+    setConfig((prev) => ({ ...prev, ...patch }))
   }
 
   const handleSave = () => {
@@ -151,11 +166,23 @@ export function NodeConfigPanel({ data, ingest, train, onSave, onClose }: NodeCo
           <Input id="cfg-label" value={label} onChange={(e) => setLabel(e.target.value)} />
         </div>
 
-        {fields.length > 0 ? (
-          fields.map(renderField)
-        ) : (
+        {fields.length > 0 && fields.map(renderField)}
+
+        {data.kind === 'deploy' && deploy && (
+          <DeployActions
+            token={deploy.token}
+            workspaceId={deploy.workspaceId}
+            pipelineId={deploy.pipelineId}
+            projectName={deploy.projectName}
+            config={config}
+            onConfigChange={mergeConfig}
+            onAuthError={deploy.onAuthError}
+          />
+        )}
+
+        {data.kind === 'deploy' && !deploy && (
           <p className="rounded-xl border border-border bg-card/40 p-3 text-sm text-muted-foreground">
-            El despliegue dinámico se configura en el Sprint 3.
+            Selecciona un proyecto y un pipeline para configurar el despliegue.
           </p>
         )}
 

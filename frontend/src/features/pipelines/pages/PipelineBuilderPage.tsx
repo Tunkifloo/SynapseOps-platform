@@ -175,6 +175,7 @@ export function PipelineBuilderPage({ token, onAuthError }: PipelineBuilderPageP
               workspace={activeWorkspace}
               pipelineId={activePipelineId}
               onWorkspaceRefresh={() => void loadWorkspaces()}
+              onAuthError={onAuthError}
             />
           </ReactFlowProvider>
         )}
