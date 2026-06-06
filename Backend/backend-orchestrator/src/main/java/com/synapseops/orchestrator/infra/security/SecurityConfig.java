@@ -43,21 +43,26 @@ public class SecurityConfig {
                 .exceptionHandling(ex -> ex
                         .authenticationEntryPoint((exchange, e) -> {
                             var response = exchange.getResponse();
-                            // Si la respuesta ya está comprometida (p. ej. el entry point se
-                            // invoca al completar un Flux ya autenticado), no se pueden mutar
-                            // los headers (son read-only) → completar sin escribir cuerpo.
+                            // El entry point puede invocarse cuando la respuesta ya está en
+                            // curso (headers read-only) aunque isCommitted() aún sea false en
+                            // WebFlux. Se intenta escribir el ProblemDetail y, si los headers
+                            // ya no son mutables, se completa sin cuerpo (nunca lanzar 500).
                             if (response.isCommitted()) {
                                 return response.setComplete();
                             }
-                            response.setStatusCode(org.springframework.http.HttpStatus.UNAUTHORIZED);
-                            response.getHeaders().setContentType(
-                                    org.springframework.http.MediaType.APPLICATION_PROBLEM_JSON);
-                            String body = """
-                                    {"type":"/errors/authentication","title":"No autenticado",\
-                                    "status":401,"detail":"Se requiere un token de autenticación válido."}""";
-                            var buffer = response.bufferFactory()
-                                    .wrap(body.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-                            return response.writeWith(reactor.core.publisher.Mono.just(buffer));
+                            try {
+                                response.setStatusCode(org.springframework.http.HttpStatus.UNAUTHORIZED);
+                                response.getHeaders().setContentType(
+                                        org.springframework.http.MediaType.APPLICATION_PROBLEM_JSON);
+                                String body = """
+                                        {"type":"/errors/authentication","title":"No autenticado",\
+                                        "status":401,"detail":"Se requiere un token de autenticación válido."}""";
+                                var buffer = response.bufferFactory()
+                                        .wrap(body.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                                return response.writeWith(reactor.core.publisher.Mono.just(buffer));
+                            } catch (UnsupportedOperationException headersReadOnly) {
+                                return response.setComplete();
+                            }
                         })
                 )
                 .addFilterBefore(jwtAuthenticationWebFilter,

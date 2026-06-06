@@ -8,7 +8,7 @@ from typing import Optional
 
 import numpy as np
 
-from app.pipeline.training.base import HyperParams, TrainingResult, TrainingStrategy
+from app.pipeline.training.base import EpochCallback, HyperParams, TrainingResult, TrainingStrategy
 
 log = logging.getLogger(__name__)
 
@@ -31,6 +31,7 @@ class PyTorchStrategy(TrainingStrategy):
         output_dir: str,
         X_test: Optional[np.ndarray] = None,
         y_test: Optional[np.ndarray] = None,
+        on_epoch: Optional[EpochCallback] = None,
     ) -> TrainingResult:
         import torch
         import torch.nn as nn
@@ -90,6 +91,12 @@ class PyTorchStrategy(TrainingStrategy):
 
             log.info("Epoch %d/%d loss=%.4f acc=%.4f val_acc=%.4f",
                      epoch + 1, hyperparams.epochs, avg_loss, acc, vacc)
+
+            if on_epoch is not None:
+                on_epoch(epoch + 1, hyperparams.epochs, {
+                    "loss": avg_loss, "accuracy": acc,
+                    "val_loss": vloss, "val_accuracy": vacc,
+                })
 
         # Evaluación final sobre el split de test (si lo hay).
         test_accuracy = test_loss = None

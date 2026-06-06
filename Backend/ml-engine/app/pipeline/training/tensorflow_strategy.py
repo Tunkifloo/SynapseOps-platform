@@ -8,7 +8,7 @@ from typing import Optional
 
 import numpy as np
 
-from app.pipeline.training.base import HyperParams, TrainingResult, TrainingStrategy
+from app.pipeline.training.base import EpochCallback, HyperParams, TrainingResult, TrainingStrategy
 
 log = logging.getLogger(__name__)
 
@@ -31,6 +31,7 @@ class TensorFlowStrategy(TrainingStrategy):
         output_dir: str,
         X_test: Optional[np.ndarray] = None,
         y_test: Optional[np.ndarray] = None,
+        on_epoch: Optional[EpochCallback] = None,
     ) -> TrainingResult:
         import tensorflow as tf
 
@@ -38,6 +39,12 @@ class TensorFlowStrategy(TrainingStrategy):
         log.info("TF %s — device=%s shape=%s classes=%d",
                  tf.__version__, device,
                  hyperparams.input_shape, hyperparams.num_classes)
+
+        callbacks = []
+        if on_epoch is not None:
+            total = hyperparams.epochs
+            callbacks.append(tf.keras.callbacks.LambdaCallback(
+                on_epoch_end=lambda epoch, logs: on_epoch(epoch + 1, total, logs or {})))
 
         with tf.device(device):
             model = self._build_cnn(hyperparams)
@@ -53,6 +60,7 @@ class TensorFlowStrategy(TrainingStrategy):
                 epochs=hyperparams.epochs,
                 batch_size=hyperparams.batch_size,
                 verbose=1,
+                callbacks=callbacks,
             )
 
         # Evaluación final sobre el split de test (si lo hay).

@@ -42,6 +42,13 @@ public class KafkaConfig {
     }
 
     @Bean
+    public org.apache.kafka.clients.admin.NewTopic pipelineLogsTopic() {
+        // Logs/progreso por epoch emitidos por el ml-engine → puente a SSE (HU-023).
+        return TopicBuilder.name("mlops.pipeline.logs")
+                .partitions(1).replicas(1).build();
+    }
+
+    @Bean
     public org.apache.kafka.clients.admin.NewTopic pipelineResultsDltTopic() {
         // Dead Letter Topic: mensajes de resultado que fallan tras los reintentos
         // aterrizan aquí en vez de perderse o bloquear la partición (poison-pill).

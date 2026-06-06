@@ -12,6 +12,7 @@ import numpy as np
 
 from app.config import settings
 from app.infra.mlflow_client import MLflowFacade
+from app.kafka.producer import LogProducer
 from app.pipeline.training.ingestion import load_dataset
 from app.pipeline.training.base import HyperParams, TrainingResult
 from app.pipeline.training.tensorflow_strategy import TensorFlowStrategy
@@ -63,6 +64,10 @@ class PipelineExecutor:
 
     def __init__(self) -> None:
         self._mlflow = MLflowFacade()
+        self._logs = LogProducer()
+
+    def _emit(self, execution_id: str, message: str, level: str = "INFO") -> None:
+        self._logs.log(execution_id, message, level)
 
     def execute(self, job: PipelineJob) -> dict:
         log.info("Pipeline iniciado — execution=%s framework=%s dataset=%s",
@@ -89,6 +94,7 @@ class PipelineExecutor:
                 f"Actualmente solo está disponible 'cnn'.")
 
         # ── Paso 1: Cargar dataset (delegado a ingestion) ─────────────────────
+        self._emit(job.execution_id, "Cargando dataset…")
         bundle = load_dataset(job.dataset_path, job.workspace_id, job.execution_id)
         X_train, y_train = bundle.X_train, bundle.y_train
         X_val,   y_val   = bundle.X_val,   bundle.y_val
@@ -98,6 +104,8 @@ class PipelineExecutor:
         job.num_classes = num_classes
         log.info("Dataset listo: shape=%s classes=%d test=%s",
                  input_shape, num_classes, bundle.X_test is not None)
+        self._emit(job.execution_id,
+                   f"Dataset listo: {num_classes} clases · shape {input_shape}")
 
         # ── Paso 2: Iniciar MLflow run ────────────────────────────────────────
         experiment_id = self._mlflow.get_or_create_experiment(
@@ -128,9 +136,19 @@ class PipelineExecutor:
         )
         output_dir = self._prepare_output_dir(job)
         strategy   = self._select_strategy(job.framework)
+        self._emit(job.execution_id,
+                   f"Entrenando con {job.framework} · {job.epochs} epochs (batch {job.batch_size})…")
+
+        def on_epoch(epoch: int, total: int, metrics: dict) -> None:
+            self._emit(
+                job.execution_id,
+                f"Epoch {epoch}/{total} — loss={metrics.get('loss', 0):.4f} "
+                f"acc={metrics.get('accuracy', 0):.4f}",
+            )
+
         result: TrainingResult = strategy.train(
             X_train, y_train, X_val, y_val, hp, output_dir,
-            X_test=bundle.X_test, y_test=bundle.y_test)
+            X_test=bundle.X_test, y_test=bundle.y_test, on_epoch=on_epoch)
 
         # ── Paso 4: Loguear métricas en MLflow ────────────────────────────────
         for step, (acc, loss) in enumerate(
@@ -151,6 +169,7 @@ class PipelineExecutor:
             self._mlflow.log_metric("test_loss",     float(result.test_loss))
 
         # ── Paso 5: Registrar artefacto en MLflow ─────────────────────────────
+        self._emit(job.execution_id, "Registrando modelo en el Model Registry de MLflow…")
         mlflow.log_artifact(result.artifact_path, artifact_path="model")
         model_version = self._mlflow.register_model(
             run_id=run_id, model_name=job.model_name)

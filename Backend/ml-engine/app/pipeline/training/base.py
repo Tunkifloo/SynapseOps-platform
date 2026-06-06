@@ -1,7 +1,10 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Callable, Optional, Tuple
 import numpy as np
+
+# Callback de progreso por epoch: (epoch_actual, total_epochs, métricas) -> None
+EpochCallback = Callable[[int, int, dict], None]
 
 
 @dataclass
@@ -44,5 +47,6 @@ class TrainingStrategy(ABC):
         output_dir:  str,
         X_test:  Optional[np.ndarray] = None,
         y_test:  Optional[np.ndarray] = None,
+        on_epoch: Optional[EpochCallback] = None,
     ) -> TrainingResult:
         pass
