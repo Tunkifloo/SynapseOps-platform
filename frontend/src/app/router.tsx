@@ -9,6 +9,7 @@ import { SignUpPage } from '@/features/auth/pages/SignUpPage'
 import { ForgotPasswordPage } from '@/features/auth/pages/ForgotPasswordPage'
 import { AdminUsersPage } from '@/features/admin/pages/AdminUsersPage'
 import { WorkspacesPage } from '@/features/workspaces/pages/WorkspacesPage'
+import { PipelineBuilderPage } from '@/features/pipelines/pages/PipelineBuilderPage'
 import { MlflowPage } from '@/features/mlflow/pages/MlflowPage'
 import { AppShell } from '@/shared/layout/AppShell'
 import { useAppStore } from '@/store/useAppStore'
@@ -46,7 +47,7 @@ interface PageProps {
 }
 
 interface ShellPageProps {
-  section: 'dashboard' | 'workspaces' | 'admin' | 'mlflow'
+  section: 'dashboard' | 'workspaces' | 'builder' | 'admin' | 'mlflow'
   renderPage: (props: PageProps) => ReactNode
 }
 
@@ -92,6 +93,15 @@ export function AppRouter() {
           element={
             <ProtectedRoute isAuthenticated={isAuthenticated}>
               <ShellPage section="workspaces" renderPage={({ token, searchQuery, onAuthError }) => <WorkspacesPage token={token} searchQuery={searchQuery} onAuthError={onAuthError} />} />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/builder"
+          element={
+            <ProtectedRoute isAuthenticated={isAuthenticated}>
+              <ShellPage section="builder" renderPage={() => <PipelineBuilderPage />} />
             </ProtectedRoute>
           }
         />

@@ -4,6 +4,7 @@ import {
   LayoutDashboard,
   Layers,
   LogOut,
+  Network,
   Search,
   Users,
   Workflow,
@@ -23,7 +24,7 @@ interface SessionUser {
   role: Role
 }
 
-type Section = 'dashboard' | 'workspaces' | 'admin' | 'mlflow'
+type Section = 'dashboard' | 'workspaces' | 'builder' | 'admin' | 'mlflow'
 
 interface NavigationItem {
   key: Section
@@ -56,6 +57,7 @@ export function AppShell({
   const navigationItems: NavigationItem[] = [
     { key: 'dashboard', label: 'Resumen', icon: LayoutDashboard, path: '/dashboard' },
     { key: 'workspaces', label: 'Mis proyectos', icon: Layers, path: '/workspaces' },
+    { key: 'builder', label: 'Lienzo', icon: Network, path: '/builder' },
   ]
 
   const adminItems: NavigationItem[] =

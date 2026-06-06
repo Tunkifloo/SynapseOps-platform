@@ -200,3 +200,38 @@ html { background-color: #0b1120; }
     @apply font-sans;
   }
 }
+
+/* ── React Flow — adaptación al tema (HU-001) ─────────────────────────────── */
+.react-flow__controls {
+  border-radius: 0.75rem;
+  overflow: hidden;
+  box-shadow: 0 6px 16px rgb(0 0 0 / 0.35);
+}
+.react-flow__controls-button {
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+  color: var(--foreground);
+}
+.react-flow__controls-button:hover {
+  background: var(--accent);
+}
+.react-flow__controls-button svg {
+  fill: currentColor;
+}
+.react-flow__minimap {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+}
+.react-flow__edge-path {
+  stroke: var(--muted-foreground);
+  stroke-width: 1.5;
+}
+.react-flow__edge.selected .react-flow__edge-path,
+.react-flow__edge:hover .react-flow__edge-path {
+  stroke: var(--primary);
+}
+.react-flow__attribution {
+  background: transparent;
+  color: var(--muted-foreground);
+}
