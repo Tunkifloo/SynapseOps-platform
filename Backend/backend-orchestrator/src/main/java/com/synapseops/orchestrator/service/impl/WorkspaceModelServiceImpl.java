@@ -86,15 +86,16 @@ public class WorkspaceModelServiceImpl implements WorkspaceModelService {
     @Override
     public Mono<Void> deleteVersion(
             Long workspaceId, String modelName, String version, String username) {
+        // defer: MLflow no se invoca hasta que la autorización pasa.
         return authorizeVersionWrite(workspaceId, modelName, version, username)
-                .then(mlflowFacade.deleteModelVersion(modelName, version));
+                .then(Mono.defer(() -> mlflowFacade.deleteModelVersion(modelName, version)));
     }
 
     @Override
     public Mono<Map<String, Object>> transitionStage(
             Long workspaceId, String modelName, String version, String stage, String username) {
         return authorizeVersionWrite(workspaceId, modelName, version, username)
-                .then(mlflowFacade.transitionStage(modelName, version, stage));
+                .then(Mono.defer(() -> mlflowFacade.transitionStage(modelName, version, stage)));
     }
 
     /**
