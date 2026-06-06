@@ -51,12 +51,50 @@ function wouldCreateCycle(edges: Edge[], source: string, target: string): boolea
   return false
 }
 
-export function PipelineCanvas() {
+export interface CanvasWorkspace {
+  idWorkspace: number
+  name: string
+}
+
+interface PipelineCanvasProps {
+  token?: string
+  workspace?: CanvasWorkspace | null
+  onWorkspaceRefresh?: () => void
+}
+
+export function PipelineCanvas({ token, workspace, onWorkspaceRefresh }: PipelineCanvasProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState<PipelineNodeData>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const { screenToFlowPosition } = useReactFlow()
-  const projectName = useAppStore((s) => s.currentWorkspace)
+  const storeWorkspace = useAppStore((s) => s.currentWorkspace)
+  const projectName = workspace?.name ?? storeWorkspace
+
+  // Contexto para el nodo de Ingesta (HU-002): asigna dataset al workspace vinculado.
+  const ingestContext =
+    token && workspace
+      ? {
+          token,
+          workspaceId: workspace.idWorkspace,
+          onAssigned: (descriptor: string) => {
+            setNodes((nds) =>
+              nds.map((n) =>
+                n.id === selectedNodeId
+                  ? {
+                      ...n,
+                      data: {
+                        ...n.data,
+                        status: 'success' as const,
+                        config: { ...n.data.config, dataset: descriptor },
+                      },
+                    }
+                  : n
+              )
+            )
+            onWorkspaceRefresh?.()
+          },
+        }
+      : undefined
 
   const selectedNode = nodes.find((n) => n.id === selectedNodeId) ?? null
 
@@ -183,6 +221,7 @@ export function PipelineCanvas() {
           <NodeConfigPanel
             key={selectedNode.id}
             data={selectedNode.data}
+            ingest={ingestContext}
             onSave={handleSaveConfig}
             onClose={() => setSelectedNodeId(null)}
           />

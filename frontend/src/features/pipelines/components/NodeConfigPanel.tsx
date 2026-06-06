@@ -19,9 +19,17 @@ import {
   type NodeConfig,
 } from '@/features/pipelines/nodeConfig'
 import type { PipelineNodeData, PipelineNodeStatus } from './PipelineNode'
+import { IngestActions } from './IngestActions'
+
+export interface IngestContext {
+  token: string
+  workspaceId: number
+  onAssigned: (descriptor: string) => void
+}
 
 interface NodeConfigPanelProps {
   data: PipelineNodeData
+  ingest?: IngestContext
   onSave: (label: string, config: NodeConfig, status: PipelineNodeStatus, error?: string) => void
   onClose: () => void
 }
@@ -38,7 +46,7 @@ const STATUS_OPTIONS: { value: PipelineNodeStatus; label: string }[] = [
  * Debe montarse con `key={node.id}` para reinicializar el formulario al cambiar de nodo.
  * "Guardar" aplica al estado del lienzo; cerrar/Cancelar descarta los cambios.
  */
-export function NodeConfigPanel({ data, onSave, onClose }: NodeConfigPanelProps) {
+export function NodeConfigPanel({ data, ingest, onSave, onClose }: NodeConfigPanelProps) {
   const cfg = NODE_KIND_MAP[data.kind]
   const Icon = cfg.icon
   const fields = NODE_FIELDS[data.kind]
@@ -128,6 +136,17 @@ export function NodeConfigPanel({ data, onSave, onClose }: NodeConfigPanelProps)
           <p className="rounded-xl border border-border bg-card/40 p-3 text-sm text-muted-foreground">
             El despliegue dinámico se configura en el Sprint 3.
           </p>
+        )}
+
+        {data.kind === 'ingest' && ingest && (
+          <IngestActions
+            token={ingest.token}
+            workspaceId={ingest.workspaceId}
+            mode={String(config.mode ?? 'keras')}
+            kerasDataset={String(config.kerasDataset ?? '')}
+            url={String(config.url ?? '')}
+            onAssigned={ingest.onAssigned}
+          />
         )}
 
         <div className="space-y-1.5 border-t border-border pt-4">

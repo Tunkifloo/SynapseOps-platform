@@ -101,7 +101,12 @@ export function AppRouter() {
           path="/builder"
           element={
             <ProtectedRoute isAuthenticated={isAuthenticated}>
-              <ShellPage section="builder" renderPage={() => <PipelineBuilderPage />} />
+              <ShellPage
+                section="builder"
+                renderPage={({ token, onAuthError }) => (
+                  <PipelineBuilderPage token={token} onAuthError={onAuthError} />
+                )}
+              />
             </ProtectedRoute>
           }
         />
