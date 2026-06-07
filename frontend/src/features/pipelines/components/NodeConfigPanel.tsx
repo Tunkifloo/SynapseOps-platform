@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Trash2, X } from 'lucide-react'
 
 import { Button } from '@/shared/components/ui/button'
@@ -11,6 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/shared/components/ui/select'
+import { cn } from '@/lib/utils'
 import { NODE_KIND_MAP, type NodeKind } from '@/features/pipelines/nodeKinds'
 import {
   NODE_FIELDS,
@@ -54,7 +55,10 @@ interface NodeConfigPanelProps {
   deploy?: DeployContext
   onSave: (label: string, config: NodeConfig, status: PipelineNodeStatus, error?: string) => void
   onDelete?: () => void
-  onClose: () => void
+  /** Cierre solicitado (X/Cancelar). El lienzo decide si confirmar cambios sin guardar. */
+  onRequestClose: () => void
+  /** Notifica al lienzo si el nodo tiene cambios sin guardar (para guardar el cierre). */
+  onDirtyChange?: (dirty: boolean) => void
 }
 
 /** Propósito y qué ajustar en cada nodo (ayuda contextual para el usuario). */
@@ -71,19 +75,29 @@ const KIND_HELP: Record<NodeKind, string> = {
     'Registra y expone el modelo versionado entrenado. Selecciona la versión a desplegar y el puerto del servicio.',
 }
 
-const STATUS_OPTIONS: { value: PipelineNodeStatus; label: string }[] = [
-  { value: 'idle', label: 'Inactivo' },
-  { value: 'running', label: 'En ejecución' },
-  { value: 'success', label: 'Completado' },
-  { value: 'error', label: 'Error' },
-]
+// Presentación (solo lectura) del estado del nodo: lo gobierna la ejecución (SSE).
+const STATUS_LABEL: Record<PipelineNodeStatus, { label: string; dot: string }> = {
+  idle: { label: 'Inactivo', dot: 'bg-muted-foreground' },
+  running: { label: 'En ejecución', dot: 'bg-info' },
+  success: { label: 'Completado', dot: 'bg-success' },
+  error: { label: 'Error', dot: 'bg-destructive' },
+}
 
 /**
  * Panel lateral derecho de configuración de nodos (HU-021).
  * Debe montarse con `key={node.id}` para reinicializar el formulario al cambiar de nodo.
  * "Guardar" aplica al estado del lienzo; cerrar/Cancelar descarta los cambios.
  */
-export function NodeConfigPanel({ data, ingest, train, deploy, onSave, onDelete, onClose }: NodeConfigPanelProps) {
+export function NodeConfigPanel({
+  data,
+  ingest,
+  train,
+  deploy,
+  onSave,
+  onDelete,
+  onRequestClose,
+  onDirtyChange,
+}: NodeConfigPanelProps) {
   const cfg = NODE_KIND_MAP[data.kind]
   const Icon = cfg.icon
   const fields = NODE_FIELDS[data.kind]
@@ -93,25 +107,23 @@ export function NodeConfigPanel({ data, ingest, train, deploy, onSave, onDelete,
     ...defaultConfig(data.kind),
     ...(data.config ?? {}),
   })
-  const [status, setStatus] = useState<PipelineNodeStatus>(data.status ?? 'idle')
-  const [errorMsg, setErrorMsg] = useState(data.error ?? '')
   const [validationError, setValidationError] = useState<string | null>(null)
 
-  // Guardia de cambios sin guardar en el nodo (item 3 — a prueba de novatos).
-  const initialRef = useRef(JSON.stringify({
-    label: data.label,
-    config: { ...defaultConfig(data.kind), ...(data.config ?? {}) },
-    status: data.status ?? 'idle',
-    errorMsg: data.error ?? '',
-  }))
-  const requestClose = () => {
-    const current = JSON.stringify({ label, config, status, errorMsg })
-    if (current !== initialRef.current
-        && !window.confirm('Tienes cambios sin guardar en este nodo. ¿Descartarlos?')) {
-      return
-    }
-    onClose()
-  }
+  // Línea base para detectar cambios sin guardar (solo nombre + configuración;
+  // el estado lo gobierna la ejecución y no es editable aquí).
+  const [baseline, setBaseline] = useState(() =>
+    JSON.stringify({ label: data.label, config: { ...defaultConfig(data.kind), ...(data.config ?? {}) } })
+  )
+  const isDirty = useMemo(
+    () => JSON.stringify({ label, config }) !== baseline,
+    [label, config, baseline]
+  )
+  // Reporta el estado de cambios al lienzo (para confirmar el cierre / cambio de nodo).
+  useEffect(() => {
+    onDirtyChange?.(isDirty)
+  }, [isDirty, onDirtyChange])
+  // Al desmontar (cambio/cierre de nodo) limpia la marca de cambios.
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange])
 
   const setField = (name: string, value: string | number) => {
     setValidationError(null)
@@ -129,7 +141,10 @@ export function NodeConfigPanel({ data, ingest, train, deploy, onSave, onDelete,
       setValidationError(error)
       return
     }
-    onSave(label.trim() || cfg.label, config, status, status === 'error' ? errorMsg : undefined)
+    // El estado/errores no se editan: se preservan tal como los dejó la ejecución.
+    onSave(label.trim() || cfg.label, config, data.status ?? 'idle', data.error)
+    // Tras guardar, la configuración actual pasa a ser la línea base (no dirty).
+    setBaseline(JSON.stringify({ label, config }))
   }
 
   const renderField = (field: FieldDef) => {
@@ -189,7 +204,7 @@ export function NodeConfigPanel({ data, ingest, train, deploy, onSave, onDelete,
           <p className="truncate text-sm font-semibold">{cfg.label}</p>
           <p className="truncate text-[11px] text-muted-foreground">Configuración del nodo</p>
         </div>
-        <Button variant="ghost" size="icon-sm" onClick={requestClose} aria-label="Cerrar panel">
+        <Button variant="ghost" size="icon-sm" onClick={onRequestClose} aria-label="Cerrar panel">
           <X />
         </Button>
       </header>
@@ -263,35 +278,23 @@ export function NodeConfigPanel({ data, ingest, train, deploy, onSave, onDelete,
         {/* El run se dispara con "Iniciar flujo" (toda la cadena), no por nodo. */}
 
         <div className="space-y-1.5 border-t border-border pt-4">
-          <Label htmlFor="cfg-status">Estado (vista previa)</Label>
-          <Select value={status} onValueChange={(v) => setStatus(v as PipelineNodeStatus)}>
-            <SelectTrigger id="cfg-status">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {STATUS_OPTIONS.map((opt) => (
-                <SelectItem key={opt.value} value={opt.value}>
-                  {opt.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <p className="text-[11px] text-muted-foreground">
-            Se actualizará automáticamente durante la ejecución (HU-005 / HU-023).
-          </p>
-        </div>
-
-        {status === 'error' && (
-          <div className="space-y-1.5">
-            <Label htmlFor="cfg-error">Mensaje de error</Label>
-            <Input
-              id="cfg-error"
-              value={errorMsg}
-              onChange={(e) => setErrorMsg(e.target.value)}
-              placeholder="Resumen del error"
+          <Label>Estado del nodo</Label>
+          <div className="flex items-center gap-2 text-sm">
+            <span
+              className={cn('size-2.5 rounded-full', STATUS_LABEL[data.status ?? 'idle'].dot)}
+              aria-hidden="true"
             />
+            <span className="font-medium text-foreground">{STATUS_LABEL[data.status ?? 'idle'].label}</span>
           </div>
-        )}
+          <p className="text-[11px] text-muted-foreground">
+            Se actualiza automáticamente durante la ejecución (HU-005 / HU-023). No es editable.
+          </p>
+          {data.status === 'error' && data.error && (
+            <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs font-medium text-destructive">
+              {data.error}
+            </p>
+          )}
+        </div>
 
         {validationError && (
           <p
@@ -316,7 +319,7 @@ export function NodeConfigPanel({ data, ingest, train, deploy, onSave, onDelete,
           <span />
         )}
         <div className="flex items-center gap-2">
-          <Button variant="ghost" onClick={requestClose}>
+          <Button variant="ghost" onClick={onRequestClose}>
             Cancelar
           </Button>
           <Button variant="cta" onClick={handleSave}>

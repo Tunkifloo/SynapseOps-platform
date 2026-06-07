@@ -173,6 +173,11 @@ services:
       dockerfile: Dockerfile
     container_name: backend-orchestrator
     restart: unless-stopped
+    # Comparte el volumen /storage con ml-engine (que corre como root). Sin un UID
+    # común, los directorios que crea ml-engine (root) no son escribibles por el
+    # usuario por defecto del orquestador → AccessDenied al ingestar datasets.
+    # Se unifica el UID corriendo ambos como root sobre el volumen compartido.
+    user: "0:0"
     environment:
       SPRING_PROFILES_ACTIVE: prod
       DB_URL: jdbc:postgresql://postgres-db:5432/orchestrator

@@ -10,6 +10,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.codec.multipart.FilePart;
@@ -27,6 +28,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/v1/workspaces/{workspaceId}/dataset")
 @RequiredArgsConstructor
+@Slf4j
 @Tag(name = "Datasets", description = "Carga y eliminación de datasets por workspace")
 @SecurityRequirement(name = "bearerAuth")
 public class DatasetController {
@@ -205,27 +207,60 @@ public class DatasetController {
 
                                         return deletePrevious
                                                 .then(Mono.fromCallable(() -> {
-                                                    Files.createDirectories(targetDir);
-                                                    try (java.io.InputStream in =
-                                                                 new java.net.URI(resolvedUrl)
-                                                                         .toURL().openStream()) {
-                                                        Files.copy(in, targetFile,
-                                                                java.nio.file.StandardCopyOption
-                                                                        .REPLACE_EXISTING);
+                                                    // 1) Preparar almacenamiento.
+                                                    try {
+                                                        Files.createDirectories(targetDir);
+                                                    } catch (java.io.IOException e) {
+                                                        log.error("Ingesta URL: no se pudo crear el "
+                                                                + "directorio de datasets {}", targetDir, e);
+                                                        throw new IllegalArgumentException(
+                                                                "No se pudo preparar el almacenamiento del "
+                                                                + "dataset en el servidor (revisa el volumen "
+                                                                + "/storage y sus permisos).");
+                                                    }
+                                                    // 2) Descargar el recurso remoto. Se usa un User-Agent
+                                                    //    de navegador: GCS/CDNs rechazan el agente Java por
+                                                    //    defecto con 403.
+                                                    log.info("Ingesta URL: descargando {} → {}",
+                                                            resolvedUrl, targetFile);
+                                                    try {
+                                                        downloadToFile(resolvedUrl, targetFile);
                                                     } catch (java.io.FileNotFoundException e) {
+                                                        // Repo sin rama main → intenta master.
                                                         if (resolvedUrl.contains("/main.zip")) {
                                                             String fallback = resolvedUrl
                                                                     .replace("/main.zip", "/master.zip");
-                                                            try (java.io.InputStream in2 =
-                                                                         new java.net.URI(fallback)
-                                                                                 .toURL().openStream()) {
-                                                                Files.copy(in2, targetFile,
-                                                                        java.nio.file.StandardCopyOption
-                                                                                .REPLACE_EXISTING);
+                                                            try {
+                                                                downloadToFile(fallback, targetFile);
+                                                            } catch (Exception e2) {
+                                                                log.error("Ingesta URL: fallback {} falló",
+                                                                        fallback, e2);
+                                                                throw new IllegalArgumentException(
+                                                                        "No se pudo descargar el dataset: la "
+                                                                        + "URL no existe o no es accesible (404).");
                                                             }
                                                         } else {
-                                                            throw e;
+                                                            log.error("Ingesta URL: recurso no encontrado {}",
+                                                                    resolvedUrl, e);
+                                                            throw new IllegalArgumentException(
+                                                                    "No se pudo descargar el dataset: la URL "
+                                                                    + "devolvió 404 (no encontrado). Verifica "
+                                                                    + "que apunte directamente a un archivo .zip.");
                                                         }
+                                                    } catch (java.net.UnknownHostException
+                                                            | java.net.ConnectException e) {
+                                                        log.error("Ingesta URL: host inaccesible {}",
+                                                                resolvedUrl, e);
+                                                        throw new IllegalArgumentException(
+                                                                "No se pudo conectar con la URL. ¿El servidor "
+                                                                + "tiene acceso a internet y la URL es pública?");
+                                                    } catch (java.io.IOException
+                                                            | java.net.URISyntaxException e) {
+                                                        log.error("Ingesta URL: error descargando {}",
+                                                                resolvedUrl, e);
+                                                        throw new IllegalArgumentException(
+                                                                "No se pudo descargar el dataset desde la URL ("
+                                                                + e.getMessage() + ").");
                                                     }
                                                     return targetFile.toAbsolutePath().toString();
                                                 }).subscribeOn(Schedulers.boundedElastic()))
@@ -273,14 +308,61 @@ public class DatasetController {
                                                             workspaceRepository.save(workspace);
                                                             return storedPath;
                                                         }).subscribeOn(Schedulers.boundedElastic()))
-                                                .onErrorResume(java.io.IOException.class, ex ->
-                                                        Mono.error(new IllegalArgumentException(
-                                                                "No se pudo descargar desde la URL: "
-                                                                        + ex.getMessage())));
+                                                .onErrorResume(java.io.IOException.class, ex -> {
+                                                    log.error("Ingesta URL: error procesando el archivo "
+                                                            + "descargado de {}", resolvedUrl, ex);
+                                                    return Mono.error(new IllegalArgumentException(
+                                                            "No se pudo procesar el archivo descargado "
+                                                            + "(¿es un .zip válido con imágenes .png/.jpg?)."));
+                                                });
                                     });
                         })
         ).map(path -> ResponseEntity.ok(
                 "Dataset descargado correctamente. Path: " + path));
+    }
+
+    /**
+     * Descarga un recurso a un archivo enviando un User-Agent de navegador
+     * (GCS/CDNs devuelven 403 al agente Java por defecto) y siguiendo redirects.
+     * Lanza {@link java.io.FileNotFoundException} en 404 (para el fallback main→master)
+     * y {@link IllegalArgumentException} con mensaje claro en otros 4xx/5xx.
+     */
+    private void downloadToFile(String urlStr, Path target)
+            throws java.io.IOException, java.net.URISyntaxException {
+        java.net.HttpURLConnection conn = (java.net.HttpURLConnection)
+                new java.net.URI(urlStr).toURL().openConnection();
+        conn.setRequestProperty("User-Agent",
+                "Mozilla/5.0 (compatible; SynapseOps/1.0; dataset-ingest)");
+        conn.setRequestProperty("Accept", "*/*");
+        conn.setConnectTimeout(15_000);
+        conn.setReadTimeout(120_000);
+        conn.setInstanceFollowRedirects(true);
+
+        int code = conn.getResponseCode();
+        if (code == 404) {
+            conn.disconnect();
+            throw new java.io.FileNotFoundException(urlStr);
+        }
+        if (code == 401 || code == 403) {
+            conn.disconnect();
+            log.error("Ingesta URL: acceso denegado ({}) para {}", code, urlStr);
+            throw new IllegalArgumentException(
+                    "La URL devolvió " + code + " (acceso denegado): no es pública o requiere "
+                    + "autenticación. Usa un enlace de descarga directa a un .zip sin login "
+                    + "(p. ej. un release de GitHub o un bucket público).");
+        }
+        if (code >= 400) {
+            conn.disconnect();
+            log.error("Ingesta URL: el servidor respondió {} para {}", code, urlStr);
+            throw new IllegalArgumentException(
+                    "El servidor respondió " + code + " al descargar el dataset. "
+                    + "Asegúrate de que la URL sea pública y de descarga directa (.zip).");
+        }
+        try (java.io.InputStream in = conn.getInputStream()) {
+            Files.copy(in, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        } finally {
+            conn.disconnect();
+        }
     }
 
     private String resolveDownloadUrl(String url) {

@@ -119,6 +119,7 @@ export function PipelineCanvas({
   const [nodes, setNodes, onNodesChange] = useNodesState<PipelineNodeData>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
+  const [nodeDirty, setNodeDirty] = useState(false)  // cambios sin guardar en el panel del nodo
   const [saving, setSaving] = useState(false)
   const [flowRunning, setFlowRunning] = useState(false)
   const [activeExecutionId, setActiveExecutionId] = useState<number | null>(null)
@@ -514,6 +515,47 @@ export function PipelineCanvas({
     })
   }, [nodes.length, setNodes, setEdges])
 
+  // Cierre del panel del nodo con guarda de cambios sin guardar (modal estilizado).
+  const requestCloseNode = useCallback(() => {
+    if (!selectedNodeId) return
+    if (nodeDirty) {
+      setConfirm({
+        title: 'Cambios sin guardar',
+        description: 'Tienes cambios sin guardar en el nodo. ¿Descartarlos?',
+        confirmLabel: 'Descartar cambios',
+        tone: 'destructive',
+        onConfirm: () => {
+          setNodeDirty(false)
+          setSelectedNodeId(null)
+        },
+      })
+    } else {
+      setSelectedNodeId(null)
+    }
+  }, [selectedNodeId, nodeDirty])
+
+  // Cambio a otro nodo: si hay cambios sin guardar, confirma antes de cambiar.
+  const requestSelectNode = useCallback(
+    (id: string) => {
+      if (id === selectedNodeId) return
+      if (selectedNodeId && nodeDirty) {
+        setConfirm({
+          title: 'Cambios sin guardar',
+          description: 'Tienes cambios sin guardar en el nodo. ¿Descartarlos y cambiar de nodo?',
+          confirmLabel: 'Descartar y cambiar',
+          tone: 'destructive',
+          onConfirm: () => {
+            setNodeDirty(false)
+            setSelectedNodeId(id)
+          },
+        })
+      } else {
+        setSelectedNodeId(id)
+      }
+    },
+    [selectedNodeId, nodeDirty]
+  )
+
   // Eliminar el nodo seleccionado (acción crítica → confirmación + toast).
   const requestDeleteNode = useCallback(() => {
     const node = nodes.find((n) => n.id === selectedNodeId)
@@ -732,8 +774,8 @@ export function PipelineCanvas({
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
-          onNodeClick={(_, node) => setSelectedNodeId(node.id)}
-          onPaneClick={() => setSelectedNodeId(null)}
+          onNodeClick={(_, node) => requestSelectNode(node.id)}
+          onPaneClick={() => requestCloseNode()}
           nodeTypes={nodeTypes}
           defaultEdgeOptions={{ animated: true }}
           deleteKeyCode={null}
@@ -770,7 +812,8 @@ export function PipelineCanvas({
               deploy={deployContext}
               onSave={handleSaveConfig}
               onDelete={requestDeleteNode}
-              onClose={() => setSelectedNodeId(null)}
+              onRequestClose={requestCloseNode}
+              onDirtyChange={setNodeDirty}
             />
           )}
         </div>

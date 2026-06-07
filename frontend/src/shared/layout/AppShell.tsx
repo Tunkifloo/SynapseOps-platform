@@ -172,7 +172,7 @@ export function AppShell({
           resizing ? 'select-none' : 'transition-[width] duration-200'
         )}
       >
-        <div className="min-h-0 flex-1 overflow-y-auto p-3">
+        <div className="min-h-0 flex-1 overflow-y-auto p-3 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <div className={cn('mb-7 flex items-center gap-2', collapsed ? 'justify-center' : 'justify-between px-1')}>
             {collapsed ? (
               <Brand size="md" showWordmark={false} />
