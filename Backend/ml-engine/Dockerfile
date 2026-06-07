@@ -14,8 +14,12 @@ RUN useradd -m -s /bin/bash mlengine
 
 WORKDIR /app
 
-# Instalar dependencias Python primero (capa cacheada)
-COPY requirements.txt .
+# Instalar dependencias Python primero (capa cacheada).
+# REQUIREMENTS selecciona CPU (default) o GPU/CUDA:
+#   CPU: (default) requirements.txt
+#   GPU: docker build --build-arg REQUIREMENTS=requirements-gpu.txt
+ARG REQUIREMENTS=requirements.txt
+COPY ${REQUIREMENTS} ./requirements.txt
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 

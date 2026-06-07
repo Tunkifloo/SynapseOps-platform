@@ -277,6 +277,10 @@ class PipelineExecutor:
             "metrics": {
                 "final_accuracy": result.final_accuracy,
                 "final_loss":     result.final_loss,
+                # val_accuracy/val_loss (última época) → el encabezado del modelo
+                # prioriza test→val sobre train (métrica honesta de desempeño).
+                "val_accuracy":   (result.history.get("val_accuracy") or [None])[-1],
+                "val_loss":       (result.history.get("val_loss") or [None])[-1],
                 "test_accuracy":  result.test_accuracy,
                 "test_loss":      result.test_loss,
                 **advanced,
