@@ -256,6 +256,13 @@ def _load_explicit_splits(train_dir: Path, val_dir: Path,
 
     total = _count(train_g) + _count(val_g) + _count(test_g)
     _validate_count(total)
+    # Fallback: si excede el tope de memoria, recorta cada split proporcionalmente.
+    if total > MAX_IMAGES:
+        factor = MAX_IMAGES / total
+        train_g = _cap_to_limit(train_g, max(1, int(_count(train_g) * factor)))
+        val_g = _cap_to_limit(val_g, max(1, int(_count(val_g) * factor)))
+        if test_g:
+            test_g = _cap_to_limit(test_g, max(1, int(_count(test_g) * factor)))
 
     X_train, y_train = _materialize(train_g, class_to_idx, size)
     X_val,   y_val   = _materialize(val_g, class_to_idx, size)
@@ -279,6 +286,7 @@ def _load_flat_with_autosplit(root: Path, size: Tuple[int, int], ratio: float) -
     class_names = sorted(gathered)
     _validate_classes(class_names)
     _validate_count(_count(gathered))
+    gathered = _cap_to_limit(gathered, MAX_IMAGES)   # fallback: recorta al tope de memoria
     class_to_idx = {c: i for i, c in enumerate(class_names)}
 
     rng = np.random.default_rng(42)
@@ -376,10 +384,27 @@ def _validate_count(total: int) -> None:
     if total < MIN_IMAGES:
         raise ValueError(
             f"El dataset tiene {total} imágenes; se requieren al menos {MIN_IMAGES}.")
-    if total > MAX_IMAGES:
-        raise ValueError(
-            f"El dataset tiene {total} imágenes; el máximo permitido es {MAX_IMAGES} "
-            f"(límite de memoria del entorno). Reduce el dataset.")
+
+
+def _cap_to_limit(gathered: Dict[str, List[Path]], limit: int) -> Dict[str, List[Path]]:
+    """Fallback inteligente: si el total supera el tope de memoria (`limit`),
+    submuestrea cada clase de forma proporcional (estratificada) para ajustarse
+    al máximo permitido, en lugar de fallar. Determinista (semilla fija)."""
+    total = _count(gathered)
+    if total <= limit:
+        return gathered
+    rng = np.random.default_rng(42)
+    capped: Dict[str, List[Path]] = {}
+    for cname, files in gathered.items():
+        keep = max(1, int(len(files) * limit / total))
+        sample = list(files)
+        rng.shuffle(sample)
+        capped[cname] = sample[:keep]
+    kept = _count(capped)
+    log.warning(
+        "Dataset excede el tope de memoria (%d imágenes > %d): se aplica submuestreo "
+        "estratificado por clase → %d imágenes.", total, limit, kept)
+    return capped
 
 
 # ── Descarga / extracción (blindado — item 5) ────────────────────────────────────

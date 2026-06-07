@@ -77,13 +77,16 @@ def test_rejects_single_class(tmp_path):
         load_dataset(str(tmp_path), "1", "1")
 
 
-def test_rejects_too_many_images(tmp_path, monkeypatch):
+def test_caps_too_many_images(tmp_path, monkeypatch):
+    # Fallback inteligente: si el dataset excede el tope, se submuestrea (no falla).
     monkeypatch.setattr(ingestion, "MAX_IMAGES", 4)
     _make_class(tmp_path, "a", 4)
-    _make_class(tmp_path, "b", 4)   # total 8 > 4
+    _make_class(tmp_path, "b", 4)   # total 8 > 4 → submuestreo a ≤4
 
-    with pytest.raises(ValueError, match="máximo permitido"):
-        load_dataset(str(tmp_path), "1", "1")
+    bundle = load_dataset(str(tmp_path), "1", "1")
+    total = len(bundle.X_train) + len(bundle.X_val)
+    assert total <= 4
+    assert bundle.num_classes == 2
 
 
 # ── Errores ─────────────────────────────────────────────────────────────────────

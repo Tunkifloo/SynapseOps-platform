@@ -444,9 +444,23 @@ export function PipelineCanvas({
     if (terminal) {
       const failed = level === 'ERROR' || m.includes('fallid') || m.includes('error')
       if (failed) {
-        setNodes((nds) => nds.map((n) => n.data.status === 'running'
-          ? { ...n, data: { ...n.data, status: 'error', error: 'El flujo falló (revisa la consola).' } }
-          : n))
+        // El flujo falló → marca el nodo en ejecución como error; si no hay ninguno
+        // (p. ej. fallo temprano en ingesta), marca el primer nodo no completado.
+        setNodes((nds) => {
+          const hasRunning = nds.some((n) => n.data.status === 'running')
+          const next = nds.map((n) =>
+            n.data.status === 'running'
+              ? { ...n, data: { ...n.data, status: 'error' as const, error: message } }
+              : n
+          )
+          if (!hasRunning) {
+            const idx = next.findIndex((n) => n.data.status !== 'success')
+            if (idx >= 0) {
+              next[idx] = { ...next[idx], data: { ...next[idx].data, status: 'error', error: message } }
+            }
+          }
+          return next
+        })
       } else {
         setStatusByKind(['ingest', 'preprocess', 'split', 'train'], 'success')
       }
