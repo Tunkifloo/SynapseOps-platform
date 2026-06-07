@@ -12,18 +12,19 @@ html, body, #root {
   margin: 0;
   padding: 0;
 }
-/* Color base pre-hidratación (evita flash claro). Coincide con --background dark. */
-html { background-color: #0b1120; }
+/* Color base pre-hidratación (evita flash). Coincide con --background light. */
+html { background-color: #f8fafc; }
 
 /* ───────────────────────────────────────────────────────────────────────────
    SynapseOps Design System — tokens
-   Estilo: Data-Dense Dashboard + Dark Mode (OLED, WCAG AAA)
-   Marca: azul (datos) + ámbar (CTA) sobre slate profundo.
+   Estilo: Light SaaS técnico (maquetado) — superficies claras + sidebar navy.
+   Marca: azul #00BBFF (primary/datos/foco) + naranja #FF6A00 (CTA/acción).
+   Sidebar navy #0F172A con acento de ítem activo en naranja.
    Estados de pipeline (HU-019): info=running, success, warning, destructive=error.
    ─────────────────────────────────────────────────────────────────────────── */
 @theme inline {
-  --font-heading: var(--font-sans);
-  --font-sans: 'Figtree Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-heading: 'Poppins', ui-sans-serif, system-ui, sans-serif;
+  --font-sans: 'Poppins', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'JetBrains Mono Variable', ui-monospace, 'SFMono-Regular', monospace;
 
   /* superficies / texto */
@@ -87,56 +88,58 @@ html { background-color: #0b1120; }
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-/* ── Tema CLARO (alterno) ─────────────────────────────────────────────────── */
+/* ── Tema CLARO (por defecto · maquetado SynapseOps) ──────────────────────── */
 :root {
-  --radius: 0.625rem;
+  --radius: 0.75rem;                              /* 12px; tarjetas ~16px (radius-xl) */
 
-  --background: oklch(0.991 0.002 247);
-  --foreground: oklch(0.21 0.04 265);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.21 0.04 265);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.21 0.04 265);
+  --background: #f8fafc;                           /* slate-50 (fondo de la app) */
+  --foreground: #161c27;                           /* on-surface (texto principal) */
+  --card: #ffffff;
+  --card-foreground: #161c27;
+  --popover: #ffffff;
+  --popover-foreground: #161c27;
 
-  --primary: oklch(0.546 0.215 262.9);            /* blue-600 */
-  --primary-foreground: oklch(0.985 0.003 247);
-  --secondary: oklch(0.968 0.007 247);            /* slate-100 */
-  --secondary-foreground: oklch(0.27 0.04 265);
-  --muted: oklch(0.968 0.007 247);
-  --muted-foreground: oklch(0.52 0.03 257);       /* slate-500/600 */
-  --accent: oklch(0.95 0.02 255);
-  --accent-foreground: oklch(0.27 0.04 265);
+  /* ── Identidad de marca: azul #00BBFF (primary) + naranja #FF6A00 (CTA) ── */
+  --primary: #00bbff;                              /* azul de marca */
+  --primary-foreground: #04263a;                   /* texto oscuro sobre cian brillante */
+  --secondary: #f1f5f9;                            /* slate-100 */
+  --secondary-foreground: #1e293b;                 /* slate-800 */
+  --muted: #f1f5f9;
+  --muted-foreground: #64748b;                     /* slate-500 */
+  --accent: #e6f7ff;                               /* tinte azul claro */
+  --accent-foreground: #075985;                    /* sky-800 */
 
-  --cta: oklch(0.769 0.166 70.7);                 /* amber-500 */
-  --cta-foreground: oklch(0.24 0.05 265);
+  --cta: #ff6a00;                                  /* naranja de marca (acción primaria) */
+  --cta-foreground: #ffffff;
 
-  --success: oklch(0.62 0.16 162);                /* emerald-600 */
-  --success-foreground: oklch(0.985 0.01 160);
-  --warning: oklch(0.72 0.16 73);                 /* amber-600 */
-  --warning-foreground: oklch(0.24 0.05 265);
-  --info: oklch(0.58 0.14 235);                   /* sky-600 */
-  --info-foreground: oklch(0.985 0.01 235);
-  --destructive: oklch(0.58 0.22 27);             /* red-600 */
-  --destructive-foreground: oklch(0.985 0.01 20);
+  --success: #10b981;                              /* emerald-500 */
+  --success-foreground: #052e1b;
+  --warning: #f59e0b;                              /* amber-500 */
+  --warning-foreground: #3b2300;
+  --info: #00bbff;                                 /* azul de marca (running) */
+  --info-foreground: #04263a;
+  --destructive: #dc2626;                          /* red-600 */
+  --destructive-foreground: #ffffff;
 
-  --border: oklch(0.922 0.01 255);                /* slate-200 */
-  --input: oklch(0.922 0.01 255);
-  --ring: oklch(0.62 0.188 259.8);                /* blue-500 focus */
+  --border: #e2e8f0;                               /* slate-200 */
+  --input: #e2e8f0;
+  --ring: #00bbff;                                 /* foco azul de marca */
 
-  --chart-1: oklch(0.62 0.188 259.8);             /* blue */
-  --chart-2: oklch(0.715 0.135 215);              /* cyan */
-  --chart-3: oklch(0.70 0.17 162);                /* emerald */
-  --chart-4: oklch(0.769 0.166 70.7);             /* amber */
-  --chart-5: oklch(0.606 0.227 292);              /* violet */
+  --chart-1: #00bbff;                              /* blue (marca) */
+  --chart-2: #38bdf8;                              /* sky */
+  --chart-3: #10b981;                              /* emerald */
+  --chart-4: #ff6a00;                              /* orange (marca) */
+  --chart-5: #8b5cf6;                              /* violet */
 
-  --sidebar: oklch(0.985 0.003 247);
-  --sidebar-foreground: oklch(0.27 0.04 265);
-  --sidebar-primary: oklch(0.546 0.215 262.9);
-  --sidebar-primary-foreground: oklch(0.985 0.003 247);
-  --sidebar-accent: oklch(0.95 0.02 255);
-  --sidebar-accent-foreground: oklch(0.27 0.04 265);
-  --sidebar-border: oklch(0.922 0.01 255);
-  --sidebar-ring: oklch(0.62 0.188 259.8);
+  /* Sidebar navy del maquetado (#0F172A) con acento activo naranja */
+  --sidebar: #0f172a;
+  --sidebar-foreground: #94a3b8;                   /* slate-400 (ítems inactivos) */
+  --sidebar-primary: #ff6a00;                      /* acento de ítem activo (naranja) */
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: rgba(255, 255, 255, 0.06);     /* hover/activo sutil */
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: rgba(255, 255, 255, 0.10);
+  --sidebar-ring: #00bbff;
 }
 
 /* ── Tema OSCURO (por defecto · dark-first) ───────────────────────────────── */
@@ -148,8 +151,9 @@ html { background-color: #0b1120; }
   --popover: oklch(0.23 0.04 265);
   --popover-foreground: oklch(0.984 0.003 247);
 
-  --primary: oklch(0.62 0.188 259.8);             /* blue-500 */
-  --primary-foreground: oklch(0.985 0.003 247);
+  /* ── Identidad de marca SynapseOps: azul #00BBFF (primary) + naranja #FF6A00 (CTA) ── */
+  --primary: #00BBFF;                             /* azul de marca */
+  --primary-foreground: #04263a;                  /* texto oscuro sobre azul brillante */
   --secondary: oklch(0.29 0.04 264);              /* slate-800 */
   --secondary-foreground: oklch(0.984 0.003 247);
   --muted: oklch(0.29 0.04 264);
@@ -157,21 +161,21 @@ html { background-color: #0b1120; }
   --accent: oklch(0.32 0.05 264);
   --accent-foreground: oklch(0.984 0.003 247);
 
-  --cta: oklch(0.769 0.166 70.7);                 /* amber-500 */
-  --cta-foreground: oklch(0.2 0.03 265);
+  --cta: #FF6A00;                                 /* naranja de marca */
+  --cta-foreground: #ffffff;
 
   --success: oklch(0.70 0.17 162);                /* emerald */
   --success-foreground: oklch(0.18 0.04 162);
-  --warning: oklch(0.80 0.15 80);                 /* amber claro */
+  --warning: #FF6A00;                             /* naranja de marca */
   --warning-foreground: oklch(0.2 0.03 265);
-  --info: oklch(0.70 0.13 233);                   /* sky/cyan */
-  --info-foreground: oklch(0.18 0.04 233);
+  --info: #00BBFF;                                /* azul de marca */
+  --info-foreground: #04263a;
   --destructive: oklch(0.68 0.20 25);             /* red */
   --destructive-foreground: oklch(0.985 0.01 20);
 
   --border: oklch(1 0 0 / 12%);
   --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.62 0.188 259.8);                /* foco azul */
+  --ring: #00BBFF;                                /* foco azul de marca */
 
   --chart-1: oklch(0.62 0.188 259.8);             /* blue */
   --chart-2: oklch(0.715 0.135 215);              /* cyan */
@@ -198,6 +202,12 @@ html { background-color: #0b1120; }
   }
   html {
     @apply font-sans;
+  }
+  /* Oculta el control nativo de revelar/limpiar contraseña (Edge/IE) para no
+     duplicar nuestro propio botón de ojo en los formularios. */
+  input::-ms-reveal,
+  input::-ms-clear {
+    display: none;
   }
 }
 
@@ -234,4 +244,11 @@ html { background-color: #0b1120; }
 .react-flow__attribution {
   background: transparent;
   color: var(--muted-foreground);
+}
+
+/* ── Patrón de puntos (fondos de auth y vacíos, estilo maquetado) ─────────── */
+.bg-dots {
+  background-color: #f8fafc;
+  background-image: radial-gradient(#cbd5e1 1px, transparent 1px);
+  background-size: 24px 24px;
 }

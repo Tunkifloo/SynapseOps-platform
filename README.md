@@ -1,13 +1,8 @@
 <div align="center">
 
-```
-███████╗██╗   ██╗███╗   ██╗ █████╗ ██████╗ ███████╗███████╗ ██████╗ ██████╗ ███████╗
-██╔════╝╚██╗ ██╔╝████╗  ██║██╔══██╗██╔══██╗██╔════╝██╔════╝██╔═══██╗██╔══██╗██╔════╝
-███████╗ ╚████╔╝ ██╔██╗ ██║███████║██████╔╝███████╗█████╗  ██║   ██║██████╔╝███████╗
-╚════██║  ╚██╔╝  ██║╚██╗██║██╔══██║██╔═══╝ ╚════██║██╔══╝  ██║   ██║██╔═══╝ ╚════██║
-███████║   ██║   ██║ ╚████║██║  ██║██║     ███████║███████╗╚██████╔╝██║     ███████║
-╚══════╝   ╚═╝   ╚═╝  ╚═══╝╚═╝  ╚═╝╚═╝     ╚══════╝╚══════╝ ╚═════╝ ╚═╝     ╚══════╝
-```
+<img src="Frontend/public/SynapseOpsLogo.png" width="130" alt="SynapseOps logo" />
+
+# SynapseOps
 
 **Low-Code MLOps Platform for Academic Environments**
 
@@ -140,7 +135,7 @@ SynapseOps es una plataforma web **low-code basada en contenedores** que elimina
 ### 1. Clonar el repositorio
 
 ```bash
-git clone https://github.com/tu-usuario/SynapseOps.git
+git clone https://github.com/Tunkifloo/SynapseOps-platform.git
 cd SynapseOps
 ```
 

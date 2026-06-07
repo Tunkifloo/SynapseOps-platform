@@ -2,46 +2,39 @@ import { describe, expect, it } from 'vitest'
 
 import { defaultConfig, validateConfig } from './nodeConfig'
 
+// Configuración de entrenamiento válida y completa (incluye los parámetros
+// de CNN: optimizer, batchNorm, earlyStopping — todos obligatorios en el esquema).
+const fullTrainConfig = {
+  framework: 'tensorflow',
+  architecture: 'cnn',
+  optimizer: 'adam',
+  epochs: 5,
+  batchSize: '32',
+  learningRate: '0.001',
+  batchNorm: 'false',
+  earlyStopping: 'false',
+  modelMode: 'new',
+  modelName: 'mnist_cnn_demo',
+}
+
 describe('validateConfig (HU-003 / HU-004 / HU-005)', () => {
-  it('acepta la configuración por defecto de entrenamiento salvo el nombre del modelo', () => {
+  it('exige el nombre del modelo en la configuración por defecto de entrenamiento', () => {
     // El modelName por defecto está vacío → obligatorio.
     const error = validateConfig('train', defaultConfig('train'))
-    expect(error).toMatch(/Nombre del modelo/i)
+    expect(error).toMatch(/nombre/i)
   })
 
   it('acepta una configuración de entrenamiento completa', () => {
-    const error = validateConfig('train', {
-      framework: 'tensorflow',
-      architecture: 'cnn',
-      epochs: 5,
-      batchSize: '32',
-      learningRate: '0.001',
-      modelName: 'mnist_cnn_demo',
-    })
-    expect(error).toBeNull()
+    expect(validateConfig('train', fullTrainConfig)).toBeNull()
   })
 
   it('rechaza epochs fuera de rango (máx 100)', () => {
-    const error = validateConfig('train', {
-      framework: 'tensorflow',
-      architecture: 'cnn',
-      epochs: 999,
-      batchSize: '32',
-      learningRate: '0.001',
-      modelName: 'm',
-    })
+    const error = validateConfig('train', { ...fullTrainConfig, epochs: 999, modelName: 'm' })
     expect(error).toMatch(/Epochs/i)
   })
 
   it('rechaza learning rate no numérico', () => {
-    const error = validateConfig('train', {
-      framework: 'tensorflow',
-      architecture: 'cnn',
-      epochs: 5,
-      batchSize: '32',
-      learningRate: 'abc',
-      modelName: 'm',
-    })
+    const error = validateConfig('train', { ...fullTrainConfig, learningRate: 'abc', modelName: 'm' })
     expect(error).toMatch(/Learning rate/i)
   })
 

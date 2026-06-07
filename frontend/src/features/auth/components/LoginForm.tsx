@@ -1,10 +1,11 @@
 import { useState, type ChangeEvent, type FormEvent } from 'react'
-import { Eye, EyeOff } from 'lucide-react'
+import { ArrowRight, Eye, EyeOff, GraduationCap, Lock, User } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
+import { Brand } from '@/shared/components/Brand'
 import { Button } from '@/shared/components/ui/button'
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/shared/components/ui/card'
 import { Input } from '@/shared/components/ui/input'
+import { cn } from '@/lib/utils'
 
 interface LoginFormProps {
   credential: string
@@ -26,85 +27,176 @@ export function LoginForm({
   onSubmit,
 }: LoginFormProps) {
   const [showPassword, setShowPassword] = useState(false)
+  const [touched, setTouched] = useState({ credential: false, password: false })
+
+  const credentialError =
+    touched.credential && !credential.trim() ? 'El usuario o correo es obligatorio.' : null
+  const passwordError = touched.password && !password ? 'La contraseña es obligatoria.' : null
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    setTouched({ credential: true, password: true })
+    if (!credential.trim() || !password) {
+      event.preventDefault()
+      return
+    }
+    void onSubmit(event)
+  }
 
   return (
-    <div className="relative flex min-h-[100svh] items-center justify-center overflow-x-hidden overflow-y-auto bg-[#070B12] px-3 py-6 sm:px-4 sm:py-8 lg:py-10">
-      <div className="pointer-events-none absolute inset-0 opacity-40 bg-[linear-gradient(to_right,rgba(51,65,85,0.14)_1px,transparent_1px),linear-gradient(to_bottom,rgba(51,65,85,0.12)_1px,transparent_1px)] bg-[size:48px_48px] sm:bg-[size:56px_56px] lg:bg-[size:64px_64px]" />
-      <div className="pointer-events-none absolute left-1/2 top-1/2 h-[360px] w-[92vw] max-w-[760px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-blue-600/14 blur-3xl sm:h-[460px] lg:h-[560px]" />
+    <div className="flex min-h-[100svh] items-center justify-center bg-background p-4 md:p-8">
+      <div className="flex w-full max-w-6xl flex-col overflow-hidden rounded-3xl border border-border bg-card shadow-[0_24px_60px_-24px_rgba(15,23,42,0.35)] md:min-h-[620px] md:flex-row">
+        {/* ── Panel de marca (navy) ─────────────────────────────────────── */}
+        <div className="relative flex flex-col justify-between overflow-hidden bg-sidebar p-8 text-white md:w-5/12 md:p-12">
+          <div
+            className="pointer-events-none absolute -top-1/4 -left-1/4 h-[120%] w-[120%] bg-[radial-gradient(ellipse_at_top_left,rgba(255,106,0,0.22),transparent_60%)]"
+            aria-hidden="true"
+          />
+          <div
+            className="pointer-events-none absolute -right-1/4 -bottom-1/4 h-full w-full bg-[radial-gradient(circle_at_bottom_right,rgba(0,187,255,0.18),transparent_55%)]"
+            aria-hidden="true"
+          />
 
-      <Card className="relative w-[92vw] max-w-[650px] rounded-[1.5rem] border border-slate-700/75 bg-[rgba(8,13,22,0.88)] px-5 py-7 shadow-2xl shadow-black/35 backdrop-blur-xl sm:max-w-[520px] sm:rounded-[1.75rem] sm:px-8 sm:py-8 md:max-w-[620px] md:px-12 md:py-10 lg:max-w-[660px] lg:rounded-[2rem] lg:px-14">
-        <CardHeader className="px-0 pb-7 text-center sm:pb-8 lg:pb-10">
-          <CardTitle className="text-3xl font-bold italic tracking-tight text-slate-50 drop-shadow-sm sm:text-4xl lg:text-5xl">
-            Synapse<span className="text-blue-500">Ops</span>
-          </CardTitle>
-          <p className="mt-5 text-[11px] font-medium uppercase tracking-[0.32em] text-slate-400 sm:mt-6 sm:text-xs sm:tracking-[0.38em] lg:mt-8 lg:text-sm lg:tracking-[0.42em]">
-            Secure Access Gateway
-          </p>
-        </CardHeader>
+          <div className="relative z-10">
+            <Brand size="lg" tone="invert" className="mb-12" />
+            <h1 className="font-heading text-4xl leading-tight font-bold tracking-tight md:text-5xl">
+              Construye modelos.
+              <br />
+              No infraestructura.
+            </h1>
+            <p className="mt-6 max-w-md text-base leading-relaxed text-white/70">
+              Gestión low-code del ciclo de vida MLOps. La plataforma cercana, pensada para que los
+              estudiantes cierren la brecha entre la teoría y la producción sin fricción.
+            </p>
+          </div>
 
-        <form onSubmit={(event) => void onSubmit(event)}>
-          <CardContent className="space-y-5 px-0 sm:space-y-6 lg:space-y-8">
-            <div className="space-y-2.5 sm:space-y-3">
-              <label className="text-xs font-bold uppercase tracking-wide text-slate-300 sm:text-sm">Usuario</label>
-              <Input
-                className="h-12 rounded-full border-slate-700/80 bg-slate-950/45 px-5 text-base text-slate-100 placeholder:text-slate-500 focus-visible:border-blue-500/60 focus-visible:ring-blue-500/20 sm:h-14 sm:px-6 sm:text-lg lg:h-16 lg:px-7 lg:text-xl"
-                type="text"
-                value={credential}
-                onChange={onCredentialChange}
-                placeholder="superadmin"
-                autoComplete="username"
-                required
-              />
-            </div>
+          <div className="relative z-10 mt-12 flex items-center gap-3 text-sm text-white/55">
+            <GraduationCap className="size-5 shrink-0" />
+            <span>Impulsando a la próxima generación de científicos de datos.</span>
+          </div>
+        </div>
 
-            <div className="space-y-2.5 sm:space-y-3">
-              <label className="text-xs font-bold uppercase tracking-wide text-slate-300 sm:text-sm">Contraseña</label>
-              <div className="relative">
-                <Input
-                  className="h-12 rounded-full border-slate-700/80 bg-slate-950/45 px-5 pr-12 text-base text-slate-100 placeholder:text-slate-500 focus-visible:border-blue-500/60 focus-visible:ring-blue-500/20 sm:h-14 sm:px-6 sm:pr-14 sm:text-lg lg:h-16 lg:px-7 lg:pr-16 lg:text-xl"
-                  type={showPassword ? 'text' : 'password'}
-                  value={password}
-                  onChange={onPasswordChange}
-                  placeholder="••••••••"
-                  autoComplete="current-password"
-                  required
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword((prev) => !prev)}
-                  className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-400 transition-colors hover:text-slate-200 sm:right-6"
-                  tabIndex={-1}
-                >
-                  {showPassword ? <EyeOff className="h-5 w-5 sm:h-6 sm:w-6" /> : <Eye className="h-5 w-5 sm:h-6 sm:w-6" />}
-                </button>
-              </div>
-            </div>
-
-            {error && (
-              <p className="animate-pulse rounded-xl border border-red-400/20 bg-red-400/10 p-3 text-sm font-semibold text-red-300">
-                {error}
+        {/* ── Formulario ────────────────────────────────────────────────── */}
+        <div className="flex flex-col justify-center bg-card p-8 md:w-7/12 md:p-14">
+          <div className="mx-auto w-full max-w-md">
+            <div className="mb-9 text-center md:text-left">
+              <h2 className="font-heading text-3xl font-bold tracking-tight text-foreground">
+                Bienvenido de nuevo
+              </h2>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Ingresa tus credenciales para acceder a tu espacio de trabajo.
               </p>
-            )}
-          </CardContent>
+            </div>
 
-          <CardFooter className="px-0 pb-0 pt-7 sm:pt-8 lg:pt-10">
-            <Button
-              type="submit"
-              className="h-12 w-full rounded-2xl bg-blue-600 text-base font-semibold text-white shadow-lg shadow-blue-950/40 hover:bg-blue-500 sm:h-14 sm:text-lg lg:h-16 lg:text-xl"
-              disabled={isLoading}
-            >
-              {isLoading ? 'Autenticando...' : 'Iniciar sesión'}
-            </Button>
-          </CardFooter>
+            <form onSubmit={handleSubmit} noValidate className="space-y-5">
+              {/* Usuario o correo */}
+              <div className="space-y-1.5">
+                <label htmlFor="credential" className="text-sm font-semibold text-foreground">
+                  Usuario o correo
+                </label>
+                <div className="relative">
+                  <User className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    id="credential"
+                    type="text"
+                    value={credential}
+                    onChange={onCredentialChange}
+                    onBlur={() => setTouched((t) => ({ ...t, credential: true }))}
+                    placeholder="superadmin"
+                    autoComplete="username"
+                    aria-invalid={credentialError ? true : undefined}
+                    className={cn(
+                      'h-12 pl-10',
+                      credentialError && 'border-destructive focus-visible:ring-destructive/30'
+                    )}
+                    required
+                  />
+                </div>
+                {credentialError && (
+                  <p className="text-xs font-medium text-destructive">{credentialError}</p>
+                )}
+              </div>
 
-          <p className="px-0 pt-5 text-center text-sm text-slate-400">
-            ¿No tienes cuenta?{' '}
-            <Link to="/signup" className="font-semibold text-blue-400 hover:text-blue-300">
-              Regístrate
-            </Link>
-          </p>
-        </form>
-      </Card>
+              {/* Contraseña */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label htmlFor="password" className="text-sm font-semibold text-foreground">
+                    Contraseña
+                  </label>
+                  <Link
+                    to="/forgot-password"
+                    className="text-sm font-medium text-cta transition-colors hover:text-cta/80"
+                  >
+                    ¿Olvidaste tu contraseña?
+                  </Link>
+                </div>
+                <div className="relative">
+                  <Lock className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    id="password"
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={onPasswordChange}
+                    onBlur={() => setTouched((t) => ({ ...t, password: true }))}
+                    placeholder="••••••••"
+                    autoComplete="current-password"
+                    aria-invalid={passwordError ? true : undefined}
+                    className={cn(
+                      'h-12 pl-10 pr-11',
+                      passwordError && 'border-destructive focus-visible:ring-destructive/30'
+                    )}
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((v) => !v)}
+                    aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                    className="absolute top-1/2 right-3.5 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
+                    tabIndex={-1}
+                  >
+                    {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                  </button>
+                </div>
+                {passwordError && (
+                  <p className="text-xs font-medium text-destructive">{passwordError}</p>
+                )}
+              </div>
+
+              {error && (
+                <p
+                  role="alert"
+                  className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm font-medium text-destructive"
+                >
+                  {error}
+                </p>
+              )}
+
+              <Button
+                type="submit"
+                variant="cta"
+                size="lg"
+                loading={isLoading}
+                className="h-12 w-full text-base"
+              >
+                {isLoading ? (
+                  'Autenticando…'
+                ) : (
+                  <>
+                    Iniciar sesión
+                    <ArrowRight className="size-4" />
+                  </>
+                )}
+              </Button>
+            </form>
+
+            <p className="mt-8 text-center text-sm text-muted-foreground">
+              ¿No tienes cuenta?{' '}
+              <Link to="/signup" className="font-semibold text-primary hover:underline">
+                Regístrate
+              </Link>
+            </p>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

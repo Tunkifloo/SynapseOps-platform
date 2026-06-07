@@ -1,8 +1,11 @@
 import { useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react'
 import { Eye, EyeOff } from 'lucide-react'
 
+import { validateEmail, validatePassword, validateRequired } from '@/features/auth/validation'
 import { Button } from '@/shared/components/ui/button'
 import { Input } from '@/shared/components/ui/input'
+import { Label } from '@/shared/components/ui/label'
+import { cn } from '@/lib/utils'
 
 import type { CreateStudentFormData } from '../types'
 
@@ -15,15 +18,31 @@ interface CreateStudentFormProps {
   onCancel?: () => void
 }
 
-function FieldLabel({ children }: { children: string }) {
-  return <label className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400 sm:text-[11px] sm:tracking-[0.14em]">{children}</label>
-}
+const MIN_PASSWORD = 7
+type ErrKey = 'username' | 'password' | 'name' | 'paternalSurname' | 'studentCode' | 'email'
 
-function FormField({ children }: { children: ReactNode }) {
-  return <div className="space-y-2">{children}</div>
+function Field({
+  label,
+  optional,
+  error,
+  children,
+}: {
+  label: string
+  optional?: boolean
+  error?: string | null
+  children: ReactNode
+}) {
+  return (
+    <div className="space-y-1.5">
+      <Label>
+        {label}
+        {optional && <span className="font-normal text-muted-foreground"> (opcional)</span>}
+      </Label>
+      {children}
+      {error && <p className="text-xs font-medium text-destructive">{error}</p>}
+    </div>
+  )
 }
-
-const inputClassName = 'h-10 rounded-xl border-slate-700/80 bg-slate-950/35 text-sm text-slate-100 placeholder:text-slate-500 focus-visible:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-60'
 
 export function CreateStudentForm({
   form,
@@ -34,115 +53,137 @@ export function CreateStudentForm({
   onCancel,
 }: CreateStudentFormProps) {
   const [showPassword, setShowPassword] = useState(false)
+  const [submitted, setSubmitted] = useState(false)
+  const [touched, setTouched] = useState<Partial<Record<ErrKey, boolean>>>({})
+
+  // Validaciones (alineadas a los DTOs de creación/actualización de usuario).
+  const errors: Record<ErrKey, string | null> = {
+    username: isEditing ? null : validateRequired(form.username, 'El usuario'),
+    password: isEditing ? null : validatePassword(form.password, MIN_PASSWORD),
+    name: validateRequired(form.name, 'El nombre'),
+    paternalSurname: validateRequired(form.paternalSurname, 'El apellido paterno'),
+    studentCode: validateRequired(form.studentCode, 'El código de estudiante'),
+    email: validateEmail(form.email),
+  }
+  const hasErrors = Object.values(errors).some(Boolean)
+
+  // Detección por campo: muestra el error si el campo fue tocado o tras enviar.
+  const err = (k: ErrKey) => ((submitted || touched[k]) && errors[k]) || null
+  const blur = (k: ErrKey) => () => setTouched((t) => ({ ...t, [k]: true }))
+  const inputCls = (k: ErrKey) => cn('h-10', err(k) && 'border-destructive focus-visible:ring-destructive/30')
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    setSubmitted(true)
+    if (hasErrors) {
+      event.preventDefault()
+      return
+    }
+    void onSubmit(event)
+  }
 
   return (
-    <form className="space-y-4 sm:space-y-5" onSubmit={(event) => void onSubmit(event)}>
-      <div className="flex flex-wrap items-center gap-3">
-        <h2 className="text-lg font-semibold text-slate-50">
-          {isEditing ? 'Editar estudiante' : 'Crear estudiante'}
-        </h2>
-        {isEditing && (
-          <span className="rounded-full border border-blue-500/25 bg-blue-500/10 px-3 py-1 text-xs font-semibold text-blue-300">
-            Modo edición
-          </span>
-        )}
-      </div>
-
-      {isEditing && (
-        <p className="text-sm leading-6 text-slate-400">
-          Estás editando la cuenta seleccionada en la tabla.
-        </p>
-      )}
-
-      <div className="grid gap-4 xl:grid-cols-2">
-        <FormField>
-          <FieldLabel>Nombre de usuario</FieldLabel>
+    <form className="space-y-4" onSubmit={handleSubmit} noValidate>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field label="Nombre de usuario" error={err('username')}>
           <Input
             value={form.username}
             onChange={onChange('username')}
-            required={!isEditing}
+            onBlur={blur('username')}
             disabled={isEditing}
-            className={inputClassName}
+            aria-invalid={err('username') ? true : undefined}
+            className={inputCls('username')}
           />
-        </FormField>
+        </Field>
 
-        <FormField>
-          <FieldLabel>Contraseña</FieldLabel>
+        <Field label="Contraseña" error={err('password')}>
           <div className="relative">
             <Input
               type={showPassword ? 'text' : 'password'}
               value={form.password}
               onChange={onChange('password')}
-              minLength={7}
-              required={!isEditing}
+              onBlur={blur('password')}
               disabled={isEditing}
-              className={`${inputClassName} pr-10`}
+              aria-invalid={err('password') ? true : undefined}
+              className={cn(inputCls('password'), 'pr-10')}
             />
             <button
               type="button"
-              onClick={() => setShowPassword((prev) => !prev)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 disabled:pointer-events-none"
+              onClick={() => setShowPassword((p) => !p)}
+              className="absolute top-1/2 right-3 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
               tabIndex={-1}
               disabled={isEditing}
+              aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
             >
-              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
             </button>
           </div>
-        </FormField>
+        </Field>
 
-        <FormField>
-          <FieldLabel>Nombre</FieldLabel>
-          <Input value={form.name} onChange={onChange('name')} required className={inputClassName} />
-        </FormField>
+        <Field label="Nombre" error={err('name')}>
+          <Input
+            value={form.name}
+            onChange={onChange('name')}
+            onBlur={blur('name')}
+            aria-invalid={err('name') ? true : undefined}
+            className={inputCls('name')}
+          />
+        </Field>
 
-        <FormField>
-          <FieldLabel>Apellido paterno</FieldLabel>
-          <Input value={form.paternalSurname} onChange={onChange('paternalSurname')} required className={inputClassName} />
-        </FormField>
+        <Field label="Apellido paterno" error={err('paternalSurname')}>
+          <Input
+            value={form.paternalSurname}
+            onChange={onChange('paternalSurname')}
+            onBlur={blur('paternalSurname')}
+            aria-invalid={err('paternalSurname') ? true : undefined}
+            className={inputCls('paternalSurname')}
+          />
+        </Field>
 
-        <FormField>
-          <FieldLabel>Apellido materno</FieldLabel>
-          <Input value={form.maternalSurname} onChange={onChange('maternalSurname')} className={inputClassName} />
-        </FormField>
+        <Field label="Apellido materno" optional>
+          <Input value={form.maternalSurname} onChange={onChange('maternalSurname')} className="h-10" />
+        </Field>
 
-        <FormField>
-          <FieldLabel>Teléfono</FieldLabel>
-          <Input value={form.phone} onChange={onChange('phone')} placeholder="999999999" className={inputClassName} />
-        </FormField>
+        <Field label="Teléfono" optional>
+          <Input value={form.phone} onChange={onChange('phone')} placeholder="999999999" inputMode="numeric" className="h-10" />
+        </Field>
 
-        <FormField>
-          <FieldLabel>Código de estudiante</FieldLabel>
-          <Input value={form.studentCode} onChange={onChange('studentCode')} placeholder="U20210001" required className={inputClassName} />
-        </FormField>
+        <Field label="Código de estudiante" error={err('studentCode')}>
+          <Input
+            value={form.studentCode}
+            onChange={onChange('studentCode')}
+            onBlur={blur('studentCode')}
+            placeholder="U20210001"
+            aria-invalid={err('studentCode') ? true : undefined}
+            className={inputCls('studentCode')}
+          />
+        </Field>
 
-        <FormField>
-          <FieldLabel>Carrera</FieldLabel>
-          <Input value={form.career} onChange={onChange('career')} placeholder="Ing. de Sistemas" className={inputClassName} />
-        </FormField>
+        <Field label="Carrera" optional>
+          <Input value={form.career} onChange={onChange('career')} placeholder="Ing. de Sistemas" className="h-10" />
+        </Field>
 
-        <div className="xl:col-span-2">
-          <FormField>
-            <FieldLabel>Correo electrónico</FieldLabel>
-            <Input type="email" value={form.email} onChange={onChange('email')} required className={inputClassName} />
-          </FormField>
+        <div className="sm:col-span-2">
+          <Field label="Correo electrónico" error={err('email')}>
+            <Input
+              type="email"
+              value={form.email}
+              onChange={onChange('email')}
+              onBlur={blur('email')}
+              aria-invalid={err('email') ? true : undefined}
+              className={inputCls('email')}
+            />
+          </Field>
         </div>
       </div>
 
-      <div className="flex flex-col-reverse gap-3 border-t border-slate-800/80 pt-4 sm:flex-row sm:justify-end">
-        {isEditing && (
-          <Button
-            type="button"
-            variant="outline"
-            onClick={onCancel}
-            className="w-full border-slate-700/80 bg-slate-900/60 text-slate-200 hover:bg-slate-800 sm:w-auto"
-          >
+      <div className="flex justify-end gap-2 border-t border-border pt-4">
+        {onCancel && (
+          <Button type="button" variant="outline" onClick={onCancel}>
             Cancelar
           </Button>
         )}
-        <Button type="submit" disabled={isSubmitting} className="w-full bg-blue-600 text-white hover:bg-blue-500 sm:w-auto">
-          {isSubmitting
-            ? isEditing ? 'Guardando...' : 'Creando...'
-            : isEditing ? 'Guardar cambios' : 'Crear estudiante'}
+        <Button type="submit" variant="cta" loading={isSubmitting} disabled={(submitted || Object.keys(touched).length > 0) && hasErrors}>
+          {isEditing ? 'Guardar cambios' : 'Crear usuario'}
         </Button>
       </div>
     </form>

@@ -49,6 +49,14 @@ export function LogConsole({ token, workspaceId, pipelineId, executionId, onLogE
         const data = JSON.parse((event as MessageEvent).data) as LogLine & { terminal?: boolean }
         setLines((prev) => [...prev, { level: data.level, message: data.message, timestamp: data.timestamp }])
         onLogEventRef.current?.(data.level, data.message, !!data.terminal)
+        // Eventos significativos → campana de notificaciones global (navbar).
+        if (data.terminal || data.level === 'ERROR' || data.level === 'WARN') {
+          window.dispatchEvent(
+            new CustomEvent('synapseops:notify', {
+              detail: { level: data.level, message: data.message, terminal: !!data.terminal },
+            })
+          )
+        }
         if (data.terminal) source.close()
       } catch {
         /* evento no parseable: ignorar */

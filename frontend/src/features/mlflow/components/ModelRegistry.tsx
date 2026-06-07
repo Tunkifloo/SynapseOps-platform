@@ -67,19 +67,27 @@ interface ModelRegistryProps {
 
 const STAGES: ModelStage[] = ['None', 'Staging', 'Production', 'Archived']
 
-function stageVariant(stage: string): 'success' | 'warning' | 'secondary' | 'outline' {
+export function stageVariant(stage: string): 'success' | 'warning' | 'secondary' | 'outline' {
   switch (stage) {
-    case 'Production': return 'success'
-    case 'Staging':    return 'warning'
-    case 'Archived':   return 'secondary'
-    default:           return 'outline'
+    case 'Production':
+      return 'success'
+    case 'Staging':
+      return 'warning'
+    case 'Archived':
+      return 'secondary'
+    default:
+      return 'outline'
   }
 }
 
-function formatDate(ms: number): string {
+export function formatModelDate(ms: number): string {
   if (!ms) return '—'
   return new Date(ms).toLocaleString('es-PE', {
-    day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
   })
 }
 
@@ -91,7 +99,7 @@ interface VersionCardProps {
   onChanged: () => void
 }
 
-function VersionCard({ api, modelName, version, onAuthError, onChanged }: VersionCardProps) {
+export function VersionCard({ api, modelName, version, onAuthError, onChanged }: VersionCardProps) {
   const navigate = useNavigate()
   const [accuracy, setAccuracy] = useState<number | null>(version.accuracy ?? null)
   const [loss, setLoss] = useState<number | null>(version.loss ?? null)
@@ -123,9 +131,18 @@ function VersionCard({ api, modelName, version, onAuthError, onChanged }: Versio
     if (hasEmbeddedMetrics || !api.getMetrics) return
     let active = true
     api.getMetrics(version.runId)
-      .then((m) => { if (active) { setAccuracy(m.accuracy); setLoss(m.loss) } })
-      .catch(() => { /* métricas informativas */ })
-    return () => { active = false }
+      .then((m) => {
+        if (active) {
+          setAccuracy(m.accuracy)
+          setLoss(m.loss)
+        }
+      })
+      .catch(() => {
+        /* métricas informativas */
+      })
+    return () => {
+      active = false
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [version.runId])
 
@@ -162,31 +179,31 @@ function VersionCard({ api, modelName, version, onAuthError, onChanged }: Versio
   }
 
   return (
-    <div className="rounded-xl border border-slate-800/80 bg-slate-950/40 p-4">
+    <div className="rounded-xl border border-border bg-muted/30 p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1.5">
           <div className="flex items-center gap-2">
-            <span className="text-sm font-semibold text-slate-50">Versión {version.version}</span>
+            <span className="text-sm font-semibold text-foreground">Versión {version.version}</span>
             <Badge variant={stageVariant(stage)}>{stage}</Badge>
           </div>
-          <p className="flex items-center gap-1.5 font-mono text-[11px] text-slate-500">
+          <p className="flex items-center gap-1.5 font-mono text-[11px] text-muted-foreground">
             <Hash className="size-3" />
-            <span className="max-w-[220px] truncate" title={version.runId}>{version.runId}</span>
+            <span className="max-w-[220px] truncate" title={version.runId}>
+              {version.runId}
+            </span>
           </p>
-          <p className="flex items-center gap-1.5 text-[11px] text-slate-500">
+          <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
             <CalendarClock className="size-3" />
-            {formatDate(version.creationTimestamp)}
+            {formatModelDate(version.creationTimestamp)}
           </p>
         </div>
 
         <div className="flex flex-col items-end gap-1">
-          <span className="text-[10px] uppercase tracking-[0.14em] text-slate-500">Accuracy</span>
-          <span className="text-base font-semibold text-emerald-400">
+          <span className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">Accuracy</span>
+          <span className="text-base font-semibold text-success">
             {accuracy != null ? accuracy.toFixed(4) : '—'}
           </span>
-          <span className="text-[10px] text-slate-500">
-            loss {loss != null ? loss.toFixed(4) : '—'}
-          </span>
+          <span className="text-[10px] text-muted-foreground">loss {loss != null ? loss.toFixed(4) : '—'}</span>
         </div>
       </div>
 
@@ -202,13 +219,19 @@ function VersionCard({ api, modelName, version, onAuthError, onChanged }: Versio
           {api.transitionStage && (
             <Select value={stage} onValueChange={(v) => void handlePromote(v)} disabled={isPromoting}>
               <SelectTrigger className="h-8 w-[150px] text-xs" aria-label="Cambiar stage">
-                {isPromoting
-                  ? <span className="flex items-center gap-1.5"><Loader2 className="size-3 animate-spin" /> Aplicando…</span>
-                  : <SelectValue placeholder="Stage" />}
+                {isPromoting ? (
+                  <span className="flex items-center gap-1.5">
+                    <Loader2 className="size-3 animate-spin" /> Aplicando…
+                  </span>
+                ) : (
+                  <SelectValue placeholder="Stage" />
+                )}
               </SelectTrigger>
               <SelectContent>
                 {STAGES.map((s) => (
-                  <SelectItem key={s} value={s} className="text-xs">{s}</SelectItem>
+                  <SelectItem key={s} value={s} className="text-xs">
+                    {s}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -231,19 +254,21 @@ function VersionCard({ api, modelName, version, onAuthError, onChanged }: Versio
       )}
 
       {api.getDetails && (
-        <div className="mt-3 border-t border-slate-800/70 pt-2">
+        <div className="mt-3 border-t border-border pt-2">
           <button
             onClick={() => void toggleDetails()}
-            className="flex cursor-pointer items-center gap-1.5 text-xs font-medium text-slate-400 transition-colors hover:text-slate-200"
+            className="flex cursor-pointer items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
             aria-expanded={detailsOpen}
           >
             {detailsOpen ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
             Detalles (arquitectura · hiperparámetros · métricas)
           </button>
           {detailsOpen && (
-            <div className="mt-2 space-y-3 rounded-lg border border-slate-800/70 bg-background/40 p-3">
+            <div className="mt-2 space-y-3 rounded-lg border border-border bg-card p-3">
               {loadingDetails ? (
-                <p className="flex items-center gap-2 text-xs text-slate-500"><Loader2 className="size-3 animate-spin" /> Cargando…</p>
+                <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Loader2 className="size-3 animate-spin" /> Cargando…
+                </p>
               ) : (
                 <>
                   <DetailGrid
@@ -255,13 +280,13 @@ function VersionCard({ api, modelName, version, onAuthError, onChanged }: Versio
                     title="Métricas"
                     entries={Object.entries(details?.metrics ?? {})}
                     format={(v) => (typeof v === 'number' ? v.toFixed(4) : String(v))}
-                    valueClass="text-emerald-400"
+                    valueClass="text-success"
                   />
-                  {details?.confusionMatrix && (
-                    <ConfusionMatrixView cm={details.confusionMatrix} />
-                  )}
-                  {(!details || (Object.keys(details.params).length === 0 && Object.keys(details.metrics).length === 0)) && (
-                    <p className="text-xs text-slate-500">Sin detalles disponibles para esta versión.</p>
+                  {details?.confusionMatrix && <ConfusionMatrixView cm={details.confusionMatrix} />}
+                  {(!details ||
+                    (Object.keys(details.params).length === 0 &&
+                      Object.keys(details.metrics).length === 0)) && (
+                    <p className="text-xs text-muted-foreground">Sin detalles disponibles para esta versión.</p>
                   )}
                 </>
               )}
@@ -283,12 +308,13 @@ function VersionCard({ api, modelName, version, onAuthError, onChanged }: Versio
   )
 }
 
-function ConfusionMatrixView({ cm }: { cm: ConfusionMatrix }) {
+export function ConfusionMatrixView({ cm }: { cm: ConfusionMatrix }) {
   const max = Math.max(1, ...cm.matrix.flat())
   return (
     <div>
-      <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-        Matriz de confusión <span className="normal-case text-slate-600">(filas = real, columnas = predicho)</span>
+      <p className="mb-1.5 text-[10px] font-semibold tracking-[0.14em] text-muted-foreground uppercase">
+        Matriz de confusión{' '}
+        <span className="text-muted-foreground/70 normal-case">(filas = real, columnas = predicho)</span>
       </p>
       <div className="overflow-auto">
         <table className="border-collapse text-[10px]">
@@ -296,14 +322,19 @@ function ConfusionMatrixView({ cm }: { cm: ConfusionMatrix }) {
             <tr>
               <th className="p-1" />
               {cm.labels.map((l) => (
-                <th key={l} className="max-w-[44px] truncate p-1 font-mono text-slate-400" title={l}>{l}</th>
+                <th key={l} className="max-w-[44px] truncate p-1 font-mono text-muted-foreground" title={l}>
+                  {l}
+                </th>
               ))}
             </tr>
           </thead>
           <tbody>
             {cm.matrix.map((row, i) => (
               <tr key={i}>
-                <th className="max-w-[44px] truncate p-1 text-right font-mono text-slate-400" title={cm.labels[i]}>
+                <th
+                  className="max-w-[44px] truncate p-1 text-right font-mono text-muted-foreground"
+                  title={cm.labels[i]}
+                >
                   {cm.labels[i]}
                 </th>
                 {row.map((v, j) => {
@@ -312,7 +343,7 @@ function ConfusionMatrixView({ cm }: { cm: ConfusionMatrix }) {
                   return (
                     <td
                       key={j}
-                      className="size-7 text-center font-mono text-[10px] text-slate-100"
+                      className="size-7 text-center font-mono text-[10px] text-foreground"
                       style={{
                         backgroundColor: correct
                           ? `color-mix(in oklch, var(--success) ${10 + intensity * 70}%, transparent)`
@@ -344,12 +375,14 @@ function DetailGrid({ title, entries, format, valueClass }: DetailGridProps) {
   if (entries.length === 0) return null
   return (
     <div>
-      <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">{title}</p>
+      <p className="mb-1.5 text-[10px] font-semibold tracking-[0.14em] text-muted-foreground uppercase">{title}</p>
       <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
         {entries.map(([key, value]) => (
-          <div key={key} className="rounded-md bg-slate-900/60 px-2 py-1.5">
-            <p className="truncate text-[10px] text-slate-500" title={key}>{key.replace(/_/g, ' ')}</p>
-            <p className={`truncate font-mono text-xs ${valueClass ?? 'text-slate-200'}`} title={String(value)}>
+          <div key={key} className="rounded-md bg-muted/60 px-2 py-1.5">
+            <p className="truncate text-[10px] text-muted-foreground" title={key}>
+              {key.replace(/_/g, ' ')}
+            </p>
+            <p className={`truncate font-mono text-xs ${valueClass ?? 'text-foreground'}`} title={String(value)}>
               {format(value)}
             </p>
           </div>
@@ -377,96 +410,111 @@ export function ModelRegistry({ api, onAuthError }: ModelRegistryProps) {
     }
   }, [api, onAuthError])
 
-  const loadVersions = useCallback(async (modelName: string) => {
-    setLoadingVersions(true)
-    try {
-      setVersions((prev) => ({ ...prev, [modelName]: [] }))
-      const vers = await api.getVersions(modelName)
-      setVersions((prev) => ({ ...prev, [modelName]: vers }))
-    } catch (err) {
-      if (!onAuthError(err)) setVersions((prev) => ({ ...prev, [modelName]: [] }))
-    } finally {
-      setLoadingVersions(false)
-    }
-  }, [api, onAuthError])
+  const loadVersions = useCallback(
+    async (modelName: string) => {
+      setLoadingVersions(true)
+      try {
+        setVersions((prev) => ({ ...prev, [modelName]: [] }))
+        const vers = await api.getVersions(modelName)
+        setVersions((prev) => ({ ...prev, [modelName]: vers }))
+      } catch (err) {
+        if (!onAuthError(err)) setVersions((prev) => ({ ...prev, [modelName]: [] }))
+      } finally {
+        setLoadingVersions(false)
+      }
+    },
+    [api, onAuthError]
+  )
 
   /* eslint-disable react-hooks/exhaustive-deps, react-hooks/set-state-in-effect */
-  useEffect(() => { void loadModels() }, [api])
+  useEffect(() => {
+    void loadModels()
+  }, [api])
 
   useEffect(() => {
-    const refresh = () => { void loadModels(); if (expanded) void loadVersions(expanded) }
+    const refresh = () => {
+      void loadModels()
+      if (expanded) void loadVersions(expanded)
+    }
     window.addEventListener('synapseops:refresh-mlflow', refresh)
     return () => window.removeEventListener('synapseops:refresh-mlflow', refresh)
   }, [loadModels, loadVersions, expanded])
   /* eslint-enable react-hooks/exhaustive-deps, react-hooks/set-state-in-effect */
 
   const toggle = (modelName: string) => {
-    if (expanded === modelName) { setExpanded(null); return }
+    if (expanded === modelName) {
+      setExpanded(null)
+      return
+    }
     setExpanded(modelName)
     if (!versions[modelName]) void loadVersions(modelName)
   }
 
   return (
-    <Card className="rounded-2xl border border-slate-700/70 bg-slate-950/25 py-0 shadow-sm shadow-black/20">
+    <Card className="py-0">
       <CardContent className="space-y-4 p-5">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="flex size-10 items-center justify-center rounded-xl border border-blue-500/20 bg-blue-500/10 text-blue-300">
+            <div className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary ring-1 ring-primary/15">
               <Box className="size-5" />
             </div>
             <div>
-              <h3 className="text-lg font-semibold text-slate-50">Modelos registrados</h3>
-              <p className="text-xs text-slate-500">Versiones, métricas y stage desde el Model Registry de MLflow</p>
+              <h3 className="font-heading text-lg font-semibold text-foreground">Modelos registrados</h3>
+              <p className="text-xs text-muted-foreground">
+                Versiones, métricas y stage desde el Model Registry de MLflow
+              </p>
             </div>
           </div>
-          <span className="rounded-full bg-blue-500/10 px-4 py-1.5 text-sm font-semibold text-slate-100">
+          <span className="rounded-full bg-primary/10 px-4 py-1.5 text-sm font-semibold text-primary">
             {models.length}
           </span>
         </div>
 
         {isLoading ? (
-          <div className="flex min-h-36 items-center justify-center text-sm text-slate-500">
+          <div className="flex min-h-36 items-center justify-center text-sm text-muted-foreground">
             <Loader2 className="mr-2 size-4 animate-spin" /> Cargando modelos…
           </div>
         ) : models.length === 0 ? (
-          <div className="flex min-h-36 flex-col items-center justify-center rounded-xl border border-dashed border-blue-400/25 bg-slate-950/20 px-6 py-5 text-center">
-            <Box className="mb-3 size-9 text-slate-600" />
-            <p className="text-base font-semibold text-slate-50">No hay modelos registrados.</p>
-            <p className="mt-3 max-w-sm text-sm leading-6 text-slate-400">
+          <div className="flex min-h-36 flex-col items-center justify-center rounded-xl border border-dashed border-border bg-muted/20 px-6 py-5 text-center">
+            <Box className="mb-3 size-9 text-muted-foreground/60" />
+            <p className="text-base font-semibold text-foreground">No hay modelos registrados.</p>
+            <p className="mt-3 max-w-sm text-sm leading-6 text-muted-foreground">
               Los modelos aparecerán aquí cuando un pipeline complete un entrenamiento y registre el artefacto.
             </p>
           </div>
         ) : (
           <div className="space-y-3">
             {models.map((model) => (
-              <div key={model.name} className="rounded-xl border border-slate-800/80 bg-slate-950/30">
+              <div key={model.name} className="rounded-xl border border-border bg-card">
                 <button
                   onClick={() => toggle(model.name)}
-                  className="flex w-full cursor-pointer items-center justify-between px-4 py-3 text-left transition-colors hover:bg-slate-900/40"
+                  className="flex w-full cursor-pointer items-center justify-between px-4 py-3 text-left transition-colors hover:bg-muted/50"
                 >
                   <div>
-                    <p className="text-sm font-semibold text-slate-50">{model.name}</p>
-                    <p className="mt-1 text-xs text-slate-500">
-                      Última versión: <span className="text-blue-300">v{model.latestVersion}</span>
+                    <p className="text-sm font-semibold text-foreground">{model.name}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Última versión: <span className="text-primary">v{model.latestVersion}</span>
                       {model.ownedVersions != null && (
-                        <span className="ml-2 text-slate-600">· {model.ownedVersions} versión(es)</span>
+                        <span className="ml-2 text-muted-foreground/70">· {model.ownedVersions} versión(es)</span>
                       )}
                     </p>
                   </div>
-                  {expanded === model.name
-                    ? <ChevronDown className="size-4 text-slate-400" />
-                    : <ChevronRight className="size-4 text-slate-400" />}
+                  {expanded === model.name ? (
+                    <ChevronDown className="size-4 text-muted-foreground" />
+                  ) : (
+                    <ChevronRight className="size-4 text-muted-foreground" />
+                  )}
                 </button>
 
                 {expanded === model.name && (
-                  <div className="space-y-3 border-t border-slate-800/80 p-4">
+                  <div className="space-y-3 border-t border-border p-4">
                     {loadingVersions && (versions[model.name]?.length ?? 0) === 0 && (
-                      <p className="flex items-center gap-2 text-xs text-slate-500">
+                      <p className="flex items-center gap-2 text-xs text-muted-foreground">
                         <Loader2 className="size-3 animate-spin" /> Cargando versiones…
                       </p>
                     )}
                     {!loadingVersions && versions[model.name]?.length === 0 && (
-                      <p className="text-xs text-slate-500">Este modelo no tiene versiones.</p>
+                      <p className="text-xs text-muted-foreground">Este modelo no tiene versiones.</p>
                     )}
                     {versions[model.name]?.map((version) => (
                       <VersionCard

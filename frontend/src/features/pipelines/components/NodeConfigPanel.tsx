@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { X } from 'lucide-react'
+import { Trash2, X } from 'lucide-react'
 
 import { Button } from '@/shared/components/ui/button'
 import { Input } from '@/shared/components/ui/input'
@@ -11,7 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/shared/components/ui/select'
-import { NODE_KIND_MAP } from '@/features/pipelines/nodeKinds'
+import { NODE_KIND_MAP, type NodeKind } from '@/features/pipelines/nodeKinds'
 import {
   NODE_FIELDS,
   defaultConfig,
@@ -53,7 +53,22 @@ interface NodeConfigPanelProps {
   train?: TrainContext
   deploy?: DeployContext
   onSave: (label: string, config: NodeConfig, status: PipelineNodeStatus, error?: string) => void
+  onDelete?: () => void
   onClose: () => void
+}
+
+/** Propósito y qué ajustar en cada nodo (ayuda contextual para el usuario). */
+const KIND_HELP: Record<NodeKind, string> = {
+  ingest:
+    'Carga el dataset que alimenta el pipeline. Elige el origen (Keras integrado, URL .zip o subir .zip) y asígnalo al proyecto.',
+  preprocess:
+    'Prepara las imágenes antes de entrenar: normalización de píxeles y, opcionalmente, data augmentation y tamaño de imagen.',
+  split:
+    'Divide el dataset en entrenamiento / validación / test. Ajusta el % de entrenamiento (50–90%); el resto se reparte automáticamente.',
+  train:
+    'Entrena una CNN adaptativa. Define framework, optimizador, epochs, batch size y técnicas (early stopping, batch norm). El nº de clases se autodetecta.',
+  deploy:
+    'Registra y expone el modelo versionado entrenado. Selecciona la versión a desplegar y el puerto del servicio.',
 }
 
 const STATUS_OPTIONS: { value: PipelineNodeStatus; label: string }[] = [
@@ -68,7 +83,7 @@ const STATUS_OPTIONS: { value: PipelineNodeStatus; label: string }[] = [
  * Debe montarse con `key={node.id}` para reinicializar el formulario al cambiar de nodo.
  * "Guardar" aplica al estado del lienzo; cerrar/Cancelar descarta los cambios.
  */
-export function NodeConfigPanel({ data, ingest, train, deploy, onSave, onClose }: NodeConfigPanelProps) {
+export function NodeConfigPanel({ data, ingest, train, deploy, onSave, onDelete, onClose }: NodeConfigPanelProps) {
   const cfg = NODE_KIND_MAP[data.kind]
   const Icon = cfg.icon
   const fields = NODE_FIELDS[data.kind]
@@ -180,6 +195,11 @@ export function NodeConfigPanel({ data, ingest, train, deploy, onSave, onClose }
       </header>
 
       <div className="flex-1 space-y-4 overflow-y-auto p-4">
+        {/* Descripción contextual: qué es y qué ajustar en este nodo. */}
+        <p className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
+          {KIND_HELP[data.kind]}
+        </p>
+
         <div className="space-y-1.5">
           <Label htmlFor="cfg-label">Nombre del nodo</Label>
           <Input id="cfg-label" value={label} onChange={(e) => setLabel(e.target.value)} />
@@ -283,13 +303,26 @@ export function NodeConfigPanel({ data, ingest, train, deploy, onSave, onClose }
         )}
       </div>
 
-      <footer className="flex items-center justify-end gap-2 border-t border-border p-4">
-        <Button variant="ghost" onClick={requestClose}>
-          Cancelar
-        </Button>
-        <Button variant="cta" onClick={handleSave}>
-          Guardar
-        </Button>
+      <footer className="flex items-center justify-between gap-2 border-t border-border p-4">
+        {onDelete ? (
+          <Button
+            variant="ghost"
+            onClick={onDelete}
+            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+          >
+            <Trash2 className="size-4" /> Eliminar
+          </Button>
+        ) : (
+          <span />
+        )}
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" onClick={requestClose}>
+            Cancelar
+          </Button>
+          <Button variant="cta" onClick={handleSave}>
+            Guardar
+          </Button>
+        </div>
       </footer>
     </aside>
   )

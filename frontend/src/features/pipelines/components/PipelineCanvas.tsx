@@ -14,6 +14,7 @@ import ReactFlow, {
 import 'reactflow/dist/style.css'
 
 import { notify } from '@/shared/notify'
+import { ConfirmDialog } from '@/shared/components/ConfirmDialog'
 import { useAppStore } from '@/store/useAppStore'
 import { launchExecution, getExecution } from '@/features/executions/api'
 import type { ExecutionRequest } from '@/features/executions/types'
@@ -122,6 +123,14 @@ export function PipelineCanvas({
   const [flowRunning, setFlowRunning] = useState(false)
   const [activeExecutionId, setActiveExecutionId] = useState<number | null>(null)
   const [dirty, setDirty] = useState(false)       // cambios del lienzo sin guardar (item 3)
+  // Confirmación de acciones críticas (limpiar / eliminar nodo / iniciar flujo).
+  const [confirm, setConfirm] = useState<{
+    title: string
+    description: string
+    confirmLabel: string
+    tone: 'destructive' | 'default'
+    onConfirm: () => void | Promise<void>
+  } | null>(null)
   const loadedRef = useRef(false)                 // evita marcar dirty durante la carga inicial
   const baselineRef = useRef<string>('')          // snapshot del último estado guardado/cargado
   const { screenToFlowPosition } = useReactFlow()
@@ -322,16 +331,8 @@ export function PipelineCanvas({
     return errors
   }, [nodes, edges, workspace])
 
-  const runFlow = useCallback(() => {
-    if (!token || !workspace || !pipelineId) {
-      notify.warning('Selecciona un proyecto y un pipeline para ejecutar el flujo.')
-      return
-    }
-    const errors = validateFlow()
-    if (errors.length > 0) {
-      notify.error('No se puede iniciar el flujo', { description: errors[0] })
-      return
-    }
+  const executeFlow = useCallback(() => {
+    if (!token || !workspace || !pipelineId) return
     const wsId = workspace.idWorkspace
     const trainNode = nodes.find((n) => n.data.kind === 'train')
     const preprocessNode = nodes.find((n) => n.data.kind === 'preprocess')
@@ -411,7 +412,28 @@ export function PipelineCanvas({
       }
       window.setTimeout(() => void poll(), 3000)
     })()
-  }, [token, workspace, pipelineId, nodes, validateFlow, setNodes, setStatusByKind])
+  }, [token, workspace, pipelineId, nodes, setNodes, setStatusByKind, setActiveExecution])
+
+  // "Iniciar flujo": valida y pide confirmación (acción crítica) antes de ejecutar.
+  const runFlow = useCallback(() => {
+    if (!token || !workspace || !pipelineId) {
+      notify.warning('Selecciona un proyecto y un pipeline para ejecutar el flujo.')
+      return
+    }
+    const errors = validateFlow()
+    if (errors.length > 0) {
+      notify.error('No se puede iniciar el flujo', { description: errors[0] })
+      return
+    }
+    setConfirm({
+      title: 'Iniciar flujo',
+      description:
+        'Se ejecutará el entrenamiento completo (ingesta → preprocesamiento → split → entrenamiento). Puede tardar varios minutos.',
+      confirmLabel: 'Iniciar flujo',
+      tone: 'default',
+      onConfirm: executeFlow,
+    })
+  }, [token, workspace, pipelineId, validateFlow, executeFlow])
 
   // Mapea las fases reales del ml-engine (SSE) a los estados de los nodos.
   // El evento `terminal` reconcilia el estado final también al reconectar (replay),
@@ -477,10 +499,38 @@ export function PipelineCanvas({
   }, [edges, nodes])
 
   const handleClear = useCallback(() => {
-    setNodes([])
-    setEdges([])
-    setSelectedNodeId(null)
-  }, [setNodes, setEdges])
+    if (nodes.length === 0) return
+    setConfirm({
+      title: 'Limpiar lienzo',
+      description: 'Se quitarán todos los nodos y conexiones. Guarda antes si deseas conservarlos.',
+      confirmLabel: 'Limpiar',
+      tone: 'destructive',
+      onConfirm: () => {
+        setNodes([])
+        setEdges([])
+        setSelectedNodeId(null)
+        notify.success('Lienzo limpiado')
+      },
+    })
+  }, [nodes.length, setNodes, setEdges])
+
+  // Eliminar el nodo seleccionado (acción crítica → confirmación + toast).
+  const requestDeleteNode = useCallback(() => {
+    const node = nodes.find((n) => n.id === selectedNodeId)
+    if (!node) return
+    setConfirm({
+      title: 'Eliminar nodo',
+      description: `Se eliminará el nodo "${node.data.label}" y sus conexiones.`,
+      confirmLabel: 'Eliminar nodo',
+      tone: 'destructive',
+      onConfirm: () => {
+        setNodes((nds) => nds.filter((n) => n.id !== node.id))
+        setEdges((eds) => eds.filter((e) => e.source !== node.id && e.target !== node.id))
+        setSelectedNodeId(null)
+        notify.success('Nodo eliminado', { description: node.data.label })
+      },
+    })
+  }, [nodes, selectedNodeId, setNodes, setEdges])
 
   // HU-024: persiste la topología en el backend (vinculada al pipeline).
   const handleSavePipeline = useCallback(async () => {
@@ -624,6 +674,12 @@ export function PipelineCanvas({
       const kind = event.dataTransfer.getData('application/reactflow') as NodeKind
       const config = NODE_KIND_MAP[kind]
       if (!config) return
+      if (nodes.some((n) => n.data.kind === kind)) {
+        notify.warning('Solo un nodo por tipo', {
+          description: `Ya existe un nodo de "${config.label}". No se admiten múltiples flujos por proyecto.`,
+        })
+        return
+      }
 
       const position = screenToFlowPosition({ x: event.clientX, y: event.clientY })
       const node: Node<PipelineNodeData> = {
@@ -634,7 +690,7 @@ export function PipelineCanvas({
       }
       setNodes((nds) => nds.concat(node))
     },
-    [screenToFlowPosition, setNodes]
+    [nodes, screenToFlowPosition, setNodes]
   )
 
   // Alta por tap/clic desde la paleta (táctil/escritorio): posición escalonada.
@@ -642,6 +698,12 @@ export function PipelineCanvas({
     (kind: NodeKind) => {
       const config = NODE_KIND_MAP[kind]
       if (!config) return
+      if (nodes.some((n) => n.data.kind === kind)) {
+        notify.warning('Solo un nodo por tipo', {
+          description: `Ya existe un nodo de "${config.label}". No se admiten múltiples flujos por proyecto.`,
+        })
+        return
+      }
       setNodes((nds) => {
         const offset = (nds.length % 6) * 48
         return nds.concat({
@@ -652,7 +714,7 @@ export function PipelineCanvas({
         })
       })
     },
-    [setNodes]
+    [nodes, setNodes]
   )
 
   return (
@@ -674,6 +736,7 @@ export function PipelineCanvas({
           onPaneClick={() => setSelectedNodeId(null)}
           nodeTypes={nodeTypes}
           defaultEdgeOptions={{ animated: true }}
+          deleteKeyCode={null}
           fitView
           proOptions={{ hideAttribution: true }}
         >
@@ -706,6 +769,7 @@ export function PipelineCanvas({
               train={trainContext}
               deploy={deployContext}
               onSave={handleSaveConfig}
+              onDelete={requestDeleteNode}
               onClose={() => setSelectedNodeId(null)}
             />
           )}
@@ -721,6 +785,16 @@ export function PipelineCanvas({
           onLogEvent={onFlowLogEvent}
         />
       )}
+
+      <ConfirmDialog
+        open={!!confirm}
+        onOpenChange={(open) => { if (!open) setConfirm(null) }}
+        title={confirm?.title ?? ''}
+        description={confirm?.description ?? ''}
+        confirmLabel={confirm?.confirmLabel}
+        tone={confirm?.tone}
+        onConfirm={async () => { await confirm?.onConfirm() }}
+      />
     </div>
   )
 }

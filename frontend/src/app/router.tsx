@@ -1,21 +1,37 @@
-import { useState, type ReactNode } from 'react'
+import { lazy, Suspense, useState, type ReactNode } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 
 import type { Role } from '@/types'
 import { ForbiddenPage } from '@/features/_shared/ForbiddenPage'
-import { DashboardPage } from '@/features/dashboard/pages/DashboardPage'
 import { LoginPage } from '@/features/auth/pages/LoginPage'
-import { SignUpPage } from '@/features/auth/pages/SignUpPage'
-import { ForgotPasswordPage } from '@/features/auth/pages/ForgotPasswordPage'
-import { AdminUsersPage } from '@/features/admin/pages/AdminUsersPage'
-import { WorkspacesPage } from '@/features/workspaces/pages/WorkspacesPage'
-import { PipelineBuilderPage } from '@/features/pipelines/pages/PipelineBuilderPage'
-import { MlflowPage } from '@/features/mlflow/pages/MlflowPage'
-import { MyModelsPage } from '@/features/mlflow/pages/MyModelsPage'
-import { ProfilePage } from '@/features/profile/pages/ProfilePage'
 import { AppShell } from '@/shared/layout/AppShell'
+import { Spinner } from '@/shared/components/ui/spinner'
 import { useAppStore } from '@/store/useAppStore'
 import { useProtectedSession } from '@/features/auth/hooks/useProtectedSession'
+
+// Páginas con carga diferida (code-splitting) → aligera el bundle inicial.
+// LoginPage queda eager por ser el punto de entrada.
+const SignUpPage = lazy(() => import('@/features/auth/pages/SignUpPage').then((m) => ({ default: m.SignUpPage })))
+const ForgotPasswordPage = lazy(() =>
+  import('@/features/auth/pages/ForgotPasswordPage').then((m) => ({ default: m.ForgotPasswordPage }))
+)
+const DashboardPage = lazy(() => import('@/features/dashboard/pages/DashboardPage').then((m) => ({ default: m.DashboardPage })))
+const AdminUsersPage = lazy(() => import('@/features/admin/pages/AdminUsersPage').then((m) => ({ default: m.AdminUsersPage })))
+const WorkspacesPage = lazy(() => import('@/features/workspaces/pages/WorkspacesPage').then((m) => ({ default: m.WorkspacesPage })))
+const PipelineBuilderPage = lazy(() =>
+  import('@/features/pipelines/pages/PipelineBuilderPage').then((m) => ({ default: m.PipelineBuilderPage }))
+)
+const MlflowPage = lazy(() => import('@/features/mlflow/pages/MlflowPage').then((m) => ({ default: m.MlflowPage })))
+const MyModelsPage = lazy(() => import('@/features/mlflow/pages/MyModelsPage').then((m) => ({ default: m.MyModelsPage })))
+const ProfilePage = lazy(() => import('@/features/profile/pages/ProfilePage').then((m) => ({ default: m.ProfilePage })))
+
+function PageFallback() {
+  return (
+    <div className="flex min-h-[50vh] items-center justify-center text-muted-foreground">
+      <Spinner />
+    </div>
+  )
+}
 
 interface ProtectedRouteProps {
   isAuthenticated: boolean
@@ -62,8 +78,10 @@ function ShellPage({ section, renderPage }: ShellPageProps) {
   }
 
   return (
-    <AppShell section={section} user={user} currentWorkspace={currentWorkspace} searchQuery={searchQuery} onSearchChange={setSearchQuery} onLogout={handleLogout}>
-      {renderPage({ token, currentWorkspace, searchQuery, onAuthError })}
+    <AppShell section={section} user={user} token={token} currentWorkspace={currentWorkspace} searchQuery={searchQuery} onSearchChange={setSearchQuery} onLogout={handleLogout}>
+      <Suspense fallback={<PageFallback />}>
+        {renderPage({ token, currentWorkspace, searchQuery, onAuthError })}
+      </Suspense>
     </AppShell>
   )
 }
@@ -74,6 +92,7 @@ export function AppRouter() {
 
   return (
     <BrowserRouter>
+      <Suspense fallback={<div className="flex h-[100svh] items-center justify-center bg-background"><Spinner /></div>}>
       <Routes>
         <Route path="/login" element={!isAuthenticated ? <LoginPage /> : <Navigate to="/dashboard" replace />} />
 
@@ -142,8 +161,8 @@ export function AppRouter() {
             <ProtectedRoute isAuthenticated={isAuthenticated}>
               <ShellPage
                 section="models"
-                renderPage={({ token, onAuthError }) => (
-                  <MyModelsPage token={token} onAuthError={onAuthError} />
+                renderPage={({ token, searchQuery, onAuthError }) => (
+                  <MyModelsPage token={token} searchQuery={searchQuery} onAuthError={onAuthError} />
                 )}
               />
             </ProtectedRoute>
@@ -167,6 +186,7 @@ export function AppRouter() {
         <Route path="/forbidden" element={<ForbiddenPage />} />
         <Route path="*" element={<Navigate to={isAuthenticated ? '/dashboard' : '/login'} replace />} />
       </Routes>
+      </Suspense>
     </BrowserRouter>
   )
 }

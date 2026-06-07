@@ -1,5 +1,7 @@
 import { useState } from 'react'
-import { AlertTriangle, Loader2 } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react'
+
+import { cn } from '@/lib/utils'
 
 import {
   Dialog,
@@ -18,6 +20,8 @@ export interface ConfirmDialogProps {
   description: React.ReactNode
   confirmLabel?: string
   cancelLabel?: string
+  /** 'destructive' (rojo, por defecto) o 'default' (acento de marca, acción no destructiva). */
+  tone?: 'destructive' | 'default'
   onConfirm: () => Promise<void> | void
 }
 
@@ -33,9 +37,11 @@ export function ConfirmDialog({
   description,
   confirmLabel = 'Eliminar',
   cancelLabel = 'Cancelar',
+  tone = 'destructive',
   onConfirm,
 }: ConfirmDialogProps) {
   const [isWorking, setIsWorking] = useState(false)
+  const isDestructive = tone === 'destructive'
 
   const handleConfirm = async () => {
     setIsWorking(true)
@@ -51,8 +57,15 @@ export function ConfirmDialog({
     <Dialog open={open} onOpenChange={(next) => !isWorking && onOpenChange(next)}>
       <DialogContent showCloseButton={!isWorking} className="max-w-md">
         <DialogHeader>
-          <div className="mb-2 flex size-11 items-center justify-center rounded-xl border border-destructive/25 bg-destructive/10 text-destructive">
-            <AlertTriangle className="size-5" />
+          <div
+            className={cn(
+              'mb-2 flex size-11 items-center justify-center rounded-xl border',
+              isDestructive
+                ? 'border-destructive/25 bg-destructive/10 text-destructive'
+                : 'border-primary/25 bg-primary/10 text-primary'
+            )}
+          >
+            {isDestructive ? <AlertTriangle className="size-5" /> : <CheckCircle2 className="size-5" />}
           </div>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
@@ -62,7 +75,12 @@ export function ConfirmDialog({
           <Button type="button" variant="outline" disabled={isWorking} onClick={() => onOpenChange(false)}>
             {cancelLabel}
           </Button>
-          <Button type="button" variant="destructive" disabled={isWorking} onClick={() => void handleConfirm()}>
+          <Button
+            type="button"
+            variant={isDestructive ? 'destructive' : 'cta'}
+            disabled={isWorking}
+            onClick={() => void handleConfirm()}
+          >
             {isWorking ? (
               <>
                 <Loader2 className="mr-2 size-4 animate-spin" />

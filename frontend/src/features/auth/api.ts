@@ -12,12 +12,20 @@ export const login = async (username: string, password: string) => {
   })
 }
 
-export const forgotPassword = async (username: string, newPassword: string) => {
-  const payload: ForgotPasswordRequest = { username, newPassword }
+export const forgotPassword = async (
+  username: string,
+  email: string,
+  newPassword: string,
+  studentCode?: string
+) => {
+  const payload: ForgotPasswordRequest = { username, email, newPassword, studentCode }
 
   await request(`${AUTH_BASE_URL}/forgot-password`, {
     method: 'POST',
-    body: JSON.stringify(payload),
+    body: JSON.stringify({
+      ...payload,
+      studentCode: studentCode?.trim() || null,
+    }),
   })
 }
 

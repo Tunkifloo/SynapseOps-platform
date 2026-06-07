@@ -7,13 +7,25 @@ import type { WorkspaceSummary } from '@/features/workspaces/types'
 
 // Mock de las capas de datos: el dashboard no debe llamar a la red real.
 const listMyWorkspaces = vi.fn()
+const listWorkspacePipelines = vi.fn()
 const listWorkspaceModels = vi.fn()
+const getWorkspaceModelVersions = vi.fn()
+const listExecutions = vi.fn()
 
 vi.mock('@/features/workspaces/api', () => ({
   listMyWorkspaces: (...args: unknown[]) => listMyWorkspaces(...args),
+  listWorkspacePipelines: (...args: unknown[]) => listWorkspacePipelines(...args),
 }))
 vi.mock('@/features/mlflow/api', () => ({
   listWorkspaceModels: (...args: unknown[]) => listWorkspaceModels(...args),
+  getWorkspaceModelVersions: (...args: unknown[]) => getWorkspaceModelVersions(...args),
+}))
+vi.mock('@/features/executions/api', () => ({
+  listExecutions: (...args: unknown[]) => listExecutions(...args),
+}))
+// recharts usa ResponsiveContainer (mide el DOM): lo simplificamos en pruebas.
+vi.mock('@/features/dashboard/components/ExecutionsActivityChart', () => ({
+  ExecutionsActivityChart: () => null,
 }))
 
 const workspace = (over: Partial<WorkspaceSummary> = {}): WorkspaceSummary => ({
@@ -43,12 +55,18 @@ function renderDashboard() {
 describe('DashboardPage (HU-018)', () => {
   beforeEach(() => {
     listMyWorkspaces.mockReset()
+    listWorkspacePipelines.mockReset()
     listWorkspaceModels.mockReset()
+    getWorkspaceModelVersions.mockReset()
+    listExecutions.mockReset()
+    listWorkspacePipelines.mockResolvedValue([])
+    listWorkspaceModels.mockResolvedValue([])
+    getWorkspaceModelVersions.mockResolvedValue([])
+    listExecutions.mockResolvedValue([])
   })
 
   it('muestra el estado vacío con CTA cuando no hay proyectos', async () => {
     listMyWorkspaces.mockResolvedValue([])
-    listWorkspaceModels.mockResolvedValue([])
 
     renderDashboard()
 
@@ -56,15 +74,15 @@ describe('DashboardPage (HU-018)', () => {
     expect(screen.getByRole('button', { name: /crear primer proyecto/i })).toBeInTheDocument()
   })
 
-  it('lista los proyectos recientes y el conteo de modelos registrados', async () => {
+  it('lista los proyectos recientes con su estado de dataset', async () => {
     listMyWorkspaces.mockResolvedValue([workspace()])
     listWorkspaceModels.mockResolvedValue([{ name: 'mnist_cnn' }, { name: 'mnist_cnn_v2' }])
 
     renderDashboard()
 
-    // Nombre del proyecto (puede aparecer en KPIs + tarjeta).
+    // Nombre del proyecto en el feed de recientes.
     expect(await screen.findByText('Proyecto MNIST')).toBeInTheDocument()
-    // Badge con el conteo real de modelos del workspace.
-    expect(await screen.findByText(/2 modelos/i)).toBeInTheDocument()
+    // Badge de dataset listo del proyecto.
+    expect(await screen.findByText('Dataset listo')).toBeInTheDocument()
   })
 })
