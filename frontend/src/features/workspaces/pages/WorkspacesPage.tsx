@@ -1,74 +1,43 @@
-import { useCallback, useEffect, useMemo, useState, type ComponentType, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
-  ChevronLeft,
+  Boxes,
+  ChevronDown,
   ChevronRight,
   Database,
+  FolderPlus,
+  History,
   Layers,
-  Monitor,
-  Plus,
-  UserRound,
+  Network,
+  Pencil,
+  Trash2,
+  Workflow,
 } from 'lucide-react'
-import { authorizedRequest } from '@/shared/api/client'
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui/card'
+import { Button } from '@/shared/components/ui/button'
+import { Badge } from '@/shared/components/ui/badge'
+import { Spinner } from '@/shared/components/ui/spinner'
+import { ConfirmDialog } from '@/shared/components/ConfirmDialog'
+import { notify } from '@/shared/notify'
 import {
-  createPipeline,
   createWorkspace,
-  deleteDataset,
-  deletePipeline,
   deleteWorkspace,
   listMyWorkspaces,
   listWorkspacePipelines,
-  renamePipeline,
   updateWorkspace,
-  uploadDataset,
-  uploadDatasetFromUrl,
 } from '@/features/workspaces/api'
-import { DatasetPanel } from '@/features/workspaces/components/DatasetPanel'
-import { PipelinesPanel } from '@/features/workspaces/components/PipelinesPanel'
+import { listWorkspaceModels } from '@/features/mlflow/api'
+import { listExecutions } from '@/features/executions/api'
+import { parseMetrics, type ExecutionSummary } from '@/features/executions/types'
 import { WorkspaceForm } from '@/features/workspaces/components/WorkspaceForm'
-import { ExecutionPanel } from '@/features/executions/components/ExecutionPanel'
-import { WorkspaceModelsPanel } from '@/features/mlflow/components/WorkspaceModelsPanel'
-import { ConfirmDialog } from '@/shared/components/ConfirmDialog'
 import {
-  emptyPipelineForm,
   emptyWorkspaceForm,
-  extractFilename,
-  type PipelineFormData,
   type PipelineSummary,
   type WorkspaceFormData,
   type WorkspaceSummary,
 } from '@/features/workspaces/types'
-import { Button } from '@/shared/components/ui/button'
 import { useAppStore } from '@/store/useAppStore'
-
-const PAGE_SIZE = 7
-
-interface StatCardProps {
-  title: string
-  value: string
-  icon: ComponentType<{ className?: string }>
-}
-
-function StatCard({ title, value, icon: Icon }: StatCardProps) {
-  return (
-    <Card className="rounded-2xl border border-slate-800/90 bg-slate-900/55 py-0 shadow-sm shadow-black/20">
-      <CardContent className="flex items-center gap-4 p-4 xl:p-5">
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-blue-400/15 bg-blue-500/10 text-blue-400 xl:h-12 xl:w-12">
-          <Icon className="h-5 w-5" />
-        </div>
-        <div className="min-w-0">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
-            {title}
-          </p>
-          <div className="mt-1 truncate text-xl font-semibold tracking-tight text-slate-50 xl:text-2xl">
-            {value}
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  )
-}
 
 interface WorkspacesPageProps {
   token: string
@@ -76,507 +45,365 @@ interface WorkspacesPageProps {
   onAuthError: (error: unknown) => boolean
 }
 
+/**
+ * "Espacios de trabajo" (reorg item 4): SOLO gestión del workspace
+ * (crear/editar/eliminar) + listado detallado de datos relacionados (read-only).
+ * El dataset se asigna desde el nodo Ingesta del Lienzo; los pipelines se
+ * construyen y ejecutan en el Lienzo; los modelos se gestionan en "Mis modelos".
+ */
 export function WorkspacesPage({ token, searchQuery, onAuthError }: WorkspacesPageProps) {
+  const navigate = useNavigate()
   const setWorkspace = useAppStore((state) => state.setWorkspace)
-  const currentWorkspace = useAppStore((state) => state.currentWorkspace)
-  const role = useAppStore((state) => state.user?.role)
 
   const [workspaces, setWorkspaces] = useState<WorkspaceSummary[]>([])
+  const [selectedId, setSelectedId] = useState<number | null>(null)
   const [pipelines, setPipelines] = useState<PipelineSummary[]>([])
-  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<number | null>(null)
-  const [workspaceForm, setWorkspaceForm] = useState<WorkspaceFormData>(emptyWorkspaceForm())
-  const [pipelineForm, setPipelineForm] = useState<PipelineFormData>(emptyPipelineForm())
-  const [editingWorkspaceId, setEditingWorkspaceId] = useState<number | null>(null)
-  const [renamingPipelineId, setRenamingPipelineId] = useState<number | null>(null)
-  const [renameValue, setRenameValue] = useState('')
-  const [datasetFile, setDatasetFile] = useState<File | null>(null)
-  const [showCreateForm, setShowCreateForm] = useState(false)
-  const [isLoadingWorkspaces, setIsLoadingWorkspaces] = useState(true)
-  const [isLoadingPipelines, setIsLoadingPipelines] = useState(false)
-  const [isSavingWorkspace, setIsSavingWorkspace] = useState(false)
-  const [isSavingPipeline, setIsSavingPipeline] = useState(false)
-  const [isUploadingDataset, setIsUploadingDataset] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [notice, setNotice] = useState<string | null>(null)
-  const [selectedPipelineForExec, setSelectedPipelineForExec] = useState<PipelineSummary | null>(null)
-  const [workspacePage, setWorkspacePage] = useState(1)
-  // RN-007: confirmación explícita para acciones destructivas.
+  const [modelCount, setModelCount] = useState<number | null>(null)
+  const [form, setForm] = useState<WorkspaceFormData>(emptyWorkspaceForm())
+  const [editingId, setEditingId] = useState<number | null>(null)
+  const [showForm, setShowForm] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
+  const [isLoadingDetail, setIsLoadingDetail] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
   const [confirm, setConfirm] = useState<
     { title: string; description: string; confirmLabel: string; onConfirm: () => Promise<void> } | null
   >(null)
+  // Historial de ejecuciones por pipeline (item 4): se carga al expandir.
+  const [expandedPipeline, setExpandedPipeline] = useState<number | null>(null)
+  const [executions, setExecutions] = useState<Record<number, ExecutionSummary[]>>({})
+  const [loadingExec, setLoadingExec] = useState(false)
 
-  const selectedWorkspace = workspaces.find((workspace) => workspace.idWorkspace === selectedWorkspaceId) ?? null
+  const selected = workspaces.find((w) => w.idWorkspace === selectedId) ?? null
 
-  const filteredWorkspaces = useMemo(() => (
-    searchQuery
-      ? workspaces.filter((workspace) => workspace.name.toLowerCase().includes(searchQuery.toLowerCase()))
-      : workspaces
-  ), [searchQuery, workspaces])
+  const filtered = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase()
+    return q ? workspaces.filter((w) => w.name.toLowerCase().includes(q)) : workspaces
+  }, [workspaces, searchQuery])
 
-  const totalPages = Math.max(1, Math.ceil(filteredWorkspaces.length / PAGE_SIZE))
-  const effectivePage = Math.min(workspacePage, totalPages)
-  const pagedWorkspaces = filteredWorkspaces.slice((effectivePage - 1) * PAGE_SIZE, effectivePage * PAGE_SIZE)
+  const loadDetail = useCallback(async (wsId: number) => {
+    setIsLoadingDetail(true)
+    setModelCount(null)
+    try {
+      const [pipes, models] = await Promise.all([
+        listWorkspacePipelines(token, wsId),
+        listWorkspaceModels(token, wsId).catch(() => []),
+      ])
+      setPipelines(pipes)
+      setModelCount(models.length)
+    } catch (err) {
+      if (!onAuthError(err)) { setPipelines([]); setModelCount(0) }
+    } finally {
+      setIsLoadingDetail(false)
+    }
+  }, [token, onAuthError])
 
   const loadWorkspaces = useCallback(async (preferredId?: number | null) => {
-    setIsLoadingWorkspaces(true)
+    setIsLoading(true)
     try {
       const data = await listMyWorkspaces(token)
       setWorkspaces(data)
-      if (data.length > 0) {
-        const next = data.find((workspace) => workspace.idWorkspace === preferredId) ?? data[0]
-        setSelectedWorkspaceId(next.idWorkspace)
-        setWorkspace(next.name)
-        setIsLoadingPipelines(true)
-        listWorkspacePipelines(token, next.idWorkspace)
-          .then((items) => { setPipelines(items); setError(null) })
-          .catch((err) => { if (!onAuthError(err)) setError('Error cargando pipelines.') })
-          .finally(() => setIsLoadingPipelines(false))
-      } else {
-        setSelectedWorkspaceId(null)
-        setPipelines([])
-        setWorkspace('Default Project')
-      }
-      setError(null)
+      const next = data.find((w) => w.idWorkspace === preferredId) ?? data[0] ?? null
+      setSelectedId(next?.idWorkspace ?? null)
+      if (next) { setWorkspace(next.name); void loadDetail(next.idWorkspace) }
     } catch (err) {
-      if (!onAuthError(err)) setError('No se pudieron cargar tus proyectos.')
+      if (!onAuthError(err)) setWorkspaces([])
     } finally {
-      setIsLoadingWorkspaces(false)
+      setIsLoading(false)
     }
-  }, [token, onAuthError, setWorkspace])
+  }, [token, onAuthError, setWorkspace, loadDetail])
 
   /* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
-  useEffect(() => { void loadWorkspaces() }, [token, onAuthError, setWorkspace])
+  useEffect(() => { void loadWorkspaces() }, [token])
   /* eslint-enable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
 
-  const selectWorkspace = useCallback((workspace: WorkspaceSummary) => {
-    setSelectedWorkspaceId(workspace.idWorkspace)
-    setWorkspace(workspace.name)
-    setSelectedPipelineForExec(null)
-    setIsLoadingPipelines(true)
-    listWorkspacePipelines(token, workspace.idWorkspace)
-      .then((items) => { setPipelines(items); setError(null) })
-      .catch((err) => { if (!onAuthError(err)) setError('Error cargando pipelines.') })
-      .finally(() => setIsLoadingPipelines(false))
-  }, [token, onAuthError, setWorkspace])
+  const selectWorkspace = (ws: WorkspaceSummary) => {
+    setSelectedId(ws.idWorkspace)
+    setWorkspace(ws.name)
+    void loadDetail(ws.idWorkspace)
+  }
 
-  const handleSubmitWorkspace = async (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    setIsSavingWorkspace(true)
-    setNotice(null)
+    setIsSaving(true)
     try {
-      const saved = editingWorkspaceId
-        ? await updateWorkspace(token, editingWorkspaceId, workspaceForm)
-        : await createWorkspace(token, workspaceForm)
-      setNotice(editingWorkspaceId ? 'Proyecto actualizado.' : 'Proyecto creado.')
-      setError(null)
-      setWorkspaceForm(emptyWorkspaceForm())
-      setEditingWorkspaceId(null)
-      setShowCreateForm(false)
-      setWorkspaces((prev) =>
-        editingWorkspaceId
-          ? prev.map((workspace) => workspace.idWorkspace === saved.idWorkspace ? saved : workspace)
-          : [saved, ...prev],
-      )
-      selectWorkspace(saved)
+      const saved = editingId
+        ? await updateWorkspace(token, editingId, form)
+        : await createWorkspace(token, form)
+      notify.success(editingId ? 'Proyecto actualizado.' : 'Proyecto creado.')
+      setForm(emptyWorkspaceForm())
+      setEditingId(null)
+      setShowForm(false)
+      await loadWorkspaces(saved.idWorkspace)
     } catch (err) {
-      if (!onAuthError(err)) setError(err instanceof Error ? err.message : 'Error guardando proyecto.')
+      if (!onAuthError(err)) notify.error(err instanceof Error ? err.message : 'Error guardando el proyecto.')
     } finally {
-      setIsSavingWorkspace(false)
+      setIsSaving(false)
     }
   }
 
-  const handleDeleteWorkspace = async (id: number) => {
-    setNotice(null)
-    try {
-      await deleteWorkspace(token, id)
-      setNotice('Proyecto eliminado.')
-      setError(null)
-      if (selectedWorkspaceId === id) {
-        setSelectedWorkspaceId(null)
-        setPipelines([])
-        setSelectedPipelineForExec(null)
-      }
-      const updated = await listMyWorkspaces(token)
-      setWorkspaces(updated)
-    } catch (err) {
-      if (!onAuthError(err)) setError(err instanceof Error ? err.message : 'Error eliminando proyecto.')
-    }
-  }
-
-  const handleDatasetUpload = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    if (!selectedWorkspaceId || !datasetFile) return
-    setIsUploadingDataset(true)
-    setNotice(null)
-    try {
-      await uploadDataset(token, selectedWorkspaceId, datasetFile)
-      setDatasetFile(null)
-      setError(null)
-      setNotice('Dataset subido correctamente.')
-      const updated = await listMyWorkspaces(token)
-      setWorkspaces(updated)
-    } catch (err) {
-      if (!onAuthError(err)) setError(err instanceof Error ? err.message : 'Error subiendo dataset.')
-    } finally {
-      setIsUploadingDataset(false)
-    }
-  }
-
-  const handleDeleteDataset = async () => {
-    if (!selectedWorkspaceId || !selectedWorkspace?.datasetPath) return
-    setNotice(null)
-    try {
-      const filename = extractFilename(selectedWorkspace.datasetPath)
-      await deleteDataset(token, selectedWorkspaceId, filename)
-      setError(null)
-      setNotice('Dataset eliminado.')
-      const updated = await listMyWorkspaces(token)
-      setWorkspaces(updated)
-    } catch (err) {
-      if (!onAuthError(err)) setError(err instanceof Error ? err.message : 'Error eliminando dataset.')
-    }
-  }
-
-  const handleUrlDownload = async (url: string) => {
-    if (!selectedWorkspaceId) return
-    setNotice(null)
-    try {
-      let message: string
-
-      if (url.startsWith('__keras__')) {
-        const kerasDataset = url.replace('__keras__', '')
-        const response = await authorizedRequest(
-          `/workspaces/${selectedWorkspaceId}/dataset/url`,
-          token,
-          {
-            method: 'POST',
-            body: JSON.stringify({ kerasDataset }),
-          },
-        )
-        message = await response.text()
-      } else {
-        message = await uploadDatasetFromUrl(token, selectedWorkspaceId, url)
-      }
-
-      setError(null)
-      setNotice(message)
-      const updated = await listMyWorkspaces(token)
-      setWorkspaces(updated)
-    } catch (err) {
-      if (!onAuthError(err)) {
-        setError(err instanceof Error ? err.message : 'Error descargando dataset.')
-      }
-    }
-  }
-
-  const handleCreatePipeline = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    if (!selectedWorkspaceId) return
-    setIsSavingPipeline(true)
-    setNotice(null)
-    try {
-      const created = await createPipeline(token, selectedWorkspaceId, pipelineForm)
-      setPipelineForm(emptyPipelineForm())
-      setPipelines((prev) => [...prev, created])
-      setError(null)
-      setNotice('Pipeline creado.')
-    } catch (err) {
-      if (!onAuthError(err)) setError(err instanceof Error ? err.message : 'Error creando pipeline.')
-    } finally {
-      setIsSavingPipeline(false)
-    }
-  }
-
-  const handleSaveRename = async (pipelineId: number) => {
-    if (!selectedWorkspaceId || !renameValue.trim()) return
-    setIsSavingPipeline(true)
-    try {
-      const updated = await renamePipeline(token, selectedWorkspaceId, pipelineId, renameValue.trim())
-      setPipelines((prev) => prev.map((pipeline) => pipeline.idPipeline === pipelineId ? updated : pipeline))
-      setRenamingPipelineId(null)
-      setRenameValue('')
-      setNotice('Pipeline renombrado.')
-    } catch (err) {
-      if (!onAuthError(err)) setError(err instanceof Error ? err.message : 'Error renombrando pipeline.')
-    } finally {
-      setIsSavingPipeline(false)
-    }
-  }
-
-  const handleDeletePipeline = async (pipelineId: number) => {
-    if (!selectedWorkspaceId) return
-    try {
-      await deletePipeline(token, selectedWorkspaceId, pipelineId)
-      setPipelines((prev) => prev.filter((pipeline) => pipeline.idPipeline !== pipelineId))
-      if (selectedPipelineForExec?.idPipeline === pipelineId) {
-        setSelectedPipelineForExec(null)
-      }
-      setNotice('Pipeline eliminado.')
-    } catch (err) {
-      if (!onAuthError(err)) setError(err instanceof Error ? err.message : 'Error eliminando pipeline.')
-    }
-  }
-
-  // RN-007: abren el modal de confirmación; el borrado real se ejecuta al confirmar.
-  const askDeleteWorkspace = (id: number, name: string) =>
+  const askDeleteWorkspace = (ws: WorkspaceSummary) =>
     setConfirm({
       title: 'Eliminar proyecto',
-      description: `Se eliminará "${name}" junto con sus pipelines, datasets y ejecuciones. Esta acción no se puede deshacer.`,
+      description: `Se eliminará "${ws.name}" junto con sus pipelines, dataset y ejecuciones. Esta acción no se puede deshacer.`,
       confirmLabel: 'Eliminar proyecto',
-      onConfirm: () => handleDeleteWorkspace(id),
+      onConfirm: async () => {
+        try {
+          await deleteWorkspace(token, ws.idWorkspace)
+          notify.success('Proyecto eliminado.')
+          await loadWorkspaces()
+        } catch (err) {
+          if (!onAuthError(err)) notify.error(err instanceof Error ? err.message : 'Error eliminando el proyecto.')
+        }
+      },
     })
 
-  const askDeletePipeline = (id: number, name: string) =>
-    setConfirm({
-      title: 'Eliminar pipeline',
-      description: `Se eliminará el pipeline "${name}" y su topología guardada. Esta acción no se puede deshacer.`,
-      confirmLabel: 'Eliminar pipeline',
-      onConfirm: () => handleDeletePipeline(id),
-    })
+  const startEdit = (ws: WorkspaceSummary) => {
+    setEditingId(ws.idWorkspace)
+    setForm({ name: ws.name, description: ws.description ?? '' })
+    setShowForm(true)
+  }
 
-  const askDeleteDataset = () =>
-    setConfirm({
-      title: 'Eliminar dataset',
-      description: 'Se eliminará el dataset asignado a este proyecto. Esta acción no se puede deshacer.',
-      confirmLabel: 'Eliminar dataset',
-      onConfirm: () => handleDeleteDataset(),
+  const openInBuilder = (ws: WorkspaceSummary) => {
+    setWorkspace(ws.name)
+    navigate('/builder')
+  }
+
+  const togglePipelineHistory = async (pipelineId: number) => {
+    if (expandedPipeline === pipelineId) { setExpandedPipeline(null); return }
+    setExpandedPipeline(pipelineId)
+    if (!executions[pipelineId] && selectedId) {
+      setLoadingExec(true)
+      try {
+        const list = await listExecutions(token, selectedId, pipelineId)
+        setExecutions((prev) => ({ ...prev, [pipelineId]: list }))
+      } catch (err) {
+        if (!onAuthError(err)) setExecutions((prev) => ({ ...prev, [pipelineId]: [] }))
+      } finally {
+        setLoadingExec(false)
+      }
+    }
+  }
+
+  const fmtDate = (iso: string | null) => {
+    if (!iso) return '—'
+    // startedAt es un LocalDateTime naive en UTC (sin zona). Sin 'Z', el navegador
+    // lo interpretaría como hora local → desfase. Lo normalizamos a UTC.
+    const normalized = /[zZ]|[+-]\d{2}:\d{2}$/.test(iso) ? iso : `${iso}Z`
+    return new Date(normalized).toLocaleString('es-PE', {
+      day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
     })
+  }
 
   return (
     <div className="space-y-5">
-      <section>
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-50 xl:text-3xl">
-          Gestión de proyectos del espacio de trabajo
-        </h1>
-        <p className="mt-1.5 max-w-4xl text-sm leading-6 text-slate-400 xl:text-base">
-          Selecciona un proyecto para gestionar su dataset, pipelines y ejecutar entrenamientos.
-        </p>
+      <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="font-heading text-2xl font-bold tracking-tight text-slate-50 xl:text-3xl">
+            Espacios de trabajo
+          </h1>
+          <p className="mt-1.5 max-w-3xl text-sm leading-6 text-slate-400">
+            Crea y administra tus proyectos. El dataset, los pipelines y su ejecución se gestionan en el Lienzo.
+          </p>
+        </div>
+        <Button
+          variant="cta"
+          onClick={() => { setShowForm((v) => !v); setEditingId(null); setForm(emptyWorkspaceForm()) }}
+          className="shrink-0"
+        >
+          <FolderPlus />
+          Nuevo proyecto
+        </Button>
       </section>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        <StatCard title="Mis proyectos" value={isLoadingWorkspaces ? '...' : String(workspaces.length)} icon={Layers} />
-        <StatCard title="Rol actual" value={role ?? 'N/A'} icon={UserRound} />
-        <StatCard title="Espacio actual" value={currentWorkspace || 'Ninguno'} icon={Monitor} />
-      </div>
-
-      {(error ?? notice) && (
-        <div className={`rounded-xl border px-4 py-3 text-sm ${
-          error
-            ? 'border-red-500/20 bg-red-500/10 text-red-300'
-            : 'border-emerald-500/20 bg-emerald-500/10 text-emerald-300'
-        }`}
-        >
-          {error ?? notice}
-        </div>
-      )}
-
-      <div className="grid items-start gap-4 xl:grid-cols-2 2xl:grid-cols-[0.95fr_1fr_1.25fr]">
-        <Card className="rounded-2xl border border-slate-800/90 bg-slate-900/55 py-0 shadow-sm shadow-black/20">
-          <CardHeader className="flex flex-row items-center justify-between gap-3 px-5 pt-5">
+      <div className="grid items-start gap-4 lg:grid-cols-[0.9fr_1.1fr]">
+        {/* Lista + formulario */}
+        <Card className="rounded-2xl border border-slate-800/90 bg-slate-900/55 py-0">
+          <CardHeader className="px-5 pt-5">
             <CardTitle className="text-lg font-semibold text-slate-50">Mis proyectos</CardTitle>
-            <Button
-              size="sm"
-              onClick={() => {
-                setShowCreateForm((value) => !value)
-                setEditingWorkspaceId(null)
-                setWorkspaceForm(emptyWorkspaceForm())
-              }}
-              className="h-9 border border-blue-500/30 bg-blue-500/10 text-blue-100 hover:bg-blue-500/15"
-            >
-              <Plus className="mr-2 h-4 w-4 text-blue-400" />
-              Nuevo proyecto
-            </Button>
           </CardHeader>
-
-          <CardContent className="space-y-3 p-5 pt-4">
-            {(showCreateForm || editingWorkspaceId) && (
+          <CardContent className="space-y-3 p-5 pt-3">
+            {showForm && (
               <div className="rounded-xl border border-slate-800/80 bg-slate-950/30 p-4">
                 <WorkspaceForm
-                  form={workspaceForm}
-                  editingWorkspaceId={editingWorkspaceId}
-                  isSaving={isSavingWorkspace}
+                  form={form}
+                  editingWorkspaceId={editingId}
+                  isSaving={isSaving}
                   onChange={(field) => (event) =>
-                    setWorkspaceForm((current) => ({ ...current, [field]: event.target.value }))}
-                  onSubmit={handleSubmitWorkspace}
-                  onCancel={() => {
-                    setShowCreateForm(false)
-                    setEditingWorkspaceId(null)
-                    setWorkspaceForm(emptyWorkspaceForm())
-                  }}
+                    setForm((current) => ({ ...current, [field]: event.target.value }))}
+                  onSubmit={handleSubmit}
+                  onCancel={() => { setShowForm(false); setEditingId(null); setForm(emptyWorkspaceForm()) }}
                 />
               </div>
             )}
 
-            {isLoadingWorkspaces ? (
-              <p className="py-8 text-center text-sm text-slate-500">Cargando proyectos...</p>
-            ) : filteredWorkspaces.length === 0 ? (
-              <p className="py-8 text-center text-sm text-slate-500">Sin proyectos aún.</p>
+            {isLoading ? (
+              <p className="flex items-center gap-2 py-8 text-sm text-slate-500"><Spinner size="sm" /> Cargando…</p>
+            ) : filtered.length === 0 ? (
+              <p className="py-8 text-center text-sm text-slate-500">
+                {searchQuery.trim() ? 'Sin coincidencias.' : 'Aún no tienes proyectos.'}
+              </p>
             ) : (
               <div className="space-y-2">
-                {pagedWorkspaces.map((workspace) => {
-                  const isSelected = workspace.idWorkspace === selectedWorkspaceId
-                  const statusText = workspace.datasetPath
-                    ? 'Dataset activo'
-                    : workspace.description || 'Sin dataset'
-
+                {filtered.map((ws) => {
+                  const isSel = ws.idWorkspace === selectedId
                   return (
                     <button
-                      key={workspace.idWorkspace}
-                      onClick={() => selectWorkspace(workspace)}
-                      className={`w-full rounded-xl border p-3 text-left transition-colors ${
-                        isSelected
-                          ? 'border-blue-500/60 bg-blue-500/10'
-                          : 'border-slate-800/80 bg-slate-950/30 hover:border-slate-700 hover:bg-slate-900/60'
+                      key={ws.idWorkspace}
+                      onClick={() => selectWorkspace(ws)}
+                      className={`flex w-full cursor-pointer items-center gap-3 rounded-xl border p-3 text-left transition-colors ${
+                        isSel ? 'border-blue-500/60 bg-blue-500/10' : 'border-slate-800/80 bg-slate-950/30 hover:border-slate-700 hover:bg-slate-900/60'
                       }`}
                     >
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-blue-400/10 bg-blue-500/10 text-blue-400">
-                          <Database size={16} />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-semibold text-slate-50">{workspace.name}</p>
-                          <p className="mt-1 truncate text-xs text-slate-400">{statusText}</p>
-                        </div>
-                        <div className="flex shrink-0 flex-col items-end gap-1">
-                          <span
-                            className="text-xs text-blue-400 hover:text-blue-300"
-                            onClick={(event) => {
-                              event.stopPropagation()
-                              setEditingWorkspaceId(workspace.idWorkspace)
-                              setWorkspaceForm({ name: workspace.name, description: workspace.description ?? '' })
-                              setShowCreateForm(false)
-                            }}
-                          >
-                            Editar
-                          </span>
-                          <span
-                            className="text-xs text-red-400 hover:text-red-300"
-                            onClick={(event) => {
-                              event.stopPropagation()
-                              askDeleteWorkspace(workspace.idWorkspace, workspace.name)
-                            }}
-                          >
-                            Eliminar
-                          </span>
-                        </div>
+                      <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-blue-500/10 text-blue-400">
+                        <Layers size={16} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold text-slate-50">{ws.name}</p>
+                        <p className="truncate text-xs text-slate-400">
+                          {ws.datasetPath ? 'Dataset asignado' : ws.description || 'Sin dataset'}
+                        </p>
                       </div>
                     </button>
                   )
                 })}
               </div>
             )}
-
-            {filteredWorkspaces.length > PAGE_SIZE && (
-              <div className="flex items-center justify-center gap-3 pt-2">
-                <button
-                  onClick={() => setWorkspacePage((page) => Math.max(1, page - 1))}
-                  disabled={workspacePage === 1}
-                  className="rounded-lg p-1 text-slate-500 transition-colors hover:bg-slate-800 hover:text-slate-200 disabled:pointer-events-none disabled:opacity-40"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </button>
-                <span className="rounded-md bg-blue-600 px-2.5 py-0.5 text-xs font-semibold text-white">
-                  {workspacePage}
-                </span>
-                <button
-                  onClick={() => setWorkspacePage((page) => Math.min(totalPages, page + 1))}
-                  disabled={workspacePage === totalPages}
-                  className="rounded-lg p-1 text-slate-500 transition-colors hover:bg-slate-800 hover:text-slate-200 disabled:pointer-events-none disabled:opacity-40"
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </button>
-              </div>
-            )}
           </CardContent>
         </Card>
 
-        <Card className="rounded-2xl border border-slate-800/90 bg-slate-900/55 py-0 shadow-sm shadow-black/20">
-          <CardHeader className="px-5 pt-5">
-            <CardTitle className="text-lg font-semibold text-slate-50">Dataset</CardTitle>
-          </CardHeader>
-          <CardContent className="p-5 pt-3">
-            {selectedWorkspace ? (
-              <DatasetPanel
-                datasetPath={selectedWorkspace.datasetPath}
-                datasetFile={datasetFile}
-                isUploading={isUploadingDataset}
-                workspaceId={selectedWorkspaceId}
-                token={token}
-                onFileChange={(event) => setDatasetFile(event.target.files?.[0] ?? null)}
-                onSubmit={handleDatasetUpload}
-                onDelete={() => { askDeleteDataset(); return Promise.resolve() }}
-                onUrlDownload={handleUrlDownload}
-              />
-            ) : (
-              <div className="flex min-h-48 items-center justify-center rounded-xl border border-dashed border-slate-700/70 text-sm text-slate-500">
-                Selecciona un proyecto.
+        {/* Detalle del proyecto seleccionado (read-only) */}
+        <Card className="rounded-2xl border border-slate-800/90 bg-slate-900/55 py-0">
+          {selected ? (
+            <CardContent className="space-y-5 p-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h2 className="truncate text-xl font-semibold text-slate-50">{selected.name}</h2>
+                  {selected.description && (
+                    <p className="mt-1 text-sm text-slate-400">{selected.description}</p>
+                  )}
+                </div>
+                <div className="flex shrink-0 gap-2">
+                  <Button variant="outline" size="sm" onClick={() => startEdit(selected)}>
+                    <Pencil className="size-3.5" /> Editar
+                  </Button>
+                  <Button variant="destructive" size="sm" onClick={() => askDeleteWorkspace(selected)}>
+                    <Trash2 className="size-3.5" /> Eliminar
+                  </Button>
+                </div>
               </div>
-            )}
-          </CardContent>
-        </Card>
 
-        <Card className="rounded-2xl border border-slate-800/90 bg-slate-900/55 py-0 shadow-sm shadow-black/20 xl:col-span-2 2xl:col-span-1">
-          <CardHeader className="px-5 pt-5">
-            <CardTitle className="text-lg font-semibold text-slate-50">Pipelines</CardTitle>
-          </CardHeader>
-          <CardContent className="p-5 pt-3">
-            {selectedWorkspace ? (
-              <PipelinesPanel
-                pipelines={pipelines}
-                isLoadingPipelines={isLoadingPipelines}
-                pipelineName={pipelineForm.name}
-                isSavingPipeline={isSavingPipeline}
-                renamingPipelineId={renamingPipelineId}
-                renameValue={renameValue}
-                selectedForExecId={selectedPipelineForExec?.idPipeline ?? null}
-                onPipelineNameChange={(value) => setPipelineForm({ name: value })}
-                onRenameValueChange={setRenameValue}
-                onCreate={handleCreatePipeline}
-                onStartRename={(pipeline) => { setRenamingPipelineId(pipeline.idPipeline); setRenameValue(pipeline.name) }}
-                onCancelRename={() => { setRenamingPipelineId(null); setRenameValue('') }}
-                onSaveRename={handleSaveRename}
-                onDelete={(pipelineId) => {
-                  const target = pipelines.find((p) => p.idPipeline === pipelineId)
-                  askDeletePipeline(pipelineId, target?.name ?? 'pipeline')
-                  return Promise.resolve()
-                }}
-                onSelectForExec={setSelectedPipelineForExec}
-              />
-            ) : (
-              <div className="flex min-h-48 items-center justify-center rounded-xl border border-dashed border-slate-700/70 text-sm text-slate-500">
-                Selecciona un proyecto.
+              {/* Métricas relacionadas */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="rounded-xl border border-slate-800/80 bg-slate-950/30 p-3">
+                  <div className="flex items-center gap-2 text-blue-400"><Database className="size-4" /></div>
+                  <p className="mt-2 text-xs text-slate-500">Dataset</p>
+                  <p className="text-sm font-semibold text-slate-50">{selected.datasetPath ? 'Asignado' : '—'}</p>
+                </div>
+                <div className="rounded-xl border border-slate-800/80 bg-slate-950/30 p-3">
+                  <div className="flex items-center gap-2 text-blue-400"><Workflow className="size-4" /></div>
+                  <p className="mt-2 text-xs text-slate-500">Pipelines</p>
+                  <p className="text-sm font-semibold text-slate-50">
+                    {isLoadingDetail ? '…' : pipelines.length}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-slate-800/80 bg-slate-950/30 p-3">
+                  <div className="flex items-center gap-2 text-blue-400"><Boxes className="size-4" /></div>
+                  <p className="mt-2 text-xs text-slate-500">Modelos</p>
+                  <p className="text-sm font-semibold text-slate-50">
+                    {modelCount == null ? '…' : modelCount}
+                  </p>
+                </div>
               </div>
-            )}
-          </CardContent>
+
+              {/* Pipelines (read-only) */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-semibold text-slate-200">Pipelines del proyecto</p>
+                  <Button variant="ghost" size="sm" onClick={() => openInBuilder(selected)}>
+                    <Network className="size-3.5" /> Abrir en el Lienzo
+                  </Button>
+                </div>
+                {isLoadingDetail ? (
+                  <p className="flex items-center gap-2 text-xs text-slate-500"><Spinner size="sm" /> Cargando…</p>
+                ) : pipelines.length === 0 ? (
+                  <p className="rounded-lg border border-dashed border-slate-700/70 bg-slate-950/20 px-4 py-4 text-center text-xs text-slate-500">
+                    Sin pipelines. Crea y ejecuta el flujo desde el Lienzo.
+                  </p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {pipelines.map((p) => {
+                      const isOpen = expandedPipeline === p.idPipeline
+                      const execs = executions[p.idPipeline]
+                      return (
+                        <div key={p.idPipeline} className="rounded-lg border border-slate-800/80 bg-slate-950/30">
+                          <button
+                            onClick={() => void togglePipelineHistory(p.idPipeline)}
+                            className="flex w-full cursor-pointer items-center justify-between gap-3 px-3 py-2 text-left transition-colors hover:bg-slate-900/40"
+                            aria-expanded={isOpen}
+                          >
+                            <div className="flex min-w-0 items-center gap-2">
+                              {isOpen ? <ChevronDown className="size-3.5 shrink-0 text-slate-400" /> : <ChevronRight className="size-3.5 shrink-0 text-slate-400" />}
+                              <div className="min-w-0">
+                                <p className="truncate text-sm text-slate-100">{p.name}</p>
+                                <p className="text-[11px] text-slate-500">{p.nodeCount} nodos · {p.executionCount} ejec.</p>
+                              </div>
+                            </div>
+                            <Badge variant={p.status === 'COMPLETED' ? 'success' : p.status === 'FAILED' ? 'destructive' : 'secondary'}>
+                              {p.status}
+                            </Badge>
+                          </button>
+
+                          {isOpen && (
+                            <div className="space-y-1.5 border-t border-slate-800/80 px-3 py-2">
+                              <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-500">
+                                <History className="size-3" /> Historial de ejecuciones
+                              </p>
+                              {loadingExec && !execs ? (
+                                <p className="flex items-center gap-2 text-xs text-slate-500"><Spinner size="sm" /> Cargando…</p>
+                              ) : !execs || execs.length === 0 ? (
+                                <p className="text-xs text-slate-500">Sin ejecuciones todavía.</p>
+                              ) : (
+                                execs.map((e) => {
+                                  const m = parseMetrics(e.metrics)
+                                  const acc = m.test_accuracy ?? m.val_accuracy ?? m.final_accuracy ?? m.accuracy
+                                  return (
+                                    <div key={e.idExecution} className="flex items-center justify-between gap-2 rounded-md bg-slate-900/50 px-2.5 py-1.5">
+                                      <div className="min-w-0">
+                                        <p className="text-xs text-slate-200">#{e.idExecution} · {fmtDate(e.startedAt)}</p>
+                                        <p className="truncate font-mono text-[10px] text-slate-500">
+                                          {e.mlflowRunId ? `run ${e.mlflowRunId.slice(0, 12)}…` : 'sin run'}
+                                          {e.modelVersion ? ` · v${e.modelVersion}` : ''}
+                                          {acc != null ? ` · acc ${acc.toFixed(4)}` : ''}
+                                        </p>
+                                      </div>
+                                      <Badge variant={e.status === 'COMPLETED' ? 'success' : e.status === 'FAILED' ? 'destructive' : 'secondary'}>
+                                        {e.status}
+                                      </Badge>
+                                    </div>
+                                  )
+                                })
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <p className="rounded-lg border border-slate-800/70 bg-slate-950/20 px-3 py-2 text-[11px] leading-relaxed text-slate-500">
+                El dataset se asigna desde el <span className="text-slate-300">nodo Ingesta</span> del Lienzo. Los modelos
+                entrenados se gestionan en <span className="text-slate-300">Mis modelos</span>.
+              </p>
+            </CardContent>
+          ) : (
+            <CardContent className="flex min-h-48 items-center justify-center p-5 text-sm text-slate-500">
+              {isLoading ? 'Cargando…' : 'Selecciona o crea un proyecto.'}
+            </CardContent>
+          )}
         </Card>
       </div>
-
-      {selectedWorkspace && selectedPipelineForExec && (
-        <ExecutionPanel
-          token={token}
-          workspaceId={selectedWorkspace.idWorkspace}
-          pipelineId={selectedPipelineForExec.idPipeline}
-          pipelineName={selectedPipelineForExec.name}
-          hasDataset={!!selectedWorkspace.datasetPath}
-          onAuthError={onAuthError}
-        />
-      )}
-
-      {selectedWorkspace && (
-        <section className="space-y-3">
-          <div>
-            <h2 className="text-lg font-semibold text-slate-50">Modelos del proyecto</h2>
-            <p className="text-sm text-slate-400">
-              Artefactos versionados registrados en MLflow para este workspace. Gestiona stage, despliegue y versiones.
-            </p>
-          </div>
-          <WorkspaceModelsPanel
-            token={token}
-            workspaceId={selectedWorkspace.idWorkspace}
-            onAuthError={onAuthError}
-          />
-        </section>
-      )}
 
       <ConfirmDialog
         open={!!confirm}

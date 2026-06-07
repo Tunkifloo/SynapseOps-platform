@@ -15,7 +15,10 @@ interface LogConsoleProps {
   token: string
   workspaceId: number
   pipelineId: number
-  executionId: number
+  /** Ejecución activa; null cuando no hay flujo en curso (panel persistente). */
+  executionId: number | null
+  /** Notifica cada evento SSE para que el lienzo anime los estados por nodo (T-D.2). */
+  onLogEvent?: (level: string, message: string, terminal: boolean) => void
 }
 
 const levelClass = (level: string) =>
@@ -26,13 +29,16 @@ const levelClass = (level: string) =>
  * (EventSource con `?token=` porque no admite cabeceras) y muestra los eventos
  * de la ejecución con auto-scroll. Cierra el stream al recibir el evento terminal.
  */
-export function LogConsole({ token, workspaceId, pipelineId, executionId }: LogConsoleProps) {
+export function LogConsole({ token, workspaceId, pipelineId, executionId, onLogEvent }: LogConsoleProps) {
   const [lines, setLines] = useState<LogLine[]>([])
   const [open, setOpen] = useState(true)
   const bottomRef = useRef<HTMLDivElement | null>(null)
+  const onLogEventRef = useRef(onLogEvent)
+  useEffect(() => { onLogEventRef.current = onLogEvent }, [onLogEvent])
 
   useEffect(() => {
     setLines([])
+    if (executionId == null) return  // panel persistente sin ejecución activa
     const url =
       `${API_BASE_URL}/workspaces/${workspaceId}/pipelines/${pipelineId}` +
       `/executions/${executionId}/logs?token=${encodeURIComponent(token)}`
@@ -42,6 +48,7 @@ export function LogConsole({ token, workspaceId, pipelineId, executionId }: LogC
       try {
         const data = JSON.parse((event as MessageEvent).data) as LogLine & { terminal?: boolean }
         setLines((prev) => [...prev, { level: data.level, message: data.message, timestamp: data.timestamp }])
+        onLogEventRef.current?.(data.level, data.message, !!data.terminal)
         if (data.terminal) source.close()
       } catch {
         /* evento no parseable: ignorar */
@@ -66,7 +73,11 @@ export function LogConsole({ token, workspaceId, pipelineId, executionId }: LogC
           aria-expanded={open}
         >
           <Terminal className="size-4 text-primary" /> Consola de logs
-          <span className="font-mono text-xs text-muted-foreground">#{executionId}</span>
+          {executionId != null ? (
+            <span className="font-mono text-xs text-muted-foreground">#{executionId}</span>
+          ) : (
+            <span className="text-xs font-normal text-muted-foreground">en espera</span>
+          )}
           {open ? <ChevronDown className="size-4" /> : <ChevronUp className="size-4" />}
         </button>
         <Button variant="ghost" size="xs" onClick={() => setLines([])} aria-label="Limpiar logs">
@@ -77,7 +88,11 @@ export function LogConsole({ token, workspaceId, pipelineId, executionId }: LogC
       {open && (
         <div className="max-h-44 overflow-auto border-t border-border bg-background/60 p-3 font-mono text-xs leading-relaxed">
           {lines.length === 0 ? (
-            <p className="text-muted-foreground">Esperando eventos…</p>
+            <p className="text-muted-foreground">
+              {executionId == null
+                ? 'Sin ejecución activa. Pulsa "Iniciar flujo" para ver los logs en vivo (carga, preprocesamiento, split, entrenamiento por época y registro).'
+                : 'Esperando eventos…'}
+            </p>
           ) : (
             lines.map((line, i) => (
               <div key={i} className="flex gap-2">

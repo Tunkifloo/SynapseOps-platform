@@ -2,8 +2,10 @@ import { useMemo } from 'react'
 
 import {
   deleteWorkspaceModelVersion,
+  getWorkspaceModelVersionDetails,
   getWorkspaceModelVersions,
   listWorkspaceModels,
+  parseConfusion,
   transitionWorkspaceModelStage,
 } from '../api'
 import { ModelRegistry, type RegistryApi } from './ModelRegistry'
@@ -26,6 +28,10 @@ export function WorkspaceModelsPanel({ token, workspaceId, onAuthError }: Worksp
     deleteVersion: (name, version) => deleteWorkspaceModelVersion(token, workspaceId, name, version),
     transitionStage: (name, version, stage) =>
       transitionWorkspaceModelStage(token, workspaceId, name, version, stage),
+    getDetails: async (name, version) => {
+      const s = await getWorkspaceModelVersionDetails(token, workspaceId, name, version)
+      return { params: s.params ?? {}, metrics: s.metrics ?? {}, confusionMatrix: parseConfusion(s.tags) }
+    },
     allowDeploy: true,
   }), [token, workspaceId])
 

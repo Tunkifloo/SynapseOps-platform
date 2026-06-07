@@ -38,12 +38,25 @@ export interface RegistryModel {
  * solo-lectura) y el registro por workspace (dueño, CRUD completo). Las acciones
  * de escritura se omiten si la función correspondiente no se provee.
  */
+export interface ConfusionMatrix {
+  labels: string[]
+  matrix: number[][]
+}
+
+export interface VersionDetails {
+  params: Record<string, string>
+  metrics: Record<string, number>
+  confusionMatrix?: ConfusionMatrix | null
+}
+
 export interface RegistryApi {
   listModels: () => Promise<RegistryModel[]>
   getVersions: (modelName: string) => Promise<MlflowModelVersion[]>
   deleteVersion?: (modelName: string, version: string) => Promise<void>
   transitionStage?: (modelName: string, version: string, stage: ModelStage) => Promise<unknown>
   getMetrics?: (runId: string) => Promise<{ accuracy: number | null; loss: number | null }>
+  /** Detalle completo (hiperparámetros + métricas) de una versión. */
+  getDetails?: (modelName: string, version: string, runId: string) => Promise<VersionDetails>
   allowDeploy?: boolean
 }
 
@@ -85,6 +98,24 @@ function VersionCard({ api, modelName, version, onAuthError, onChanged }: Versio
   const [stage, setStage] = useState<string>(version.stage)
   const [isPromoting, setIsPromoting] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
+  const [detailsOpen, setDetailsOpen] = useState(false)
+  const [details, setDetails] = useState<VersionDetails | null>(null)
+  const [loadingDetails, setLoadingDetails] = useState(false)
+
+  const toggleDetails = async () => {
+    const next = !detailsOpen
+    setDetailsOpen(next)
+    if (next && !details && api.getDetails) {
+      setLoadingDetails(true)
+      try {
+        setDetails(await api.getDetails(modelName, version.version, version.runId))
+      } catch (err) {
+        if (!onAuthError(err)) setDetails({ params: {}, metrics: {} })
+      } finally {
+        setLoadingDetails(false)
+      }
+    }
+  }
 
   const hasEmbeddedMetrics = version.accuracy != null || version.loss != null
 
@@ -199,6 +230,46 @@ function VersionCard({ api, modelName, version, onAuthError, onChanged }: Versio
         </div>
       )}
 
+      {api.getDetails && (
+        <div className="mt-3 border-t border-slate-800/70 pt-2">
+          <button
+            onClick={() => void toggleDetails()}
+            className="flex cursor-pointer items-center gap-1.5 text-xs font-medium text-slate-400 transition-colors hover:text-slate-200"
+            aria-expanded={detailsOpen}
+          >
+            {detailsOpen ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
+            Detalles (arquitectura · hiperparámetros · métricas)
+          </button>
+          {detailsOpen && (
+            <div className="mt-2 space-y-3 rounded-lg border border-slate-800/70 bg-background/40 p-3">
+              {loadingDetails ? (
+                <p className="flex items-center gap-2 text-xs text-slate-500"><Loader2 className="size-3 animate-spin" /> Cargando…</p>
+              ) : (
+                <>
+                  <DetailGrid
+                    title="Hiperparámetros"
+                    entries={Object.entries(details?.params ?? {})}
+                    format={(v) => String(v)}
+                  />
+                  <DetailGrid
+                    title="Métricas"
+                    entries={Object.entries(details?.metrics ?? {})}
+                    format={(v) => (typeof v === 'number' ? v.toFixed(4) : String(v))}
+                    valueClass="text-emerald-400"
+                  />
+                  {details?.confusionMatrix && (
+                    <ConfusionMatrixView cm={details.confusionMatrix} />
+                  )}
+                  {(!details || (Object.keys(details.params).length === 0 && Object.keys(details.metrics).length === 0)) && (
+                    <p className="text-xs text-slate-500">Sin detalles disponibles para esta versión.</p>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       {api.deleteVersion && (
         <DeleteVersionDialog
           open={confirmOpen}
@@ -208,6 +279,82 @@ function VersionCard({ api, modelName, version, onAuthError, onChanged }: Versio
           onConfirm={handleDelete}
         />
       )}
+    </div>
+  )
+}
+
+function ConfusionMatrixView({ cm }: { cm: ConfusionMatrix }) {
+  const max = Math.max(1, ...cm.matrix.flat())
+  return (
+    <div>
+      <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+        Matriz de confusión <span className="normal-case text-slate-600">(filas = real, columnas = predicho)</span>
+      </p>
+      <div className="overflow-auto">
+        <table className="border-collapse text-[10px]">
+          <thead>
+            <tr>
+              <th className="p-1" />
+              {cm.labels.map((l) => (
+                <th key={l} className="max-w-[44px] truncate p-1 font-mono text-slate-400" title={l}>{l}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {cm.matrix.map((row, i) => (
+              <tr key={i}>
+                <th className="max-w-[44px] truncate p-1 text-right font-mono text-slate-400" title={cm.labels[i]}>
+                  {cm.labels[i]}
+                </th>
+                {row.map((v, j) => {
+                  const intensity = v / max
+                  const correct = i === j
+                  return (
+                    <td
+                      key={j}
+                      className="size-7 text-center font-mono text-[10px] text-slate-100"
+                      style={{
+                        backgroundColor: correct
+                          ? `color-mix(in oklch, var(--success) ${10 + intensity * 70}%, transparent)`
+                          : `color-mix(in oklch, var(--destructive) ${intensity * 70}%, transparent)`,
+                      }}
+                      title={`real ${cm.labels[i]} → pred ${cm.labels[j]}: ${v}`}
+                    >
+                      {v}
+                    </td>
+                  )
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+interface DetailGridProps {
+  title: string
+  entries: [string, string | number][]
+  format: (value: string | number) => string
+  valueClass?: string
+}
+
+function DetailGrid({ title, entries, format, valueClass }: DetailGridProps) {
+  if (entries.length === 0) return null
+  return (
+    <div>
+      <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">{title}</p>
+      <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+        {entries.map(([key, value]) => (
+          <div key={key} className="rounded-md bg-slate-900/60 px-2 py-1.5">
+            <p className="truncate text-[10px] text-slate-500" title={key}>{key.replace(/_/g, ' ')}</p>
+            <p className={`truncate font-mono text-xs ${valueClass ?? 'text-slate-200'}`} title={String(value)}>
+              {format(value)}
+            </p>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }

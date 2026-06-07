@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { X } from 'lucide-react'
 
 import { Button } from '@/shared/components/ui/button'
@@ -21,8 +21,8 @@ import {
 } from '@/features/pipelines/nodeConfig'
 import type { PipelineNodeData, PipelineNodeStatus } from './PipelineNode'
 import { IngestActions } from './IngestActions'
-import { TrainActions } from './TrainActions'
 import { TrainMetrics } from './TrainMetrics'
+import { TrainModelSource } from './TrainModelSource'
 import { DeployActions } from './DeployActions'
 
 export interface IngestContext {
@@ -34,6 +34,9 @@ export interface IngestContext {
 export interface TrainContext {
   canRun: boolean
   onExecute: (config: NodeConfig) => void
+  token: string
+  workspaceId: number
+  onAuthError: (error: unknown) => boolean
 }
 
 export interface DeployContext {
@@ -78,6 +81,22 @@ export function NodeConfigPanel({ data, ingest, train, deploy, onSave, onClose }
   const [status, setStatus] = useState<PipelineNodeStatus>(data.status ?? 'idle')
   const [errorMsg, setErrorMsg] = useState(data.error ?? '')
   const [validationError, setValidationError] = useState<string | null>(null)
+
+  // Guardia de cambios sin guardar en el nodo (item 3 — a prueba de novatos).
+  const initialRef = useRef(JSON.stringify({
+    label: data.label,
+    config: { ...defaultConfig(data.kind), ...(data.config ?? {}) },
+    status: data.status ?? 'idle',
+    errorMsg: data.error ?? '',
+  }))
+  const requestClose = () => {
+    const current = JSON.stringify({ label, config, status, errorMsg })
+    if (current !== initialRef.current
+        && !window.confirm('Tienes cambios sin guardar en este nodo. ¿Descartarlos?')) {
+      return
+    }
+    onClose()
+  }
 
   const setField = (name: string, value: string | number) => {
     setValidationError(null)
@@ -155,7 +174,7 @@ export function NodeConfigPanel({ data, ingest, train, deploy, onSave, onClose }
           <p className="truncate text-sm font-semibold">{cfg.label}</p>
           <p className="truncate text-[11px] text-muted-foreground">Configuración del nodo</p>
         </div>
-        <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Cerrar panel">
+        <Button variant="ghost" size="icon-sm" onClick={requestClose} aria-label="Cerrar panel">
           <X />
         </Button>
       </header>
@@ -208,13 +227,20 @@ export function NodeConfigPanel({ data, ingest, train, deploy, onSave, onClose }
           />
         )}
 
+        {data.kind === 'train' && train && (
+          <TrainModelSource
+            token={train.token}
+            workspaceId={train.workspaceId}
+            config={config}
+            onConfigChange={mergeConfig}
+            onAuthError={train.onAuthError}
+          />
+        )}
+
         {data.kind === 'train' && (
           <TrainMetrics status={data.status} metrics={data.config?.metrics} runId={data.config?.runId} />
         )}
-
-        {data.kind === 'train' && train && (
-          <TrainActions config={config} canRun={train.canRun} onExecute={train.onExecute} />
-        )}
+        {/* El run se dispara con "Iniciar flujo" (toda la cadena), no por nodo. */}
 
         <div className="space-y-1.5 border-t border-border pt-4">
           <Label htmlFor="cfg-status">Estado (vista previa)</Label>
@@ -258,7 +284,7 @@ export function NodeConfigPanel({ data, ingest, train, deploy, onSave, onClose }
       </div>
 
       <footer className="flex items-center justify-end gap-2 border-t border-border p-4">
-        <Button variant="ghost" onClick={onClose}>
+        <Button variant="ghost" onClick={requestClose}>
           Cancelar
         </Button>
         <Button variant="cta" onClick={handleSave}>

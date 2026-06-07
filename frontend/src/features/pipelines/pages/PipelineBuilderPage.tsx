@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ReactFlowProvider } from 'reactflow'
-import { FolderPlus, Plus } from 'lucide-react'
+import { Check, FolderPlus, Pencil, Plus, Trash2, X } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
 import { Button } from '@/shared/components/ui/button'
+import { Input } from '@/shared/components/ui/input'
 import {
   Select,
   SelectContent,
@@ -13,11 +14,14 @@ import {
 } from '@/shared/components/ui/select'
 import { Spinner } from '@/shared/components/ui/spinner'
 import { Badge } from '@/shared/components/ui/badge'
+import { ConfirmDialog } from '@/shared/components/ConfirmDialog'
 import { notify } from '@/shared/notify'
 import {
   createPipeline,
+  deletePipeline,
   listMyWorkspaces,
   listWorkspacePipelines,
+  renamePipeline,
 } from '@/features/workspaces/api'
 import type { PipelineSummary, WorkspaceSummary } from '@/features/workspaces/types'
 import { PipelineCanvas } from '@/features/pipelines/components/PipelineCanvas'
@@ -38,6 +42,10 @@ export function PipelineBuilderPage({ token, onAuthError }: PipelineBuilderPageP
   const [activePipelineId, setActivePipelineId] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
+  const [renaming, setRenaming] = useState(false)
+  const [renameValue, setRenameValue] = useState('')
+  const [savingRename, setSavingRename] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const navigate = useNavigate()
 
   const loadWorkspaces = useCallback(async () => {
@@ -74,6 +82,34 @@ export function PipelineBuilderPage({ token, onAuthError }: PipelineBuilderPageP
   }, [activeWsId, loadPipelines])
 
   const activeWorkspace = workspaces.find((w) => w.idWorkspace === activeWsId) ?? null
+  const activePipeline = pipelines.find((p) => p.idPipeline === activePipelineId) ?? null
+
+  const handleRenamePipeline = async () => {
+    if (!activeWsId || !activePipelineId || !renameValue.trim()) { setRenaming(false); return }
+    setSavingRename(true)
+    try {
+      await renamePipeline(token, activeWsId, activePipelineId, renameValue.trim())
+      await loadPipelines(activeWsId)
+      setActivePipelineId(activePipelineId)
+      setRenaming(false)
+      notify.success('Pipeline renombrado')
+    } catch (err) {
+      if (!onAuthError(err)) notify.error('No se pudo renombrar el pipeline.')
+    } finally {
+      setSavingRename(false)
+    }
+  }
+
+  const handleDeletePipeline = async () => {
+    if (!activeWsId || !activePipelineId) return
+    try {
+      await deletePipeline(token, activeWsId, activePipelineId)
+      notify.success('Pipeline eliminado')
+      await loadPipelines(activeWsId)
+    } catch (err) {
+      if (!onAuthError(err)) notify.error('No se pudo eliminar el pipeline.')
+    }
+  }
 
   const handleCreatePipeline = async () => {
     if (!activeWsId) return
@@ -119,22 +155,63 @@ export function PipelineBuilderPage({ token, onAuthError }: PipelineBuilderPageP
               </SelectContent>
             </Select>
 
-            <Select
-              value={activePipelineId ? String(activePipelineId) : ''}
-              onValueChange={(v) => setActivePipelineId(Number(v))}
-              disabled={pipelines.length === 0}
-            >
-              <SelectTrigger className="w-44" aria-label="Pipeline">
-                <SelectValue placeholder={pipelines.length === 0 ? 'Sin pipelines' : 'Pipeline'} />
-              </SelectTrigger>
-              <SelectContent>
-                {pipelines.map((p) => (
-                  <SelectItem key={p.idPipeline} value={String(p.idPipeline)}>
-                    {p.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {renaming ? (
+              <div className="flex items-center gap-1">
+                <Input
+                  value={renameValue}
+                  onChange={(e) => setRenameValue(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') void handleRenamePipeline(); if (e.key === 'Escape') setRenaming(false) }}
+                  className="h-9 w-44"
+                  aria-label="Nuevo nombre del pipeline"
+                  autoFocus
+                />
+                <Button variant="ghost" size="icon-sm" loading={savingRename} onClick={() => void handleRenamePipeline()} aria-label="Guardar nombre">
+                  <Check />
+                </Button>
+                <Button variant="ghost" size="icon-sm" onClick={() => setRenaming(false)} aria-label="Cancelar">
+                  <X />
+                </Button>
+              </div>
+            ) : (
+              <>
+                <Select
+                  value={activePipelineId ? String(activePipelineId) : ''}
+                  onValueChange={(v) => setActivePipelineId(Number(v))}
+                  disabled={pipelines.length === 0}
+                >
+                  <SelectTrigger className="w-44" aria-label="Pipeline">
+                    <SelectValue placeholder={pipelines.length === 0 ? 'Sin pipelines' : 'Pipeline'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {pipelines.map((p) => (
+                      <SelectItem key={p.idPipeline} value={String(p.idPipeline)}>
+                        {p.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                {activePipeline && (
+                  <>
+                    <Button
+                      variant="ghost" size="icon-sm"
+                      onClick={() => { setRenameValue(activePipeline.name); setRenaming(true) }}
+                      aria-label="Renombrar pipeline"
+                    >
+                      <Pencil />
+                    </Button>
+                    <Button
+                      variant="ghost" size="icon-sm"
+                      onClick={() => setConfirmDelete(true)}
+                      aria-label="Eliminar pipeline"
+                      className="text-destructive hover:text-destructive"
+                    >
+                      <Trash2 />
+                    </Button>
+                  </>
+                )}
+              </>
+            )}
 
             <Button variant="outline" size="sm" loading={creating} onClick={() => void handleCreatePipeline()}>
               <Plus />
@@ -180,6 +257,17 @@ export function PipelineBuilderPage({ token, onAuthError }: PipelineBuilderPageP
           </ReactFlowProvider>
         )}
       </div>
+
+      <ConfirmDialog
+        open={confirmDelete}
+        onOpenChange={setConfirmDelete}
+        title="Eliminar pipeline"
+        description={activePipeline
+          ? `Se eliminará el pipeline "${activePipeline.name}" y su topología guardada. Esta acción no se puede deshacer.`
+          : ''}
+        confirmLabel="Eliminar pipeline"
+        onConfirm={handleDeletePipeline}
+      />
     </div>
   )
 }

@@ -20,6 +20,18 @@ export interface ExecutionRequest {
     learningRate: number
     numClasses: number
     modelName: string
+    // Parametrización de los nodos Preprocesamiento y Split (opcional).
+    preprocessingStrategy?: string
+    imageSize?: number
+    trainRatio?: number
+    // Mejoras de CNN (item 6).
+    normalization?: string
+    dataAugmentation?: boolean
+    optimizer?: string
+    batchNorm?: boolean
+    earlyStopping?: boolean
+    esPatience?: number
+    esMonitor?: string
 }
 
 export interface ExecutionFormData {

@@ -24,7 +24,7 @@ interface SessionUser {
   role: Role
 }
 
-type Section = 'dashboard' | 'workspaces' | 'builder' | 'admin' | 'mlflow' | 'profile'
+type Section = 'dashboard' | 'workspaces' | 'builder' | 'models' | 'admin' | 'mlflow' | 'profile'
 
 interface NavigationItem {
   key: Section
@@ -56,8 +56,9 @@ export function AppShell({
 
   const navigationItems: NavigationItem[] = [
     { key: 'dashboard', label: 'Resumen', icon: LayoutDashboard, path: '/dashboard' },
-    { key: 'workspaces', label: 'Mis proyectos', icon: Layers, path: '/workspaces' },
+    { key: 'workspaces', label: 'Espacios de trabajo', icon: Layers, path: '/workspaces' },
     { key: 'builder', label: 'Lienzo', icon: Network, path: '/builder' },
+    { key: 'models', label: 'Mis modelos', icon: Boxes, path: '/models' },
   ]
 
   const adminItems: NavigationItem[] =

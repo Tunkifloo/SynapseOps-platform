@@ -54,21 +54,32 @@ export const NODE_FIELDS: Record<NodeKind, FieldDef[]> = {
   ],
   preprocess: [
     {
-      name: 'strategy',
-      label: 'Estrategia',
+      name: 'normalization',
+      label: 'Normalización',
       type: 'select',
       options: [
-        { value: 'normalization', label: 'Normalización [0,1]' },
-        { value: 'resize', label: 'Redimensionar' },
+        { value: 'minmax', label: 'Min-Max [0,1]' },
+        { value: 'zscore', label: 'Z-score (media/σ)' },
+        { value: 'rescale', label: 'Rescale [-1,1]' },
+      ],
+      help: 'Escalado de los píxeles antes de entrenar.',
+    },
+    {
+      name: 'dataAugmentation',
+      label: 'Data Augmentation',
+      type: 'select',
+      options: [
+        { value: 'false', label: 'Desactivado' },
+        { value: 'true', label: 'Activado (flip/rotación/zoom)' },
       ],
     },
     {
       name: 'imageSize',
-      label: 'Tamaño (px)',
+      label: 'Tamaño de imagen (px)',
       type: 'number',
       min: 16,
       max: 512,
-      showIf: (c) => c.strategy === 'resize',
+      help: 'Solo para datasets propios; los built-in usan su tamaño nativo.',
     },
   ],
   split: [
@@ -98,10 +109,57 @@ export const NODE_FIELDS: Record<NodeKind, FieldDef[]> = {
       options: [{ value: 'cnn', label: 'CNN (adaptativa)' }],
       help: 'Solo CNN disponible (MobileNet/ResNet en backlog).',
     },
+    {
+      name: 'optimizer',
+      label: 'Optimizador',
+      type: 'select',
+      options: [
+        { value: 'adam', label: 'Adam' },
+        { value: 'adamw', label: 'AdamW' },
+        { value: 'sgd', label: 'SGD (momentum)' },
+        { value: 'rmsprop', label: 'RMSprop' },
+      ],
+    },
     { name: 'epochs', label: 'Epochs', type: 'number', min: 1, max: 100 },
     { name: 'batchSize', label: 'Batch size', type: 'select', options: batchSizes },
     { name: 'learningRate', label: 'Learning rate', type: 'text', placeholder: '0.001' },
-    { name: 'modelName', label: 'Nombre del modelo', type: 'text', placeholder: 'mnist_cnn_demo' },
+    {
+      name: 'batchNorm',
+      label: 'Batch Normalization',
+      type: 'select',
+      options: [
+        { value: 'false', label: 'Desactivado' },
+        { value: 'true', label: 'Activado' },
+      ],
+    },
+    {
+      name: 'earlyStopping',
+      label: 'Early Stopping',
+      type: 'select',
+      options: [
+        { value: 'false', label: 'Desactivado' },
+        { value: 'true', label: 'Activado' },
+      ],
+    },
+    {
+      name: 'esPatience',
+      label: 'Paciencia (epochs)',
+      type: 'number',
+      min: 1,
+      max: 50,
+      showIf: (c) => c.earlyStopping === 'true',
+    },
+    {
+      name: 'esMonitor',
+      label: 'Monitorizar',
+      type: 'select',
+      options: [
+        { value: 'val_loss', label: 'val_loss (mín)' },
+        { value: 'val_accuracy', label: 'val_accuracy (máx)' },
+      ],
+      showIf: (c) => c.earlyStopping === 'true',
+    },
+    // El modelo (nuevo vs re-entrenar existente) se gestiona en TrainModelSource.
   ],
   deploy: [],
 }
@@ -111,6 +169,12 @@ export const NODE_FIELDS: Record<NodeKind, FieldDef[]> = {
  * Devuelve el primer mensaje de error, o `null` si es válida.
  */
 export function validateConfig(kind: NodeKind, config: NodeConfig): string | null {
+  // El nombre/modelo del entrenamiento se gestiona aparte (nuevo o existente).
+  if (kind === 'train' && String(config.modelName ?? '').trim() === '') {
+    return config.modelMode === 'existing'
+      ? 'Modelo: selecciona un modelo existente para re-entrenar.'
+      : 'Modelo: ingresa un nombre para el nuevo modelo.'
+  }
   for (const field of NODE_FIELDS[kind]) {
     if (field.showIf && !field.showIf(config)) continue
     const value = config[field.name]
@@ -141,16 +205,22 @@ export const defaultConfig = (kind: NodeKind): NodeConfig => {
     case 'ingest':
       return { mode: 'keras', kerasDataset: 'mnist', url: '' }
     case 'preprocess':
-      return { strategy: 'normalization', imageSize: 64 }
+      return { normalization: 'minmax', dataAugmentation: 'false', imageSize: 64 }
     case 'split':
       return { trainRatio: 80 }
     case 'train':
       return {
         framework: 'tensorflow',
         architecture: 'cnn',
+        optimizer: 'adam',
         epochs: 5,
         batchSize: '32',
         learningRate: '0.001',
+        batchNorm: 'false',
+        earlyStopping: 'false',
+        esPatience: 3,
+        esMonitor: 'val_loss',
+        modelMode: 'new',
         modelName: '',
       }
     case 'deploy':

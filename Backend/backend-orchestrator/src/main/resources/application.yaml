@@ -131,9 +131,10 @@ logging:
     org.springframework.security.config.annotation.authentication.configuration.InitializeUserDetailsBeanManagerConfigurer: ERROR
     org.apache.kafka: WARN
     org.springframework.kafka: INFO
+    # [traceId|actor] -> correlacion por request + auditoria de quien opera (item 2).
   pattern:
-    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level [%X{traceId:-NO_TRACE}] %logger{36} - %msg%n"
-    file: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level [%X{traceId:-NO_TRACE}] %logger{36} - %msg%n"
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level [%X{traceId:-NO_TRACE}|%X{actor:-anon}] %logger{36} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level [%X{traceId:-NO_TRACE}|%X{actor:-anon}] %logger{36} - %msg%n"
   file:
     name: logs/backend-orchestrator.log
   logback:

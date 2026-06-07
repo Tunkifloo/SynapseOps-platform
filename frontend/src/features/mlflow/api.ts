@@ -33,12 +33,32 @@ export interface MlflowModelVersion {
 /** Stages válidos del Model Registry (metadata de registro, no despliegue). */
 export type ModelStage = 'None' | 'Staging' | 'Production' | 'Archived'
 
+export interface ConfusionMatrixData {
+    labels: string[]
+    matrix: number[][]
+}
+
+/** Extrae la matriz de confusión del tag `confusion_matrix` (JSON) del run. */
+export const parseConfusion = (
+    tags?: Record<string, string>,
+): ConfusionMatrixData | null => {
+    const raw = tags?.confusion_matrix
+    if (!raw) return null
+    try {
+        const cm = JSON.parse(raw) as ConfusionMatrixData
+        return Array.isArray(cm.matrix) && Array.isArray(cm.labels) ? cm : null
+    } catch {
+        return null
+    }
+}
+
 export interface MlflowRunSummary {
     runId: string
     status: string
     artifactUri: string
     metrics: Record<string, number>
     params: Record<string, string>
+    tags?: Record<string, string>
 }
 
 export const getMlflowHealth = (token: string) =>
@@ -86,3 +106,11 @@ export const transitionWorkspaceModelStage = (
     sendJson<{ name: string; version: string; stage: string }>(
         `/workspaces/${workspaceId}/models/${encodeURIComponent(modelName)}/versions/${version}/stage`,
         token, 'POST', { stage })
+
+/** HU-027 — Detalle de una versión (params/hiperparámetros + métricas) scopeado al workspace. */
+export const getWorkspaceModelVersionDetails = (
+    token: string, workspaceId: number, modelName: string, version: string,
+) =>
+    fetchJson<MlflowRunSummary>(
+        `/workspaces/${workspaceId}/models/${encodeURIComponent(modelName)}/versions/${version}/details`,
+        token)

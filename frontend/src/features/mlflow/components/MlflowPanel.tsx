@@ -8,6 +8,7 @@ import {
   getMlflowRunSummary,
   listMlflowExperiments,
   listMlflowModels,
+  parseConfusion,
   type MlflowExperiment,
 } from '../api'
 import { ModelRegistry, type RegistryApi } from './ModelRegistry'
@@ -106,6 +107,10 @@ export function MlflowPanel({ token, onAuthError }: MlflowPanelProps) {
         accuracy: m.test_accuracy ?? m.val_accuracy ?? m.accuracy ?? null,
         loss:     m.test_loss ?? m.val_loss ?? m.loss ?? null,
       }
+    },
+    getDetails: async (_name, _version, runId) => {
+      const s = await getMlflowRunSummary(token, runId)
+      return { params: s.params ?? {}, metrics: s.metrics ?? {}, confusionMatrix: parseConfusion(s.tags) }
     },
   }), [token])
 
