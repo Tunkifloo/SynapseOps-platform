@@ -24,6 +24,10 @@ public interface WorkspaceModelService {
     Mono<List<Map<String, Object>>> getModelVersions(
             Long workspaceId, String modelName, String username);
 
+    /** Detalle de una versión (params/hiperparámetros + métricas) desde el run de MLflow. */
+    Mono<Map<String, Object>> getVersionDetails(
+            Long workspaceId, String modelName, String version, String username);
+
     Mono<Void> deleteVersion(
             Long workspaceId, String modelName, String version, String username);
 

@@ -1,5 +1,6 @@
 package com.synapseops.orchestrator.infra.exception;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
@@ -15,6 +16,7 @@ import java.net.URI;
 import java.time.Instant;
 import java.util.stream.Collectors;
 
+@Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
@@ -110,6 +112,12 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(Exception.class)
     public ProblemDetail handleGenericException(Exception ex,
                                                 ServerWebExchange exchange) {
+        // Auditoría (item 2): los 500 inesperados deben quedar en el log con causa y
+        // ruta. Antes se devolvía el ProblemDetail sin registrar nada → 500 silencioso.
+        log.error("Error inesperado en {} {}: {}",
+                exchange.getRequest().getMethod(),
+                exchange.getRequest().getPath().value(),
+                ex.toString(), ex);
         ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.INTERNAL_SERVER_ERROR);
         problem.setType(URI.create("/errors/internal"));
         problem.setTitle("Error interno del servidor");

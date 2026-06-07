@@ -12,6 +12,7 @@ Las imágenes se cargan con PIL (no requiere TensorFlow), se redimensionan a un
 tamaño fijo y se normalizan a [0,1]. Guardrails de memoria para el contenedor de 8GB.
 """
 import logging
+import urllib.error
 import urllib.request
 import zipfile
 from dataclasses import dataclass
@@ -61,31 +62,75 @@ def load_dataset(
     dataset_path: str,
     workspace_id: str,
     execution_id: str,
+    image_size: Optional[int] = None,
+    train_ratio: Optional[int] = None,
+    normalization: Optional[str] = None,
 ) -> DatasetBundle:
+    """
+    image_size    → tamaño de entrada (px) para datasets propios (nodo Preprocesamiento).
+    train_ratio   → % de entrenamiento (50–90) para datasets sin splits explícitos (nodo Split).
+    normalization → minmax [0,1] (default) | zscore (media/σ del train) | rescale [-1,1].
+    Los datasets built-in (keras://) usan su forma y split predefinidos.
+    """
     if not dataset_path or not dataset_path.strip():
         raise ValueError("El workspace no tiene un dataset asignado.")
 
+    size = _resolve_image_size(image_size)
+    ratio = _resolve_train_ratio(train_ratio)
+
     if dataset_path.startswith("keras://"):
-        return _load_keras_builtin(dataset_path.replace("keras://", "").strip().lower())
+        bundle = _load_keras_builtin(dataset_path.replace("keras://", "").strip().lower())
+    elif dataset_path.startswith("http://") or dataset_path.startswith("https://"):
+        extracted = _download_archive(dataset_path, workspace_id, execution_id)
+        bundle = _load_image_dataset(Path(extracted), size, ratio)
+    else:
+        local_path = Path(dataset_path)
+        if not local_path.exists():
+            raise FileNotFoundError(f"Dataset no encontrado: {dataset_path}")
+        if local_path.suffix.lower() == ".zip":
+            extracted = _extract_zip(local_path, workspace_id, execution_id)
+            bundle = _load_image_dataset(Path(extracted), size, ratio)
+        elif local_path.is_dir():
+            bundle = _load_image_dataset(local_path, size, ratio)
+        else:
+            raise ValueError(
+                f"Formato de dataset no soportado: {dataset_path}. "
+                f"Usa keras://mnist, una URL/.zip de imágenes, o un directorio.")
 
-    if dataset_path.startswith("http://") or dataset_path.startswith("https://"):
-        extracted = _download_zip(dataset_path, workspace_id, execution_id)
-        return _load_image_dataset(Path(extracted))
+    return _apply_normalization(bundle, (normalization or "minmax").lower())
 
-    local_path = Path(dataset_path)
-    if not local_path.exists():
-        raise FileNotFoundError(f"Dataset no encontrado: {dataset_path}")
 
-    if local_path.suffix.lower() == ".zip":
-        extracted = _extract_zip(local_path, workspace_id, execution_id)
-        return _load_image_dataset(Path(extracted))
+def _apply_normalization(bundle: DatasetBundle, strategy: str) -> DatasetBundle:
+    """Las imágenes ya vienen en [0,1] (minmax). Aplica la variante elegida."""
+    if strategy == "minmax":
+        return bundle
+    if strategy == "rescale":
+        fn = lambda a: (a * 2.0 - 1.0).astype(np.float32) if a is not None and a.size else a
+    elif strategy == "zscore":
+        mean = float(bundle.X_train.mean()) if bundle.X_train.size else 0.0
+        std = float(bundle.X_train.std()) or 1.0
+        fn = lambda a: ((a - mean) / std).astype(np.float32) if a is not None and a.size else a
+    else:
+        log.warning("Normalización '%s' no reconocida; se usa minmax.", strategy)
+        return bundle
+    log.info("Normalización aplicada: %s", strategy)
+    bundle.X_train = fn(bundle.X_train)
+    bundle.X_val = fn(bundle.X_val)
+    if bundle.X_test is not None:
+        bundle.X_test = fn(bundle.X_test)
+    return bundle
 
-    if local_path.is_dir():
-        return _load_image_dataset(local_path)
 
-    raise ValueError(
-        f"Formato de dataset no soportado: {dataset_path}. "
-        f"Usa keras://mnist, un .zip de imágenes, o un directorio.")
+def _resolve_image_size(image_size: Optional[int]) -> Tuple[int, int]:
+    if image_size and 16 <= int(image_size) <= 512:
+        return (int(image_size), int(image_size))
+    return IMG_SIZE
+
+
+def _resolve_train_ratio(train_ratio: Optional[int]) -> float:
+    if train_ratio and 50 <= int(train_ratio) <= 90:
+        return int(train_ratio) / 100.0
+    return 0.8
 
 
 # ── Datasets built-in (numpy, sin TensorFlow) ───────────────────────────────────
@@ -126,7 +171,13 @@ def _load_mnist_numpy() -> DatasetBundle:
 def _load_fashion_mnist_numpy() -> DatasetBundle:
     import gzip
 
-    base_url = "http://fashion-mnist.s3-website.eu-west-1.amazonaws.com/"
+    # Mirrors en orden de preferencia. El primero es el mismo host fiable (HTTPS)
+    # que usa MNIST y Keras; el S3 público queda como respaldo. El endpoint S3
+    # original sobre HTTP era inestable y rompía la carga con cualquier framework.
+    mirrors = (
+        "https://storage.googleapis.com/tensorflow/tf-keras-datasets/",
+        "http://fashion-mnist.s3-website.eu-west-1.amazonaws.com/",
+    )
     files = {
         "train_images": "train-images-idx3-ubyte.gz",
         "train_labels": "train-labels-idx1-ubyte.gz",
@@ -144,11 +195,24 @@ def _load_fashion_mnist_numpy() -> DatasetBundle:
         with gzip.open(path, "rb") as f:
             return np.frombuffer(f.read(), np.uint8, offset=8)
 
+    def _download_with_fallback(fname: str, dest: Path) -> None:
+        last_error: Optional[Exception] = None
+        for base in mirrors:
+            try:
+                log.info("Descargando Fashion-MNIST: %s desde %s", fname, base)
+                urllib.request.urlretrieve(base + fname, str(dest))
+                return
+            except Exception as e:  # noqa: BLE001 — probamos el siguiente mirror
+                last_error = e
+                log.warning("Mirror falló (%s): %s", base, e)
+        raise RuntimeError(
+            f"No se pudo descargar Fashion-MNIST '{fname}' desde ningún mirror. "
+            f"Último error: {last_error}")
+
     for fname in files.values():
         fpath = cache_dir / fname
         if not fpath.exists():
-            log.info("Descargando Fashion-MNIST: %s", fname)
-            urllib.request.urlretrieve(base_url + fname, str(fpath))
+            _download_with_fallback(fname, fpath)
 
     X_train = (load_images(cache_dir / files["train_images"]).astype(np.float32) / 255.0)[..., np.newaxis]
     y_train = load_labels(cache_dir / files["train_labels"]).astype(np.int64)
@@ -163,7 +227,7 @@ def _load_fashion_mnist_numpy() -> DatasetBundle:
 
 
 # ── Datasets propios de imágenes (PIL, sin TensorFlow) ──────────────────────────
-def _load_image_dataset(root: Path) -> DatasetBundle:
+def _load_image_dataset(root: Path, size: Tuple[int, int], ratio: float) -> DatasetBundle:
     root = _normalize_root(root)
 
     train_dir = _resolve_split_dir(root, "train")
@@ -171,15 +235,16 @@ def _load_image_dataset(root: Path) -> DatasetBundle:
     test_dir  = _resolve_split_dir(root, "test")
 
     if train_dir and val_dir:
-        log.info("Layout detectado: splits explícitos en %s", root)
-        return _load_explicit_splits(train_dir, val_dir, test_dir)
+        log.info("Layout detectado: splits explícitos en %s (tamaño=%s)", root, size)
+        return _load_explicit_splits(train_dir, val_dir, test_dir, size)
 
-    log.info("Layout detectado: carpetas-clase planas en %s (auto-split 80/20)", root)
-    return _load_flat_with_autosplit(root)
+    log.info("Layout detectado: carpetas-clase planas en %s (auto-split %d/%d, tamaño=%s)",
+             root, int(ratio * 100), int((1 - ratio) * 100), size)
+    return _load_flat_with_autosplit(root, size, ratio)
 
 
 def _load_explicit_splits(train_dir: Path, val_dir: Path,
-                          test_dir: Optional[Path]) -> DatasetBundle:
+                          test_dir: Optional[Path], size: Tuple[int, int]) -> DatasetBundle:
     train_g = _gather_class_files(train_dir)
     val_g   = _gather_class_files(val_dir)
     test_g  = _gather_class_files(test_dir) if test_dir else {}
@@ -192,14 +257,14 @@ def _load_explicit_splits(train_dir: Path, val_dir: Path,
     total = _count(train_g) + _count(val_g) + _count(test_g)
     _validate_count(total)
 
-    X_train, y_train = _materialize(train_g, class_to_idx)
-    X_val,   y_val   = _materialize(val_g, class_to_idx)
+    X_train, y_train = _materialize(train_g, class_to_idx, size)
+    X_val,   y_val   = _materialize(val_g, class_to_idx, size)
     if X_train.size == 0 or X_val.size == 0:
         raise ValueError("Los splits 'train' y 'validation' no pueden estar vacíos.")
 
     X_test = y_test = None
     if test_g:
-        X_test, y_test = _materialize(test_g, class_to_idx)
+        X_test, y_test = _materialize(test_g, class_to_idx, size)
 
     input_shape = X_train.shape[1:]
     log.info("Splits explícitos: train=%d val=%d test=%s clases=%d",
@@ -209,7 +274,7 @@ def _load_explicit_splits(train_dir: Path, val_dir: Path,
                          len(class_names), class_names, X_test, y_test)
 
 
-def _load_flat_with_autosplit(root: Path) -> DatasetBundle:
+def _load_flat_with_autosplit(root: Path, size: Tuple[int, int], ratio: float) -> DatasetBundle:
     gathered = _gather_class_files(root)
     class_names = sorted(gathered)
     _validate_classes(class_names)
@@ -226,12 +291,12 @@ def _load_flat_with_autosplit(root: Path) -> DatasetBundle:
             raise ValueError(
                 f"La clase '{cname}' tiene {len(files)} imagen(es); se requieren ≥2 "
                 f"para dividir en train/validación.")
-        k = max(1, int(len(files) * 0.8))
+        k = max(1, int(len(files) * ratio))
         train_g[cname] = files[:k]
         val_g[cname]   = files[k:] or files[-1:]
 
-    X_train, y_train = _materialize(train_g, class_to_idx)
-    X_val,   y_val   = _materialize(val_g, class_to_idx)
+    X_train, y_train = _materialize(train_g, class_to_idx, size)
+    X_val,   y_val   = _materialize(val_g, class_to_idx, size)
     input_shape = X_train.shape[1:]
     log.info("Auto-split: train=%d val=%d clases=%d",
              len(X_train), len(X_val), len(class_names))
@@ -270,14 +335,15 @@ def _gather_class_files(split_dir: Path) -> Dict[str, List[Path]]:
 
 
 def _materialize(gathered: Dict[str, List[Path]],
-                 class_to_idx: Dict[str, int]) -> Tuple[np.ndarray, np.ndarray]:
+                 class_to_idx: Dict[str, int],
+                 size: Tuple[int, int]) -> Tuple[np.ndarray, np.ndarray]:
     X: List[np.ndarray] = []
     y: List[int] = []
     for cname, files in gathered.items():
         idx = class_to_idx[cname]
         for f in files:
             try:
-                X.append(_load_image_file(f))
+                X.append(_load_image_file(f, size))
                 y.append(idx)
             except (UnidentifiedImageError, OSError) as e:
                 log.warning("Imagen ilegible, se omite: %s (%s)", f, e)
@@ -286,9 +352,9 @@ def _materialize(gathered: Dict[str, List[Path]],
     return np.asarray(X, dtype=np.float32), np.asarray(y, dtype=np.int64)
 
 
-def _load_image_file(path: Path) -> np.ndarray:
+def _load_image_file(path: Path, size: Tuple[int, int]) -> np.ndarray:
     with Image.open(path) as img:
-        img = img.convert("RGB").resize(IMG_SIZE, Image.BILINEAR)
+        img = img.convert("RGB").resize(size, Image.BILINEAR)
         return np.asarray(img, dtype=np.float32) / 255.0
 
 
@@ -316,13 +382,55 @@ def _validate_count(total: int) -> None:
             f"(límite de memoria del entorno). Reduce el dataset.")
 
 
-# ── Descarga / extracción ───────────────────────────────────────────────────────
-def _download_zip(url: str, workspace_id: str, execution_id: str) -> str:
+# ── Descarga / extracción (blindado — item 5) ────────────────────────────────────
+MAX_DOWNLOAD_BYTES = 1_500_000_000  # 1.5 GB tope de descarga
+
+
+def _download_archive(url: str, workspace_id: str, execution_id: str) -> str:
+    """
+    Descarga un archivo .zip de imágenes desde una URL. Blindado:
+    - Sigue redirecciones y valida el tipo de contenido.
+    - Detecta páginas HTML (p. ej. la página de Kaggle que requiere login) y da
+      un mensaje claro en lugar de fallar de forma opaca.
+    - Aplica un tope de tamaño para proteger el entorno de 8 GB.
+    """
     dl_dir = Path(settings.storage_base_path) / workspace_id / "downloads"
     dl_dir.mkdir(parents=True, exist_ok=True)
     zip_path = dl_dir / f"dataset_{execution_id}.zip"
+
+    if "kaggle.com/datasets" in url and "/download" not in url:
+        raise ValueError(
+            "La URL parece la página de un dataset de Kaggle (requiere login). "
+            "Usa el enlace directo de descarga (.zip) o sube el .zip manualmente.")
+
+    req = urllib.request.Request(url, headers={"User-Agent": "SynapseOps/1.0"})
     log.info("Descargando dataset: %s", url)
-    urllib.request.urlretrieve(url, str(zip_path))
+    try:
+        with urllib.request.urlopen(req, timeout=120) as resp:  # noqa: S310
+            ctype = (resp.headers.get("Content-Type") or "").lower()
+            clen = int(resp.headers.get("Content-Length") or 0)
+            if clen and clen > MAX_DOWNLOAD_BYTES:
+                raise ValueError(
+                    f"El archivo ({clen // 1_000_000} MB) supera el límite de "
+                    f"{MAX_DOWNLOAD_BYTES // 1_000_000} MB.")
+            if "text/html" in ctype:
+                raise ValueError(
+                    "La URL devolvió una página web (HTML), no un archivo. Verifica que "
+                    "sea un enlace directo a un .zip público (sin login).")
+            downloaded = 0
+            with open(zip_path, "wb") as out:
+                while True:
+                    chunk = resp.read(1 << 20)
+                    if not chunk:
+                        break
+                    downloaded += len(chunk)
+                    if downloaded > MAX_DOWNLOAD_BYTES:
+                        raise ValueError("La descarga supera el límite de tamaño permitido.")
+                    out.write(chunk)
+    except urllib.error.HTTPError as e:
+        raise ValueError(f"No se pudo descargar el dataset (HTTP {e.code}). Verifica la URL.")
+    except urllib.error.URLError as e:
+        raise ValueError(f"No se pudo acceder a la URL del dataset: {e.reason}")
     return _extract_zip(zip_path, workspace_id, execution_id)
 
 
@@ -332,8 +440,15 @@ def _extract_zip(zip_path: Path, workspace_id: str, execution_id: str) -> str:
     extract_dir.mkdir(parents=True, exist_ok=True)
     try:
         with zipfile.ZipFile(zip_path, "r") as zf:
+            # Protección contra zip-slip (rutas con ../ o absolutas).
+            for member in zf.namelist():
+                target = (extract_dir / member).resolve()
+                if not str(target).startswith(str(extract_dir.resolve())):
+                    raise ValueError("El ZIP contiene rutas no seguras (zip-slip).")
             zf.extractall(extract_dir)
-    except zipfile.BadZipFile as e:
-        raise ValueError(f"El archivo no es un ZIP válido: {e}")
+    except zipfile.BadZipFile:
+        raise ValueError(
+            "El archivo no es un ZIP válido. Sube un .zip de imágenes con carpetas por clase "
+            "(o splits train/val/test).")
     log.info("ZIP extraído en: %s", extract_dir)
     return str(extract_dir)

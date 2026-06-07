@@ -95,25 +95,29 @@ class WorkspaceModelServiceImplTest {
     class Reads {
 
         @Test
-        @DisplayName("El dueño ve solo las versiones cuyo run_id pertenece a su workspace, con métricas embebidas")
-        void ownerSeesOwnedVersionsWithMetrics() {
+        @DisplayName("Si el workspace entrenó ≥1 versión, ve TODAS las versiones del modelo (paridad ADMIN); las propias con métricas embebidas, el resto desde MLflow")
+        void ownerSeesAllVersionsOfOwnedModel() {
             when(workspaceRepository.findById(WS_ID)).thenReturn(Optional.of(workspace));
             when(userRepository.findByUsername(OWNER)).thenReturn(Optional.of(owner));
             when(artifactRepository.findByWorkspace(WS_ID)).thenReturn(List.of(
                     artifact("run-1", "{\"final_accuracy\":0.91,\"final_loss\":0.29}")));
 
             List<Map<String, Object>> versions = new ArrayList<>(List.of(
-                    version("2", "run-foreign", "None"),  // de otro workspace → se filtra
-                    version("1", "run-1", "Staging")));    // propio
+                    version("2", "run-2", "None"),       // sin fila en ml_artifacts → métricas vía MLflow
+                    version("1", "run-1", "Staging")));   // propia → métricas embebidas
             when(mlflowFacade.getModelVersions("mnist_cnn")).thenReturn(Mono.just(versions));
+            // run-2 no está en ml_artifacts → se piden sus métricas a MLflow.
+            when(mlflowFacade.getRunMetrics("run-2"))
+                    .thenReturn(Mono.just(new com.synapseops.orchestrator.infra.mlflow.MlflowRunMetrics(0.95, 0.10, 0.94)));
 
             StepVerifier.create(service.getModelVersions(WS_ID, "mnist_cnn", OWNER))
                     .assertNext(result -> {
-                        org.junit.jupiter.api.Assertions.assertEquals(1, result.size());
-                        Map<String, Object> v = result.get(0);
-                        org.junit.jupiter.api.Assertions.assertEquals("1", v.get("version"));
-                        org.junit.jupiter.api.Assertions.assertEquals(0.91, (double) v.get("accuracy"), 1e-9);
-                        org.junit.jupiter.api.Assertions.assertEquals(0.29, (double) v.get("loss"), 1e-9);
+                        org.junit.jupiter.api.Assertions.assertEquals(2, result.size());
+                        Map<String, Object> v2 = result.get(0);
+                        Map<String, Object> v1 = result.get(1);
+                        org.junit.jupiter.api.Assertions.assertEquals(0.95, (double) v2.get("accuracy"), 1e-9);
+                        org.junit.jupiter.api.Assertions.assertEquals(0.91, (double) v1.get("accuracy"), 1e-9);
+                        org.junit.jupiter.api.Assertions.assertEquals(0.29, (double) v1.get("loss"), 1e-9);
                     })
                     .verifyComplete();
         }
@@ -165,17 +169,19 @@ class WorkspaceModelServiceImplTest {
     class Writes {
 
         @Test
-        @DisplayName("El dueño elimina una versión propia → delega en MLflow")
+        @DisplayName("El dueño elimina una versión de un modelo propio → delega en MLflow")
         void ownerDeletesOwnVersion() {
             when(workspaceRepository.findById(WS_ID)).thenReturn(Optional.of(workspace));
             when(artifactRepository.findByWorkspace(WS_ID)).thenReturn(List.of(artifact("run-1", "{}")));
-            when(mlflowFacade.getRunIdForVersion("mnist_cnn", "1")).thenReturn(Mono.just("run-1"));
-            when(mlflowFacade.deleteModelVersion("mnist_cnn", "1")).thenReturn(Mono.empty());
+            when(mlflowFacade.getModelVersions("mnist_cnn")).thenReturn(Mono.just(new ArrayList<>(List.of(
+                    version("2", "run-2", "None"), version("1", "run-1", "Staging")))));
+            when(mlflowFacade.deleteModelVersion("mnist_cnn", "2")).thenReturn(Mono.empty());
 
-            StepVerifier.create(service.deleteVersion(WS_ID, "mnist_cnn", "1", OWNER))
+            // Puede eliminar cualquier versión del modelo propio, incluso v2 (run-2 sin artifact).
+            StepVerifier.create(service.deleteVersion(WS_ID, "mnist_cnn", "2", OWNER))
                     .verifyComplete();
 
-            verify(mlflowFacade).deleteModelVersion("mnist_cnn", "1");
+            verify(mlflowFacade).deleteModelVersion("mnist_cnn", "2");
         }
 
         @Test
@@ -203,11 +209,13 @@ class WorkspaceModelServiceImplTest {
         }
 
         @Test
-        @DisplayName("El dueño NO puede eliminar una versión cuyo run_id no es de su workspace (AccessDenied)")
-        void ownerCannotDeleteForeignVersion() {
+        @DisplayName("El dueño NO puede eliminar versiones de un modelo que su workspace no entrenó (AccessDenied)")
+        void ownerCannotDeleteForeignModel() {
             when(workspaceRepository.findById(WS_ID)).thenReturn(Optional.of(workspace));
             when(artifactRepository.findByWorkspace(WS_ID)).thenReturn(List.of(artifact("run-1", "{}")));
-            when(mlflowFacade.getRunIdForVersion("otro_modelo", "5")).thenReturn(Mono.just("run-foreign"));
+            // Ninguna versión de "otro_modelo" tiene run_id del workspace → modelo ajeno.
+            when(mlflowFacade.getModelVersions("otro_modelo")).thenReturn(Mono.just(new ArrayList<>(List.of(
+                    version("5", "run-foreign", "None")))));
 
             StepVerifier.create(service.deleteVersion(WS_ID, "otro_modelo", "5", OWNER))
                     .expectError(AccessDeniedException.class)
@@ -221,7 +229,8 @@ class WorkspaceModelServiceImplTest {
         void ownerTransitionsStage() {
             when(workspaceRepository.findById(WS_ID)).thenReturn(Optional.of(workspace));
             when(artifactRepository.findByWorkspace(WS_ID)).thenReturn(List.of(artifact("run-1", "{}")));
-            when(mlflowFacade.getRunIdForVersion("mnist_cnn", "1")).thenReturn(Mono.just("run-1"));
+            when(mlflowFacade.getModelVersions("mnist_cnn")).thenReturn(Mono.just(new ArrayList<>(List.of(
+                    version("1", "run-1", "Staging")))));
             when(mlflowFacade.transitionStage("mnist_cnn", "1", "Production"))
                     .thenReturn(Mono.just(Map.of("stage", "Production")));
 

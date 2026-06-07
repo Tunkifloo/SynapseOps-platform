@@ -15,6 +15,13 @@ class HyperParams:
     learning_rate: float = 0.001
     num_classes:   int   = 10
     input_shape:   Tuple = (28, 28, 1)   # ← detectado en ingestion
+    # ── Mejoras de entrenamiento (item 6) ───────────────────────────────────
+    optimizer:        str  = "adam"      # adam | adamw | sgd | rmsprop
+    batch_norm:       bool = False       # Batch Normalization en la CNN
+    early_stopping:   bool = False
+    es_patience:      int  = 3
+    es_monitor:       str  = "val_loss"  # val_loss | val_accuracy
+    data_augmentation: bool = False      # aug. en el entrenamiento (img)
 
 
 @dataclass
@@ -27,6 +34,14 @@ class TrainingResult:
     # Métricas sobre el split de test (si el dataset lo incluye).
     test_accuracy:  Optional[float] = None
     test_loss:      Optional[float] = None
+    # ── Predicciones para métricas avanzadas (item 7) ────────────────────────
+    # El executor calcula precision/recall/f1/roc_auc + matriz de confusión.
+    val_true:   Optional[np.ndarray] = None
+    val_pred:   Optional[np.ndarray] = None
+    val_proba:  Optional[np.ndarray] = None
+    test_true:  Optional[np.ndarray] = None
+    test_pred:  Optional[np.ndarray] = None
+    test_proba: Optional[np.ndarray] = None
 
 
 class TrainingStrategy(ABC):

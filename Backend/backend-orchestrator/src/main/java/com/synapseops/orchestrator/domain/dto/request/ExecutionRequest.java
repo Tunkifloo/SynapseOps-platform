@@ -33,5 +33,41 @@ public record ExecutionRequest(
         Integer numClasses,
 
         @NotBlank(message = "El nombre del modelo es obligatorio.")
-        String modelName
+        String modelName,
+
+        // ── Parametrización de los nodos Preprocesamiento y Split (opcional) ──────
+        @Pattern(regexp = "(?i)(normalization|resize)",
+                message = "Estrategia de preprocesamiento no soportada (normalization | resize).")
+        String preprocessingStrategy,
+
+        @Min(value = 16,  message = "Tamaño de imagen mínimo 16 px.")
+        @Max(value = 512, message = "Tamaño de imagen máximo 512 px.")
+        Integer imageSize,
+
+        @Min(value = 50, message = "El % de entrenamiento mínimo es 50.")
+        @Max(value = 90, message = "El % de entrenamiento máximo es 90.")
+        Integer trainRatio,
+
+        // ── Mejoras de CNN / entrenamiento (item 6, opcionales) ──────────────────
+        @Pattern(regexp = "(?i)(minmax|zscore|rescale)",
+                message = "Normalización no soportada (minmax | zscore | rescale).")
+        String normalization,
+
+        Boolean dataAugmentation,
+
+        @Pattern(regexp = "(?i)(adam|adamw|sgd|rmsprop)",
+                message = "Optimizador no soportado (adam | adamw | sgd | rmsprop).")
+        String optimizer,
+
+        Boolean batchNorm,
+
+        Boolean earlyStopping,
+
+        @Min(value = 1, message = "La paciencia mínima es 1.")
+        @Max(value = 50, message = "La paciencia máxima es 50.")
+        Integer esPatience,
+
+        @Pattern(regexp = "(?i)(val_loss|val_accuracy)",
+                message = "Monitor no soportado (val_loss | val_accuracy).")
+        String esMonitor
 ) {}

@@ -76,7 +76,16 @@ public class ExecutionServiceImpl implements ExecutionService {
                     // El ML Engine autodetecta el real; este valor es solo orientativo.
                     request.numClasses() != null ? request.numClasses() : 0,
                     request.modelName(),
-                    "normalization"
+                    request.preprocessingStrategy() != null ? request.preprocessingStrategy() : "normalization",
+                    request.imageSize(),
+                    request.trainRatio(),
+                    request.normalization() != null ? request.normalization() : "minmax",
+                    request.dataAugmentation(),
+                    request.optimizer() != null ? request.optimizer() : "adam",
+                    request.batchNorm(),
+                    request.earlyStopping(),
+                    request.esPatience(),
+                    request.esMonitor() != null ? request.esMonitor() : "val_loss"
             );
 
             // Compensación síncrona (dual-write): la escritura en BD y la publicación a

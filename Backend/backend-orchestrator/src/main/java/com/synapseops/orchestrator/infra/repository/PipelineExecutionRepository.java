@@ -13,6 +13,9 @@ public interface PipelineExecutionRepository extends JpaRepository<PipelineExecu
     Optional<PipelineExecution> findByMlflowRunId(String mlflowRunId);
     List<PipelineExecution> findByStatus(ExecutionStatus status);
 
+    /** Nº de ejecuciones de un pipeline (sin tocar colecciones lazy fuera de sesión). */
+    long countByPipeline_IdPipeline(Long pipelineId);
+
     @Query("""
             SELECT e FROM PipelineExecution e
             JOIN FETCH e.pipeline p

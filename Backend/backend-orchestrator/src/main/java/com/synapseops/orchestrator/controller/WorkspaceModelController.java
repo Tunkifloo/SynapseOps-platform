@@ -59,6 +59,22 @@ public class WorkspaceModelController {
                 .map(ResponseEntity::ok);
     }
 
+    @Operation(summary = "Detalle de una versión (hiperparámetros + métricas)")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Params y métricas del run"),
+            @ApiResponse(responseCode = "403", description = "Sin acceso al workspace")
+    })
+    @GetMapping("/{modelName}/versions/{version}/details")
+    public Mono<ResponseEntity<Map<String, Object>>> getVersionDetails(
+            @PathVariable Long workspaceId,
+            @PathVariable String modelName,
+            @PathVariable String version,
+            Mono<Principal> principal) {
+        return principal.flatMap(p ->
+                        workspaceModelService.getVersionDetails(workspaceId, modelName, version, p.getName()))
+                .map(ResponseEntity::ok);
+    }
+
     @Operation(summary = "Eliminar una versión propia del workspace",
             description = "Solo el dueño del workspace. Elimina la versión y, best-effort, "
                     + "el run con sus artefactos en MLflow.")

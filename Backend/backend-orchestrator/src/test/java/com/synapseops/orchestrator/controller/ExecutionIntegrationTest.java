@@ -80,7 +80,7 @@ class ExecutionIntegrationTest extends AbstractIntegrationTest {
     }
 
     private ExecutionRequest validRequest() {
-        return new ExecutionRequest("tensorflow", "cnn", 5, 32, 0.001, 10, "mnist_demo");
+        return new ExecutionRequest("tensorflow", "cnn", 5, 32, 0.001, 10, "mnist_demo", null, null, null, null, null, null, null, null, null, null);
     }
 
     @Test
@@ -150,7 +150,7 @@ class ExecutionIntegrationTest extends AbstractIntegrationTest {
         long wsId = createWorkspace(token, "WS Exec Inval");
         long pId = createPipeline(token, wsId, "Pipeline Inval");
 
-        var invalid = new ExecutionRequest("tensorflow", "cnn", 0, 32, 0.001, 10, "m");
+        var invalid = new ExecutionRequest("tensorflow", "cnn", 0, 32, 0.001, 10, "m", null, null, null, null, null, null, null, null, null, null);
 
         webTestClient.post()
                 .uri("/api/v1/workspaces/{wsId}/pipelines/{pId}/execute", wsId, pId)

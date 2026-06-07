@@ -170,8 +170,10 @@ public class MLflowFacade {
      * fuente de verdad (HU-027). El run se resuelve a partir de la versión.
      */
     public Mono<Void> deleteModelVersion(String modelName, String version) {
+        // MLflow expone model-versions/delete con el método HTTP DELETE (con body
+        // JSON), NO POST (POST devuelve 405). runs/delete sí es POST — son distintos.
         return getRunIdForVersion(modelName, version)
-                .flatMap(runId -> webClient.post()
+                .flatMap(runId -> webClient.method(org.springframework.http.HttpMethod.DELETE)
                         .uri("/api/2.0/mlflow/model-versions/delete")
                         .bodyValue(Map.of("name", modelName, "version", version))
                         .retrieve()
@@ -305,13 +307,24 @@ public class MLflowFacade {
                             for (JsonNode p : data.path("params"))
                                 params.put(p.path("key").asText(), p.path("value").asText());
                         }
-                        return Map.of(
-                                "runId",       info.path("run_id").asText(),
-                                "status",      info.path("status").asText(),
-                                "artifactUri", info.path("artifact_uri").asText(),
-                                "metrics",     metrics,
-                                "params",      params
-                        );
+                        // Tags del run (incluye confusion_matrix como JSON — item 7).
+                        Map<String, String> tags = new HashMap<>();
+                        if (data.path("tags").isArray()) {
+                            for (JsonNode t : data.path("tags")) {
+                                String key = t.path("key").asText();
+                                if (!key.startsWith("mlflow.")) {
+                                    tags.put(key, t.path("value").asText());
+                                }
+                            }
+                        }
+                        Map<String, Object> summary = new HashMap<>();
+                        summary.put("runId",       info.path("run_id").asText());
+                        summary.put("status",      info.path("status").asText());
+                        summary.put("artifactUri", info.path("artifact_uri").asText());
+                        summary.put("metrics",     metrics);
+                        summary.put("params",      params);
+                        summary.put("tags",        tags);
+                        return summary;
                     } catch (Exception e) {
                         return Map.of("error", e.getMessage());
                     }

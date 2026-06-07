@@ -12,5 +12,14 @@ public record PipelineJobRequest(
         double learningRate,
         int    numClasses,
         String modelName,
-        String preprocessingStrategy
+        String preprocessingStrategy,
+        Integer imageSize,
+        Integer trainRatio,
+        String normalization,
+        Boolean dataAugmentation,
+        String optimizer,
+        Boolean batchNorm,
+        Boolean earlyStopping,
+        Integer esPatience,
+        String esMonitor
 ) {}

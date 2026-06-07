@@ -23,6 +23,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -55,19 +56,18 @@ public class WorkspaceModelServiceImpl implements WorkspaceModelService {
         String name = String.valueOf(model.get("name"));
         return mlflowFacade.getModelVersions(name)
                 .map(versions -> {
-                    List<Map<String, Object>> ownedVersions = versions.stream()
-                            .filter(v -> metricsByRun.containsKey(String.valueOf(v.get("runId"))))
-                            .toList();
-                    if (ownedVersions.isEmpty()) {
+                    // Propiedad por NOMBRE: el modelo es del workspace si entrenó ≥1 de
+                    // sus versiones (su run_id está en ml_artifacts). En tal caso se
+                    // exponen TODAS sus versiones (paridad con la consola ADMIN).
+                    if (versions.isEmpty() || !isOwned(versions, metricsByRun.keySet())) {
                         return Optional.empty();
                     }
-                    // Versiones ordenadas desc por el facade → la primera es la más reciente.
-                    Map<String, Object> latest = ownedVersions.get(0);
+                    Map<String, Object> latest = versions.get(0); // desc → la más reciente
                     Map<String, Object> card = new HashMap<>();
                     card.put("name",          name);
                     card.put("latestVersion", latest.get("version"));
                     card.put("latestRunId",   latest.get("runId"));
-                    card.put("ownedVersions", ownedVersions.size());
+                    card.put("ownedVersions", versions.size());
                     return Optional.of(card);
                 });
     }
@@ -77,10 +77,58 @@ public class WorkspaceModelServiceImpl implements WorkspaceModelService {
             Long workspaceId, String modelName, String username) {
         return ownedArtifacts(workspaceId, username, false)
                 .flatMap(metricsByRun -> mlflowFacade.getModelVersions(modelName)
-                        .map(versions -> versions.stream()
-                                .filter(v -> metricsByRun.containsKey(String.valueOf(v.get("runId"))))
-                                .peek(v -> attachMetrics(v, metricsByRun))
-                                .toList()));
+                        .flatMap(versions -> {
+                            if (!isOwned(versions, metricsByRun.keySet())) {
+                                return Mono.just(List.<Map<String, Object>>of());
+                            }
+                            // Modelo propio → TODAS las versiones, enriquecidas con métricas
+                            // (embebidas de ml_artifacts o, si faltan, desde el run de MLflow).
+                            return Flux.fromIterable(versions)
+                                    .concatMap(v -> enrichVersionMetrics(v, metricsByRun))
+                                    .collectList();
+                        }));
+    }
+
+    private boolean isOwned(List<Map<String, Object>> versions, Set<String> ownedRunIds) {
+        return versions.stream().anyMatch(v -> ownedRunIds.contains(String.valueOf(v.get("runId"))));
+    }
+
+    private Mono<Map<String, Object>> enrichVersionMetrics(
+            Map<String, Object> version, Map<String, double[]> metricsByRun) {
+        String runId = String.valueOf(version.get("runId"));
+        if (metricsByRun.containsKey(runId)) {
+            attachMetrics(version, metricsByRun);
+            return Mono.just(version);
+        }
+        // Sin fila en ml_artifacts → métricas desde el run de MLflow (paridad con ADMIN).
+        return mlflowFacade.getRunMetrics(runId)
+                .map(m -> {
+                    if (m.accuracy() > 0) {
+                        version.put("accuracy", m.accuracy());
+                    }
+                    if (m.loss() > 0) {
+                        version.put("loss", m.loss());
+                    }
+                    return version;
+                })
+                .onErrorReturn(version);
+    }
+
+    @Override
+    public Mono<Map<String, Object>> getVersionDetails(
+            Long workspaceId, String modelName, String version, String username) {
+        return ownedArtifacts(workspaceId, username, false)
+                .flatMap(metricsByRun -> mlflowFacade.getModelVersions(modelName)
+                        .flatMap(versions -> {
+                            if (!isOwned(versions, metricsByRun.keySet())) {
+                                return Mono.error(new AccessDeniedException(
+                                        "El modelo no pertenece a este workspace."));
+                            }
+                            return mlflowFacade.getRunIdForVersion(modelName, version)
+                                    .flatMap(runId -> (runId == null || runId.isBlank())
+                                            ? Mono.just(Map.<String, Object>of())
+                                            : mlflowFacade.getRunSummary(runId));
+                        }));
     }
 
     @Override
@@ -99,19 +147,20 @@ public class WorkspaceModelServiceImpl implements WorkspaceModelService {
     }
 
     /**
-     * Verifica que el usuario sea dueño del workspace (escritura) y que la
-     * versión pertenezca efectivamente a ese workspace (su run_id está entre los
-     * artefactos del workspace). Evita que un dueño manipule modelos ajenos
-     * pasando su propio workspaceId.
+     * Autoriza la escritura (eliminar / transicionar stage): el usuario debe ser
+     * dueño del workspace (verifyOwnership) y el MODELO debe pertenecer al
+     * workspace (entrenó ≥1 de sus versiones). Evita manipular modelos ajenos
+     * pasando un workspaceId propio; permite gestionar cualquier versión de un
+     * modelo propio (coherente con la vista por nombre).
      */
     private Mono<Void> authorizeVersionWrite(
             Long workspaceId, String modelName, String version, String username) {
         return ownedArtifacts(workspaceId, username, true)
-                .flatMap(owned -> mlflowFacade.getRunIdForVersion(modelName, version)
-                        .flatMap(runId -> {
-                            if (runId == null || runId.isBlank() || !owned.containsKey(runId)) {
+                .flatMap(owned -> mlflowFacade.getModelVersions(modelName)
+                        .flatMap(versions -> {
+                            if (!isOwned(versions, owned.keySet())) {
                                 return Mono.error(new AccessDeniedException(
-                                        "La versión no pertenece a este workspace."));
+                                        "El modelo no pertenece a este workspace."));
                             }
                             return Mono.empty();
                         }));

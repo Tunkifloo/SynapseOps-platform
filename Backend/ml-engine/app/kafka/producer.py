@@ -58,6 +58,9 @@ class LogProducer:
                 key=execution_id,
                 value=payload,
             )
-            self._producer.poll(0)
+            # flush() fuerza la entrega INMEDIATA (streaming real por época/fase).
+            # Con poll(0) los mensajes quedaban en el buffer de librdkafka y solo
+            # llegaban al final en entrenamientos largos (PyTorch).
+            self._producer.flush(timeout=5)
         except Exception as e:  # noqa: BLE001 — los logs nunca deben romper el entrenamiento
             log.debug("No se pudo publicar log: %s", e)
