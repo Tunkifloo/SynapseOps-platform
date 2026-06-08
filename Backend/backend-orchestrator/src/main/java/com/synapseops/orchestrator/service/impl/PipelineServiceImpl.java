@@ -59,7 +59,7 @@ public class PipelineServiceImpl implements PipelineService {
             Long workspaceId, PipelineRequest request, String username) {
         return Mono.fromCallable(() -> {
             Workspace workspace = resolveWorkspace(workspaceId);
-            verifyAccess(workspace, username);
+            verifyOwnership(workspace, username);
 
             Pipeline pipeline = new Pipeline();
             pipeline.setName(request.name());
@@ -96,6 +96,29 @@ public class PipelineServiceImpl implements PipelineService {
                     pipeline.getIdPipeline());
             return true;
         }).subscribeOn(Schedulers.boundedElastic()).then();
+    }
+
+    @Override
+    public Mono<Void> saveCanvas(Long id, Long workspaceId, String canvasJson, String username) {
+        return Mono.fromCallable(() -> {
+            Pipeline pipeline = resolvePipeline(id);
+            verifyOwnership(pipeline.getWorkspace(), username);   // escritura → solo dueño
+            verifyBelongsToWorkspace(pipeline, workspaceId);
+            pipeline.setCanvasJson(canvasJson);
+            pipelineRepository.save(pipeline);
+            return true;
+        }).subscribeOn(Schedulers.boundedElastic()).then();
+    }
+
+    @Override
+    public Mono<String> getCanvas(Long id, Long workspaceId, String username) {
+        return Mono.fromCallable(() -> {
+            Pipeline pipeline = resolvePipeline(id);
+            verifyAccess(pipeline.getWorkspace(), username);      // lectura → ADMIN o dueño
+            verifyBelongsToWorkspace(pipeline, workspaceId);
+            String json = pipeline.getCanvasJson();
+            return (json == null || json.isBlank()) ? "{\"nodes\":[],\"edges\":[]}" : json;
+        }).subscribeOn(Schedulers.boundedElastic());
     }
 
     private Flux<PipelineResponse> fetchPipelines(Supplier<List<Pipeline>> query) {

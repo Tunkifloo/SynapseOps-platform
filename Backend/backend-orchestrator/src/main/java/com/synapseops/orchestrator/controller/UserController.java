@@ -2,6 +2,7 @@ package com.synapseops.orchestrator.controller;
 
 import com.synapseops.orchestrator.domain.dto.request.PasswordUpdateRequest;
 import com.synapseops.orchestrator.domain.dto.request.UserProfileUpdateRequest;
+import com.synapseops.orchestrator.domain.dto.request.UserStatusUpdateRequest;
 import com.synapseops.orchestrator.domain.dto.request.UserUpdateRequest;
 import com.synapseops.orchestrator.domain.dto.response.UserResponse;
 import com.synapseops.orchestrator.domain.entity.Role;
@@ -76,14 +77,20 @@ public class UserController {
         return userService.updateUserByAdmin(id, request).map(ResponseEntity::ok);
     }
 
-    @Operation(summary = "Activar/desactivar usuario (Admin)")
-    @ApiResponse(responseCode = "200", description = "Estado actualizado")
-    @PatchMapping("/{id}/toggle-status")
+    @Operation(summary = "Activar/desactivar usuario (Admin)",
+            description = "Establece el estado de la cuenta de forma idempotente. "
+                    + "El cuerpo indica explícitamente el estado deseado (enabled true/false).")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Estado actualizado"),
+            @ApiResponse(responseCode = "400", description = "Cuerpo inválido"),
+            @ApiResponse(responseCode = "404", description = "No existe")
+    })
+    @PatchMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
-    public Mono<ResponseEntity<String>> toggleUserStatus(@PathVariable Long id) {
-        return userService.toggleUserStatus(id)
-                .thenReturn(ResponseEntity.ok(
-                        "Estado del usuario actualizado correctamente."));
+    public Mono<ResponseEntity<UserResponse>> setUserStatus(
+            @PathVariable Long id,
+            @Valid @RequestBody UserStatusUpdateRequest request) {
+        return userService.setUserEnabled(id, request.enabled()).map(ResponseEntity::ok);
     }
 
     @Operation(summary = "Ver mi perfil")

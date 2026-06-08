@@ -1,13 +1,8 @@
 <div align="center">
 
-```
-███████╗██╗   ██╗███╗   ██╗ █████╗ ██████╗ ███████╗███████╗ ██████╗ ██████╗ ███████╗
-██╔════╝╚██╗ ██╔╝████╗  ██║██╔══██╗██╔══██╗██╔════╝██╔════╝██╔═══██╗██╔══██╗██╔════╝
-███████╗ ╚████╔╝ ██╔██╗ ██║███████║██████╔╝███████╗█████╗  ██║   ██║██████╔╝███████╗
-╚════██║  ╚██╔╝  ██║╚██╗██║██╔══██║██╔═══╝ ╚════██║██╔══╝  ██║   ██║██╔═══╝ ╚════██║
-███████║   ██║   ██║ ╚████║██║  ██║██║     ███████║███████╗╚██████╔╝██║     ███████║
-╚══════╝   ╚═╝   ╚═╝  ╚═══╝╚═╝  ╚═╝╚═╝     ╚══════╝╚══════╝ ╚═════╝ ╚═╝     ╚══════╝
-```
+<img src="https://github.com/Tunkifloo/SynapseOps-platform/blob/847b979ceca5c1dcfdf6a68d3a6e761ca3ff09be/frontend/src/assets/synapseops-logo.png" width="130" alt="SynapseOps logo" />
+
+# SynapseOps
 
 **Low-Code MLOps Platform for Academic Environments**
 
@@ -140,7 +135,7 @@ SynapseOps es una plataforma web **low-code basada en contenedores** que elimina
 ### 1. Clonar el repositorio
 
 ```bash
-git clone https://github.com/tu-usuario/SynapseOps.git
+git clone https://github.com/Tunkifloo/SynapseOps-platform.git
 cd SynapseOps
 ```
 
@@ -185,6 +180,36 @@ docker compose up -d --build
 # Verificar que todos los servicios están healthy
 docker compose ps
 ```
+
+### 3.1. Despliegue CPU vs GPU (NVIDIA)
+
+El `ml-engine` entrena en **CPU por defecto** y detecta GPU automáticamente
+(`tf.config` / `torch.cuda`); si no hay GPU, hace *fallback* a CPU sin cambios.
+
+**CPU (laboratorio estándar, default):**
+```bash
+docker compose up -d --build
+# Imagen ml-engine ~5-7 GB (usa tensorflow-cpu; NO arrastra librerías CUDA).
+```
+
+**GPU (PC/labs con NVIDIA RTX):**
+```bash
+# Requisitos del host: driver NVIDIA + NVIDIA Container Toolkit.
+#   - Linux: instalar nvidia-container-toolkit y reiniciar Docker.
+#   - Windows: Docker Desktop con backend WSL2 + driver NVIDIA reciente
+#     (la GPU se expone a los contenedores vía WSL2; sin pasos extra de toolkit).
+
+# Construye la imagen GPU (TensorFlow[and-cuda] + PyTorch CUDA cu121) y levanta:
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml build ml-engine
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+
+# Verifica en logs que usa la GPU:
+docker compose logs ml-engine | grep -E "TF GPU|CUDA:"   # vs "Usando CPU"
+```
+
+> El override `docker-compose.gpu.yml` cambia el build-arg `REQUIREMENTS` a
+> `requirements-gpu.txt` y reserva la GPU (`deploy.resources` + vars NVIDIA).
+> ⚠️ La imagen GPU es grande (~varios GB extra por CUDA): asegura disco libre.
 
 ### 4. Verificar el despliegue
 
@@ -379,20 +404,120 @@ SynapseOps/
 
 ## Datasets Soportados
 
-| Tipo | Método | Ejemplo |
+| Tipo | Método | Detalle |
 |------|--------|---------|
-| **Keras Built-in** | `{ "kerasDataset": "mnist" }` | MNIST, Fashion MNIST, CIFAR-10, CIFAR-100 |
-| **HTTP URL** | `{ "url": "https://..." }` | Archivo `.zip` de imágenes |
-| **File Upload** | `multipart/form-data` | `.zip`, `.png`, `.jpg`, `.jpeg` |
+| **Built-in (Keras)** | `keras://mnist`, `keras://fashion_mnist` | Cargados como numpy (sin TensorFlow), desde mirror HTTPS fiable. 28×28×1, 10 clases. |
+| **URL** | `{ "url": "https://…/data.zip" }` | `.zip` de imágenes público. Servicio **blindado**: valida tipo de contenido, sigue redirecciones, detecta páginas HTML/login (p. ej. Kaggle), tope de tamaño y anti *zip-slip*. |
+| **Subida ZIP** | `multipart/form-data` | `.zip` con imágenes; también `.png/.jpg/.jpeg` sueltas. |
+
+**Autodetección de esquema** (datasets propios, ZIP/URL): el `ml-engine` reconoce
+automáticamente dos *layouts* y **detecta nº de clases y `input_shape`**:
+1. **Splits explícitos:** `train/<clase>/*` + `(val|validation)/<clase>/*` `[+ test/<clase>/*]`.
+2. **Carpetas-clase planas:** `<clase>/*` → auto-split (ratio configurable en el nodo Split).
+
+Guardrails de memoria (entorno 8 GB): ≤ 50 clases, ≤ 20 000 imágenes, ≥ 2 clases.
 
 ---
 
-## Frameworks de Entrenamiento
+## Frameworks y CNN
 
-| Framework | Arquitecturas disponibles | Formato de artefacto |
-|-----------|--------------------------|---------------------|
-| **TensorFlow / Keras** | `cnn`, `cnn_adaptive`, `resnet_mini` | `.keras` |
-| **PyTorch** | `cnn`, `resnet_mini` | `.pt` |
+| Framework | Arquitectura | Artefacto |
+|-----------|--------------|-----------|
+| **TensorFlow / Keras** | `cnn` (adaptativa) | `.keras` |
+| **PyTorch** | `cnn` (adaptativa) | `.pt` |
+
+Ambos frameworks comparten la **misma CNN adaptativa** y exponen las mismas
+opciones (optimizador, BatchNorm, Early Stopping, Data Augmentation,
+normalización). El `num_classes` y el `input_shape` se **autodetectan** del dataset.
+
+---
+
+## ML Engine y CNN Adaptativa (en detalle)
+
+### Arquitectura del ML Engine (FastAPI + Kafka)
+
+El `ml-engine` es un servicio FastAPI que consume trabajos de entrenamiento de
+Kafka y los ejecuta con un **Template Method + Strategy**:
+
+```
+Kafka topic mlops.pipeline.requests
+        │  (consumer daemon thread, procesamiento serial)
+        ▼
+PipelineExecutor.execute(job)        ← Template Method (pasos fijos)
+   1. Ingesta      → ingestion.load_dataset(...)   (carga + normalización + split)
+   2. Preprocess   → normalización {minmax|zscore|rescale} + (augmentation en train)
+   3. Split        → train/val/test (explícito o auto por trainRatio)
+   4. Entrenar     → TensorFlowStrategy | PyTorchStrategy   ← Strategy
+   5. Métricas     → sklearn (precision/recall/f1/roc-auc) + matriz de confusión
+   6. Registrar    → MLflow (params, métricas, artefacto, versión del modelo)
+        │
+        ├── Eventos por fase  →  Kafka mlops.pipeline.logs  →  SSE (consola en vivo)
+        └── Resultado final   →  Kafka mlops.pipeline.results → orquestador (BD)
+```
+
+- **Selección de framework:** `_select_strategy(job.framework)` (factory) elige
+  `TensorFlowStrategy` o `PyTorchStrategy`. El executor no conoce detalles del framework.
+- **Streaming de logs:** cada fase y cada época emiten un evento (`LogProducer`,
+  con *flush* inmediato) que el orquestador reenvía por SSE a la consola del lienzo.
+- **Autodetección de hardware:** `tf.config` / `torch.cuda` → GPU si existe, si no CPU.
+
+### La CNN adaptativa
+
+Una única CNN que **se adapta al `input_shape` detectado** (no requiere que el
+usuario defina capas):
+
+- **Bloques convolucionales según resolución:**
+  - Entrada pequeña (H ≤ 32, p. ej. 28×28 MNIST): **2 bloques** Conv→(BN)→ReLU→MaxPool con 32, 64 filtros.
+  - Entrada mayor (H > 32, imágenes a color): **3 bloques** con 32, 64, 128 filtros.
+- **Cabezal:** `GlobalAveragePooling → Dense(128, ReLU) → Dropout(0.4) → Dense(num_classes, softmax)`.
+- **Adaptación de canales:** acepta 1 canal (escala de grises) o 3 (RGB) automáticamente.
+- **`num_classes`** = autodetectado del dataset (la última capa se dimensiona sola).
+
+### Opciones de entrenamiento (configurables por nodo)
+
+| Opción | Nodo | Valores | Efecto |
+|--------|------|---------|--------|
+| **Optimizador** | Entrenamiento | `adam` · `adamw` · `sgd` (momentum) · `rmsprop` | Algoritmo de optimización. |
+| **Batch Normalization** | Entrenamiento | on/off | Inserta `BatchNorm` tras cada conv (estabiliza/acelera). |
+| **Early Stopping** | Entrenamiento | on/off + paciencia + monitor (`val_loss`/`val_accuracy`) | Detiene si no mejora; **restaura los mejores pesos**. |
+| **Data Augmentation** | Preprocesamiento | on/off | TF: `RandomFlip/Rotation/Zoom`; PyTorch: flip aleatorio por lote. |
+| **Normalización** | Preprocesamiento | `minmax [0,1]` · `zscore (media/σ)` · `rescale [-1,1]` | Escalado de píxeles. |
+| **Tamaño de imagen** | Preprocesamiento | px (datasets propios) | *Resize* de entrada. |
+| **% Train** | Split | 50–90 | Ratio del auto-split (datasets sin splits explícitos). |
+
+### Métricas registradas (por modelo/versión)
+
+- **Entrenamiento/validación:** `accuracy`/`loss` (train) y `val_accuracy`/`val_loss` (Keras por época).
+- **Avanzadas (sklearn, sobre val y test):** `precision`, `recall`, `f1` (macro), `roc_auc` (OVR macro).
+- **Matriz de confusión:** se registra como tag JSON y se renderiza interactiva en *Detalles del modelo*.
+
+> El encabezado de cada versión prioriza **test → val → train accuracy** (métrica
+> honesta de desempeño); el detalle muestra todos los hiperparámetros + métricas.
+
+---
+
+## Lienzo Low-Code (Sprint 2)
+
+El módulo **Lienzo** es el centro operativo: se arrastran/tocan nodos
+(Ingesta → Preprocesamiento → Split → Entrenamiento → Despliegue), se conectan en
+orden y se ejecuta todo con **"Iniciar flujo"**:
+
+- **Validación del grafo** antes de ejecutar: nodos presentes y **conectados en
+  orden**, sin duplicados, todos configurados y con dataset asignado (mensajes claros).
+- **Estados por nodo en vivo** (Idle → Running → Success/Error) mapeados a las
+  fases reales que emite el ml-engine por SSE.
+- **Consola de logs persistente** (siempre visible, desglosable; reanuda el
+  historial al volver a la vista vía *replay* SSE).
+- **Edición a prueba de errores:** borrador automático del lienzo, indicador de
+  cambios sin guardar, aviso al salir y guardia por nodo.
+- **Gestión de dataset** desde el **nodo Ingesta** (built-in / URL / ZIP) y de
+  **pipelines** (crear/renombrar/eliminar) desde el propio Lienzo.
+
+Módulos relacionados:
+- **Espacios de trabajo:** CRUD de proyectos + listados detallados (pipelines,
+  dataset, **historial de ejecuciones**).
+- **Mis modelos:** registro de modelos del usuario (versiones, métricas, stage,
+  *deploy handoff*, eliminar) con RBAC por workspace.
 
 ---
 
@@ -426,25 +551,46 @@ POST   /api/v1/workspaces/{wId}/pipelines/{pId}/execute
 GET    /api/v1/workspaces/{wId}/pipelines/{pId}/executions
 GET    /api/v1/workspaces/{wId}/pipelines/{pId}/executions/{eId}
 
+GET    /api/v1/workspaces/{wId}/pipelines/{pId}/canvas        # topología (HU-024)
+PUT    /api/v1/workspaces/{wId}/pipelines/{pId}/canvas
+GET    /api/v1/workspaces/{wId}/pipelines/{pId}/executions/{eId}/logs   # SSE (replay)
+
+# Perfil propio
+GET    /api/v1/users/me
+PUT    /api/v1/users/me
+PATCH  /api/v1/users/me/password
+
+# Mis modelos (registro con alcance de workspace — RBAC DN-3)
+GET    /api/v1/workspaces/{wId}/models
+GET    /api/v1/workspaces/{wId}/models/{name}/versions
+GET    /api/v1/workspaces/{wId}/models/{name}/versions/{v}/details   # params + métricas + matriz
+DELETE /api/v1/workspaces/{wId}/models/{name}/versions/{v}
+POST   /api/v1/workspaces/{wId}/models/{name}/versions/{v}/stage     # None|Staging|Production|Archived
+
 GET    /api/v1/users
 POST   /api/v1/users
-PATCH  /api/v1/users/{id}/toggle-status
+PATCH  /api/v1/users/{id}            # body: {"enabled": bool} — activar/desactivar (idempotente)
 
+# Consola global de MLflow (solo ADMIN, lectura de gobierno)
 GET    /api/v1/mlflow/health
 GET    /api/v1/mlflow/experiments
 GET    /api/v1/mlflow/models
 GET    /api/v1/mlflow/models/{name}/versions
 GET    /api/v1/mlflow/runs/{runId}
-GET    /api/v1/mlflow/runs/{runId}/metrics
 ```
+
+> **`/execute`** acepta además (opcional): `optimizer`, `batchNorm`, `earlyStopping`,
+> `esPatience`, `esMonitor`, `normalization`, `dataAugmentation`, `imageSize`,
+> `trainRatio`. La gestión de escritura de modelos es **por workspace** (DN-3): el
+> ADMIN es solo-lectura sobre lo ajeno; el dueño gestiona lo suyo.
 
 ---
 
 ## Roadmap
 
 - [x] **Sprint 1** — Arquitectura base, backend-orchestrator, ml-engine, Kafka, MLflow, JWT/RBAC
-- [ ] **Sprint 2** — Canvas Drag & Drop (React Flow 5 nodos), WebSocket logs en tiempo real, UI completa
-- [ ] **Sprint 3** — Despliegue dinámico de model-service, dashboards Grafana, pruebas de carga JMeter/K6, cuestionario SUS (32 estudiantes)
+- [x] **Sprint 2** — Lienzo Drag & Drop (5 nodos) + **Iniciar flujo** (validación de grafo, ejecución del flujo completo, estados por nodo), **logs SSE en vivo** (con replay/historial), CRUD de modelos versionados con RBAC (Mis modelos), módulo Espacios de trabajo + historial de ejecuciones, perfil de usuario, mejoras de CNN (optimizador, BatchNorm, Early Stopping, Data Augmentation, normalizaciones), métricas avanzadas (precision/recall/f1/roc-auc) + matriz de confusión, dataset blindado (URL/ZIP), build CPU/GPU, tests (JUnit + Vitest)
+- [ ] **Sprint 3** — Despliegue dinámico de model-service (`/predict`), dashboards Grafana, pruebas de carga JMeter/K6, cuestionario SUS (32 estudiantes)
 
 ---
 

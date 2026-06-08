@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     kafka_group_id: str = "ml-engine-group"
     kafka_topic_requests: str = "mlops.pipeline.requests"
     kafka_topic_results: str = "mlops.pipeline.results"
+    kafka_topic_logs: str = "mlops.pipeline.logs"
 
     # MLflow
     mlflow_tracking_uri: str = "http://localhost:5000"

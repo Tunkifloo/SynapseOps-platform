@@ -1,0 +1,35 @@
+# Entornos virtuales y cachés locales (NO deben entrar a la imagen).
+# El .venv local pesaba ~3.2 GB y se copiaba a la imagen sin sentido.
+.venv
+venv
+env
+ENV
+
+# Bytecode / cachés de Python
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# Datos / artefactos locales (se montan como volúmenes, no van en la imagen)
+storage/
+.cache/
+*.keras
+*.pt
+*.h5
+
+# Tests y documentación (no se necesitan en runtime)
+tests/
+*.md
+
+# VCS / editor / SO
+.git/
+.gitignore
+.vscode/
+.idea/
+.DS_Store
+*.log

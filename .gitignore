@@ -45,3 +45,14 @@ ml-engine/.env
 # Logs
 /logs
 /logs/backend-orchestrator.log
+
+# Agents
+/.agents
+/.claude
+/graphify-out
+CLAUDE.md
+/docs
+/design-system
+
+# Storage
+/storage-dev

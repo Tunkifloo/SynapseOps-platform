@@ -7,9 +7,11 @@ import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.http.client.reactive.ReactorClientHttpConnector;
 import org.springframework.test.web.reactive.server.WebTestClient;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
+import reactor.netty.http.client.HttpClient;
 
 /**
  * Clase base para todos los tests de integración.
@@ -58,10 +60,13 @@ public abstract class AbstractIntegrationTest {
 
     @BeforeEach
     void initWebClient() {
+        // Conexión nueva por request (sin pool keep-alive): evita PrematureCloseException
+        // intermitente al reutilizar conexiones que el servidor Netty ya cerró.
+        HttpClient httpClient = HttpClient.newConnection();
         webTestClient = WebTestClient
-                .bindToServer()
+                .bindToServer(new ReactorClientHttpConnector(httpClient))
                 .baseUrl("http://localhost:" + port)
-                .responseTimeout(java.time.Duration.ofSeconds(10))
+                .responseTimeout(java.time.Duration.ofSeconds(30))
                 .build();
     }
 }

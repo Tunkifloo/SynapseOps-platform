@@ -2,7 +2,7 @@
 # Contrato de comandos compartido entre desarrollador y Gitea Actions CI/CD
 
 .PHONY: lint lint-backend lint-frontend \
-        test test-it test-frontend \
+        test test-it test-frontend test-ml \
         build \
         docker-build clean all help
 
@@ -49,17 +49,21 @@ test:
 	cd $(BACKEND_DIR) && ./mvnw test -Punit -q
 	@echo "✔  Tests unitarios backend completados"
 
-# ── 2b. TESTS UNITARIOS FRONTEND (pendiente — Alfredo) ───────────────────────
-# TODO: habilitar cuando Alfredo implemente Vitest + RTL (Sprint 2)
-# Requiere: npm install --save-dev vitest @testing-library/react jsdom
+# ── 2b. TESTS UNITARIOS FRONTEND ───────────────────────
 test-frontend:
 	@echo ">> [TEST-FRONTEND] Verificando configuración de Vitest..."
 	@if cd $(FRONTEND_DIR) && npm run test --if-present -- --run --silent 2>/dev/null; then \
 		echo "✔  Tests frontend completados"; \
 	else \
 		echo "⚠  Tests frontend aún no configurados (pendiente Alfredo — Sprint 2)"; \
-		echo "   Para habilitar: cd Frontend && npm install --save-dev vitest @testing-library/react jsdom"; \
+		echo "   Para habilitar: cd frontend && npm install --save-dev vitest @testing-library/react jsdom"; \
 	fi
+
+# ── 2c. TESTS UNITARIOS ML-ENGINE (pytest — ingesta, sin TensorFlow) ──────────
+test-ml:
+	@echo ">> [TEST-ML] ml-engine — pytest (ingesta de datasets)"
+	cd $(ML_ENGINE_DIR) && python -m pytest tests/ -q
+	@echo "✔  Tests ml-engine completados"
 
 # ── 3. TESTS DE INTEGRACIÓN (requiere daemon Docker WSL2) ─────────────────────
 test-it:

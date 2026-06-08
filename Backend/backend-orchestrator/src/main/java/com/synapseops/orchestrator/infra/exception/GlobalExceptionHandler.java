@@ -1,8 +1,9 @@
 package com.synapseops.orchestrator.infra.exception;
 
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
-import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.DisabledException;
@@ -10,12 +11,12 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.bind.support.WebExchangeBindException;
 import org.springframework.web.server.ServerWebExchange;
-import reactor.core.publisher.Mono;
 
 import java.net.URI;
 import java.time.Instant;
 import java.util.stream.Collectors;
 
+@Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
@@ -48,14 +49,15 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(IllegalStateException.class)
-    public Mono<ResponseEntity<ProblemDetail>> handleIllegalState(
-            IllegalStateException ex, ServerWebExchange exchange) {
+    public ProblemDetail handleIllegalState(IllegalStateException ex,
+                                            ServerWebExchange exchange) {
         ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.BAD_REQUEST);
+        problem.setType(URI.create("/errors/business-rule"));
         problem.setTitle("Solicitud inválida");
         problem.setDetail(ex.getMessage());
-        problem.setInstance(URI.create(exchange.getRequest().getPath().value()));
         problem.setProperty("timestamp", Instant.now());
-        return Mono.just(ResponseEntity.status(HttpStatus.BAD_REQUEST).body(problem));
+        problem.setProperty("path", exchange.getRequest().getPath().value());
+        return problem;
     }
 
     @ExceptionHandler(BadCredentialsException.class)
@@ -110,12 +112,45 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(Exception.class)
     public ProblemDetail handleGenericException(Exception ex,
                                                 ServerWebExchange exchange) {
+        // Auditoría (item 2): los 500 inesperados deben quedar en el log con causa y
+        // ruta. Antes se devolvía el ProblemDetail sin registrar nada → 500 silencioso.
+        log.error("Error inesperado en {} {}: {}",
+                exchange.getRequest().getMethod(),
+                exchange.getRequest().getPath().value(),
+                ex.toString(), ex);
         ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.INTERNAL_SERVER_ERROR);
         problem.setType(URI.create("/errors/internal"));
         problem.setTitle("Error interno del servidor");
         problem.setDetail("Ocurrió un error inesperado. Contacte al administrador.");
         problem.setProperty("timestamp", Instant.now());
         problem.setProperty("path", exchange.getRequest().getPath().value());
+        return problem;
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ProblemDetail handleDataIntegrity(DataIntegrityViolationException ex,
+                                             ServerWebExchange exchange) {
+        // Violación de restricción única/integridad (p. ej. carrera en username,
+        // email o nombre de workspace duplicado). Se traduce a 409 Conflict.
+        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.CONFLICT);
+        problem.setType(URI.create("/errors/conflict"));
+        problem.setTitle("Conflicto de datos");
+        problem.setDetail("El recurso ya existe o viola una restricción de unicidad.");
+        problem.setProperty("timestamp", Instant.now());
+        problem.setProperty("path", exchange.getRequest().getPath().value());
+        return problem;
+    }
+
+    @ExceptionHandler(ServiceUnavailableException.class)
+    public ProblemDetail handleServiceUnavailable(ServiceUnavailableException ex,
+                                                  ServerWebExchange exchange) {
+        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.SERVICE_UNAVAILABLE);
+        problem.setType(URI.create("/errors/service-unavailable"));
+        problem.setTitle("Servicio no disponible temporalmente");
+        problem.setDetail(ex.getMessage());
+        problem.setProperty("timestamp", Instant.now());
+        problem.setProperty("path", exchange.getRequest().getPath().value());
+        problem.setProperty("retryable", true);
         return problem;
     }
 

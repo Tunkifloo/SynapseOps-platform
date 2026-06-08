@@ -1,7 +1,8 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
-@import "@fontsource-variable/figtree";
+/* Las fuentes self-hosted se importan desde main.tsx (import JS) para que Vite
+   resuelva y empaquete los .woff2 en dist/ — RN-008 (funcionamiento offline). */
 
 @custom-variant dark (&:is(.dark *));
 
@@ -10,43 +11,74 @@ html, body, #root {
   height: 100%;
   margin: 0;
   padding: 0;
-  background-color: #0f172a;
 }
+/* Color base pre-hidratación (evita flash). Coincide con --background light. */
+html { background-color: #f8fafc; }
 
+/* ───────────────────────────────────────────────────────────────────────────
+   SynapseOps Design System — tokens
+   Estilo: Light SaaS técnico (maquetado) — superficies claras + sidebar navy.
+   Marca: azul #00BBFF (primary/datos/foco) + naranja #FF6A00 (CTA/acción).
+   Sidebar navy #0F172A con acento de ítem activo en naranja.
+   Estados de pipeline (HU-019): info=running, success, warning, destructive=error.
+   ─────────────────────────────────────────────────────────────────────────── */
 @theme inline {
-  --font-heading: var(--font-sans);
-  --font-sans: 'Figtree Variable', sans-serif;
-  --color-sidebar-ring: var(--sidebar-ring);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar: var(--sidebar);
-  --color-chart-5: var(--chart-5);
-  --color-chart-4: var(--chart-4);
-  --color-chart-3: var(--chart-3);
-  --color-chart-2: var(--chart-2);
-  --color-chart-1: var(--chart-1);
-  --color-ring: var(--ring);
-  --color-input: var(--input);
-  --color-border: var(--border);
-  --color-destructive: var(--destructive);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-accent: var(--accent);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-muted: var(--muted);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-secondary: var(--secondary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-primary: var(--primary);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-popover: var(--popover);
-  --color-card-foreground: var(--card-foreground);
-  --color-card: var(--card);
-  --color-foreground: var(--foreground);
+  --font-heading: 'Poppins', ui-sans-serif, system-ui, sans-serif;
+  --font-sans: 'Poppins', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono Variable', ui-monospace, 'SFMono-Regular', monospace;
+
+  /* superficies / texto */
   --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+
+  /* marca / acentos */
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-cta: var(--cta);
+  --color-cta-foreground: var(--cta-foreground);
+
+  /* estados semánticos (badges, nodos del lienzo, toasts) */
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+
+  /* bordes / inputs / foco */
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* data-viz */
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  /* sidebar */
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -56,73 +88,109 @@ html, body, #root {
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/* ── Tema CLARO (por defecto · maquetado SynapseOps) ──────────────────────── */
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --radius: 0.75rem;                              /* 12px; tarjetas ~16px (radius-xl) */
+
+  --background: #f8fafc;                           /* slate-50 (fondo de la app) */
+  --foreground: #161c27;                           /* on-surface (texto principal) */
+  --card: #ffffff;
+  --card-foreground: #161c27;
+  --popover: #ffffff;
+  --popover-foreground: #161c27;
+
+  /* ── Identidad de marca: azul #00BBFF (primary) + naranja #FF6A00 (CTA) ── */
+  --primary: #00bbff;                              /* azul de marca */
+  --primary-foreground: #04263a;                   /* texto oscuro sobre cian brillante */
+  --secondary: #f1f5f9;                            /* slate-100 */
+  --secondary-foreground: #1e293b;                 /* slate-800 */
+  --muted: #f1f5f9;
+  --muted-foreground: #64748b;                     /* slate-500 */
+  --accent: #e6f7ff;                               /* tinte azul claro */
+  --accent-foreground: #075985;                    /* sky-800 */
+
+  --cta: #ff6a00;                                  /* naranja de marca (acción primaria) */
+  --cta-foreground: #ffffff;
+
+  --success: #10b981;                              /* emerald-500 */
+  --success-foreground: #052e1b;
+  --warning: #f59e0b;                              /* amber-500 */
+  --warning-foreground: #3b2300;
+  --info: #00bbff;                                 /* azul de marca (running) */
+  --info-foreground: #04263a;
+  --destructive: #dc2626;                          /* red-600 */
+  --destructive-foreground: #ffffff;
+
+  --border: #e2e8f0;                               /* slate-200 */
+  --input: #e2e8f0;
+  --ring: #00bbff;                                 /* foco azul de marca */
+
+  --chart-1: #00bbff;                              /* blue (marca) */
+  --chart-2: #38bdf8;                              /* sky */
+  --chart-3: #10b981;                              /* emerald */
+  --chart-4: #ff6a00;                              /* orange (marca) */
+  --chart-5: #8b5cf6;                              /* violet */
+
+  /* Sidebar navy del maquetado (#0F172A) con acento activo naranja */
+  --sidebar: #0f172a;
+  --sidebar-foreground: #94a3b8;                   /* slate-400 (ítems inactivos) */
+  --sidebar-primary: #ff6a00;                      /* acento de ítem activo (naranja) */
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: rgba(255, 255, 255, 0.06);     /* hover/activo sutil */
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: rgba(255, 255, 255, 0.10);
+  --sidebar-ring: #00bbff;
 }
 
+/* ── Tema OSCURO (por defecto · dark-first) ───────────────────────────────── */
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
+  --background: oklch(0.18 0.035 265);            /* slate-950 profundo */
+  --foreground: oklch(0.984 0.003 247);           /* slate-50 */
+  --card: oklch(0.23 0.04 265);                   /* slate-900 */
+  --card-foreground: oklch(0.984 0.003 247);
+  --popover: oklch(0.23 0.04 265);
+  --popover-foreground: oklch(0.984 0.003 247);
+
+  /* ── Identidad de marca SynapseOps: azul #00BBFF (primary) + naranja #FF6A00 (CTA) ── */
+  --primary: #00BBFF;                             /* azul de marca */
+  --primary-foreground: #04263a;                  /* texto oscuro sobre azul brillante */
+  --secondary: oklch(0.29 0.04 264);              /* slate-800 */
+  --secondary-foreground: oklch(0.984 0.003 247);
+  --muted: oklch(0.29 0.04 264);
+  --muted-foreground: oklch(0.71 0.03 257);       /* slate-400 */
+  --accent: oklch(0.32 0.05 264);
+  --accent-foreground: oklch(0.984 0.003 247);
+
+  --cta: #FF6A00;                                 /* naranja de marca */
+  --cta-foreground: #ffffff;
+
+  --success: oklch(0.70 0.17 162);                /* emerald */
+  --success-foreground: oklch(0.18 0.04 162);
+  --warning: #FF6A00;                             /* naranja de marca */
+  --warning-foreground: oklch(0.2 0.03 265);
+  --info: #00BBFF;                                /* azul de marca */
+  --info-foreground: #04263a;
+  --destructive: oklch(0.68 0.20 25);             /* red */
+  --destructive-foreground: oklch(0.985 0.01 20);
+
+  --border: oklch(1 0 0 / 12%);
   --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --ring: #00BBFF;                                /* foco azul de marca */
+
+  --chart-1: oklch(0.62 0.188 259.8);             /* blue */
+  --chart-2: oklch(0.715 0.135 215);              /* cyan */
+  --chart-3: oklch(0.70 0.17 162);                /* emerald */
+  --chart-4: oklch(0.80 0.15 80);                 /* amber */
+  --chart-5: oklch(0.65 0.20 292);                /* violet */
+
+  --sidebar: oklch(0.16 0.035 265);               /* más oscuro que el fondo */
+  --sidebar-foreground: oklch(0.86 0.02 257);
+  --sidebar-primary: oklch(0.62 0.188 259.8);
+  --sidebar-primary-foreground: oklch(0.985 0.003 247);
+  --sidebar-accent: oklch(0.29 0.04 264);
+  --sidebar-accent-foreground: oklch(0.984 0.003 247);
+  --sidebar-border: oklch(1 0 0 / 8%);
+  --sidebar-ring: oklch(0.62 0.188 259.8);
 }
 
 @layer base {
@@ -130,9 +198,57 @@ html, body, #root {
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground font-sans antialiased;
   }
   html {
     @apply font-sans;
   }
+  /* Oculta el control nativo de revelar/limpiar contraseña (Edge/IE) para no
+     duplicar nuestro propio botón de ojo en los formularios. */
+  input::-ms-reveal,
+  input::-ms-clear {
+    display: none;
+  }
+}
+
+/* ── React Flow — adaptación al tema (HU-001) ─────────────────────────────── */
+.react-flow__controls {
+  border-radius: 0.75rem;
+  overflow: hidden;
+  box-shadow: 0 6px 16px rgb(0 0 0 / 0.35);
+}
+.react-flow__controls-button {
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+  color: var(--foreground);
+}
+.react-flow__controls-button:hover {
+  background: var(--accent);
+}
+.react-flow__controls-button svg {
+  fill: currentColor;
+}
+.react-flow__minimap {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+}
+.react-flow__edge-path {
+  stroke: var(--muted-foreground);
+  stroke-width: 1.5;
+}
+.react-flow__edge.selected .react-flow__edge-path,
+.react-flow__edge:hover .react-flow__edge-path {
+  stroke: var(--primary);
+}
+.react-flow__attribution {
+  background: transparent;
+  color: var(--muted-foreground);
+}
+
+/* ── Patrón de puntos (fondos de auth y vacíos, estilo maquetado) ─────────── */
+.bg-dots {
+  background-color: #f8fafc;
+  background-image: radial-gradient(#cbd5e1 1px, transparent 1px);
+  background-size: 24px 24px;
 }

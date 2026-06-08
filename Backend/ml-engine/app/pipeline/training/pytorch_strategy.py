@@ -4,10 +4,11 @@ CNN adaptativa al input_shape detectado por ingestion.
 """
 import logging
 from pathlib import Path
+from typing import Optional
 
 import numpy as np
 
-from app.pipeline.training.base import HyperParams, TrainingResult, TrainingStrategy
+from app.pipeline.training.base import EpochCallback, HyperParams, TrainingResult, TrainingStrategy
 
 log = logging.getLogger(__name__)
 
@@ -28,6 +29,9 @@ class PyTorchStrategy(TrainingStrategy):
         y_val:   np.ndarray,
         hyperparams: HyperParams,
         output_dir: str,
+        X_test: Optional[np.ndarray] = None,
+        y_test: Optional[np.ndarray] = None,
+        on_epoch: Optional[EpochCallback] = None,
     ) -> TrainingResult:
         import torch
         import torch.nn as nn
@@ -52,16 +56,23 @@ class PyTorchStrategy(TrainingStrategy):
             TensorDataset(Xtr, ytr),
             batch_size=hyperparams.batch_size, shuffle=True)
         model     = self._build_cnn(hyperparams).to(device)
-        optimizer = torch.optim.Adam(
-            model.parameters(), lr=hyperparams.learning_rate)
+        optimizer = self._build_optimizer(model, hyperparams)
         criterion = nn.CrossEntropyLoss()
 
         history = {"accuracy": [], "loss": [], "val_accuracy": [], "val_loss": []}
+        # Early Stopping manual (item 6).
+        best_metric = None
+        best_state = None
+        epochs_no_improve = 0
 
         for epoch in range(hyperparams.epochs):
             model.train()
             ep_loss, correct, total = 0.0, 0, 0
             for xb, yb in loader:
+                if hyperparams.data_augmentation:
+                    # Augmentation ligera: flip horizontal aleatorio del lote.
+                    if torch.rand(1).item() < 0.5:
+                        xb = torch.flip(xb, dims=[3])
                 optimizer.zero_grad()
                 out  = model(xb)
                 loss = criterion(out, yb)
@@ -88,6 +99,55 @@ class PyTorchStrategy(TrainingStrategy):
             log.info("Epoch %d/%d loss=%.4f acc=%.4f val_acc=%.4f",
                      epoch + 1, hyperparams.epochs, avg_loss, acc, vacc)
 
+            if on_epoch is not None:
+                on_epoch(epoch + 1, hyperparams.epochs, {
+                    "loss": avg_loss, "accuracy": acc,
+                    "val_loss": vloss, "val_accuracy": vacc,
+                })
+
+            # Early Stopping (item 6): monitor val_loss (min) o val_accuracy (max).
+            if hyperparams.early_stopping:
+                monitor_val = vacc if hyperparams.es_monitor == "val_accuracy" else vloss
+                improved = (best_metric is None) or (
+                    monitor_val > best_metric if hyperparams.es_monitor == "val_accuracy"
+                    else monitor_val < best_metric)
+                if improved:
+                    best_metric = monitor_val
+                    best_state = {k: v.detach().clone() for k, v in model.state_dict().items()}
+                    epochs_no_improve = 0
+                else:
+                    epochs_no_improve += 1
+                    if epochs_no_improve >= max(1, hyperparams.es_patience):
+                        log.info("EarlyStopping en epoch %d (monitor=%s)", epoch + 1, hyperparams.es_monitor)
+                        break
+
+        # Restaura los mejores pesos si hubo early stopping.
+        if best_state is not None:
+            model.load_state_dict(best_state)
+
+        # Predicciones de validación para métricas avanzadas (item 7).
+        model.eval()
+        with torch.no_grad():
+            val_logits = model(Xv)
+            val_proba = torch.softmax(val_logits, dim=1).cpu().numpy()
+        val_pred = val_proba.argmax(axis=1)
+
+        # Evaluación final sobre el split de test (si lo hay).
+        test_accuracy = test_loss = None
+        test_true = test_pred = test_proba = None
+        if X_test is not None and y_test is not None and len(X_test) > 0:
+            Xte = torch.tensor(np.transpose(X_test, (0, 3, 1, 2)), dtype=torch.float32).to(device)
+            yte = torch.tensor(y_test, dtype=torch.long).to(device)
+            model.eval()
+            with torch.no_grad():
+                out = model(Xte)
+                test_loss = float(criterion(out, yte).item())
+                test_accuracy = float((out.argmax(1) == yte).float().mean().item())
+                test_proba = torch.softmax(out, dim=1).cpu().numpy()
+            test_pred = test_proba.argmax(axis=1)
+            test_true = np.asarray(y_test)
+            log.info("Evaluación en test — loss=%.4f acc=%.4f", test_loss, test_accuracy)
+
         artifact_path = str(Path(output_dir) / "model.pt")
         torch.save({
             "state_dict":  model.state_dict(),
@@ -102,36 +162,48 @@ class PyTorchStrategy(TrainingStrategy):
             artifact_path=artifact_path,
             final_accuracy=history["accuracy"][-1],
             final_loss=history["loss"][-1],
+            test_accuracy=test_accuracy,
+            test_loss=test_loss,
+            val_true=np.asarray(y_val), val_pred=val_pred, val_proba=val_proba,
+            test_true=test_true, test_pred=test_pred, test_proba=test_proba,
         )
+
+    def _build_optimizer(self, model, hp: HyperParams):
+        import torch
+        lr = hp.learning_rate
+        opt = (hp.optimizer or "adam").lower()
+        if opt == "adamw":
+            return torch.optim.AdamW(model.parameters(), lr=lr)
+        if opt == "sgd":
+            return torch.optim.SGD(model.parameters(), lr=lr, momentum=0.9)
+        if opt == "rmsprop":
+            return torch.optim.RMSprop(model.parameters(), lr=lr)
+        return torch.optim.Adam(model.parameters(), lr=lr)
 
     def _build_cnn(self, hp: HyperParams):
         import torch.nn as nn
 
-        h, w, c  = hp.input_shape
-        is_small = h <= 32
+        h, w, c   = hp.input_shape
+        bn        = hp.batch_norm
+        filters   = [32, 64] if h <= 32 else [32, 64, 128]
+        divisor   = 4 if h <= 32 else 8
+
+        def block(cin, cout):
+            layers = [nn.Conv2d(cin, cout, 3, padding=1)]
+            if bn:
+                layers.append(nn.BatchNorm2d(cout))
+            layers += [nn.ReLU(), nn.MaxPool2d(2)]
+            return layers
 
         class CNN(nn.Module):
             def __init__(self):
                 super().__init__()
-                if is_small:
-                    self.features = nn.Sequential(
-                        nn.Conv2d(c, 32, 3, padding=1), nn.ReLU(),
-                        nn.MaxPool2d(2),
-                        nn.Conv2d(32, 64, 3, padding=1), nn.ReLU(),
-                        nn.MaxPool2d(2),
-                    )
-                    feat = 64 * (h // 4) * (w // 4)
-                else:
-                    self.features = nn.Sequential(
-                        nn.Conv2d(c, 32, 3, padding=1), nn.ReLU(),
-                        nn.MaxPool2d(2),
-                        nn.Conv2d(32, 64, 3, padding=1), nn.ReLU(),
-                        nn.MaxPool2d(2),
-                        nn.Conv2d(64, 128, 3, padding=1), nn.ReLU(),
-                        nn.MaxPool2d(2),
-                    )
-                    feat = 128 * (h // 8) * (w // 8)
-
+                seq, cin = [], c
+                for f in filters:
+                    seq += block(cin, f)
+                    cin = f
+                self.features = nn.Sequential(*seq)
+                feat = filters[-1] * (h // divisor) * (w // divisor)
                 self.classifier = nn.Sequential(
                     nn.Flatten(),
                     nn.Linear(feat, 256), nn.ReLU(),

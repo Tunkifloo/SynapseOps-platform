@@ -7,7 +7,22 @@ export interface LoginRequest {
 
 export interface ForgotPasswordRequest {
   username: string
+  email: string
+  /** Obligatorio para colaboradores (estudiantes); el backend lo valida según el rol. */
+  studentCode?: string
   newPassword: string
+}
+
+export interface SignupPayload {
+  username: string
+  name: string
+  paternalSurname: string
+  maternalSurname?: string
+  email: string
+  phone?: string
+  studentCode: string
+  career: string
+  password: string
 }
 
 export interface JwtClaims {

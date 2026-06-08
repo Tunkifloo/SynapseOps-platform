@@ -28,6 +28,10 @@ public class Pipeline {
     @Column(nullable = false, length = 20)
     private PipelineStatus status = PipelineStatus.DRAFT;
 
+    /** Topología del lienzo React Flow (nodos + aristas + configs) serializada (HU-024). */
+    @Column(name = "canvas_json", columnDefinition = "TEXT")
+    private String canvasJson;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "id_workspace", nullable = false)
     private Workspace workspace;

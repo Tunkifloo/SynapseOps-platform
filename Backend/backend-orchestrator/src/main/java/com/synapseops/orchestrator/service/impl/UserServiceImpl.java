@@ -47,10 +47,11 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public Mono<UserResponse> getUserById(Long id) {
+        // El admin debe poder consultar usuarios deshabilitados (soft-delete con visibilidad total).
         return Mono.fromCallable(() ->
-                userRepository.findByIdUserAndEnabledTrue(id)
+                userRepository.findById(id)
                         .map(userMapper::toResponse)
-                        .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado con ID: " + id))
+                        .orElseThrow(() -> new ResourceNotFoundException("Usuario", id))
         ).subscribeOn(Schedulers.boundedElastic());
     }
 
@@ -113,20 +114,19 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    public Mono<Void> toggleUserStatus(Long id) {
+    public Mono<UserResponse> setUserEnabled(Long id, boolean enabled) {
+        // Operación idempotente: se establece el estado deseado explícitamente.
+        // Usa dirty-checking de Hibernate (setEnabled + save), eliminando el bulk-update
+        // HQL frágil "SET u.enabled = NOT u.enabled" que provocaba el fallo de desactivación.
         return Mono.fromCallable(() -> {
             User user = userRepository.findById(id)
-                    .orElseThrow(() -> new ResourceNotFoundException(
-                            "Usuario no encontrado con ID: " + id));
+                    .orElseThrow(() -> new ResourceNotFoundException("Usuario", id));
 
-            int rows = userRepository.toggleEnabled(id);
-            if (rows == 0) {
-                throw new IllegalStateException(
-                        "No se actualizó ningún registro para el usuario ID: " + id);
-            }
-            log.info("Usuario ID={} → enabled toggled ({} rows)", id, rows);
-            return rows;
-        }).subscribeOn(Schedulers.boundedElastic()).then();
+            user.setEnabled(enabled);
+            UserResponse response = userMapper.toResponse(userRepository.save(user));
+            log.info("Usuario ID={} → enabled={}", id, enabled);
+            return response;
+        }).subscribeOn(Schedulers.boundedElastic());
     }
 
     private Flux<UserResponse> fetchUsers(Supplier<List<User>> query) {

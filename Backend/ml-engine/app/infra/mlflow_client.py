@@ -1,4 +1,6 @@
 import logging
+import time
+
 import mlflow
 from mlflow.tracking import MlflowClient
 
@@ -41,34 +43,44 @@ class MLflowFacade:
     def log_artifact(self, local_path: str) -> None:
         mlflow.log_artifact(local_path)
 
-    def register_model(self, run_id: str, model_name: str) -> str:
+    def register_model(self, run_id: str, model_name: str, max_retries: int = 3) -> str:
         """
-        Registra el modelo usando MlflowClient directamente.
-        Compatible con MLflow server 2.21.3 — evita fluent API de MLflow 3.x
+        Registra el modelo en el Model Registry usando MlflowClient directamente.
+        Compatible con MLflow server 2.21.3 — evita fluent API de MLflow 3.x.
+
+        El registro forma parte del criterio de éxito del pipeline: se reintenta
+        hasta `max_retries` veces y, si persiste el fallo, se lanza la excepción
+        para que el executor marque la ejecución como FAILED (no se enmascara).
         """
-        try:
-            # Crear modelo registrado si no existe
+        last_error: Exception | None = None
+        for attempt in range(1, max_retries + 1):
             try:
-                self._client.create_registered_model(model_name)
-                log.info("Modelo registrado creado: %s", model_name)
-            except Exception:
-                log.info("Modelo '%s' ya existe, creando nueva versión.", model_name)
+                # Crear modelo registrado si no existe (idempotente).
+                try:
+                    self._client.create_registered_model(model_name)
+                    log.info("Modelo registrado creado: %s", model_name)
+                except Exception:
+                    log.info("Modelo '%s' ya existe, creando nueva versión.", model_name)
 
-            # Crear versión apuntando al artefacto del run
-            artifact_uri = self._client.get_run(run_id).info.artifact_uri
-            source = f"{artifact_uri}/model"
+                artifact_uri = self._client.get_run(run_id).info.artifact_uri
+                source = f"{artifact_uri}/model"
 
-            mv = self._client.create_model_version(
-                name=model_name,
-                source=source,
-                run_id=run_id,
-            )
-            log.info("Versión registrada: %s → v%s", model_name, mv.version)
-            return mv.version
+                mv = self._client.create_model_version(
+                    name=model_name, source=source, run_id=run_id,
+                )
+                log.info("Versión registrada: %s → v%s", model_name, mv.version)
+                return mv.version
 
-        except Exception as e:
-            log.warning("register_model falló: %s — continuando con 'unregistered'", e)
-            return "unregistered"
+            except Exception as e:
+                last_error = e
+                log.warning("register_model intento %d/%d falló: %s",
+                            attempt, max_retries, e)
+                if attempt < max_retries:
+                    time.sleep(2 * attempt)   # backoff lineal
+
+        raise RuntimeError(
+            f"No se pudo registrar el modelo '{model_name}' en MLflow tras "
+            f"{max_retries} intentos: {last_error}")
 
     def end_run(self, status: str = "FINISHED") -> None:
         mlflow.end_run(status=status)

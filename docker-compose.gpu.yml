@@ -1,11 +1,25 @@
-# PC sin GPU (laboratorio estándar) — fallback automático a CPU en código
-# docker compose up -d
-
-# PC con NVIDIA + toolkit instalado
-# docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+# ── Override para entrenar con GPU NVIDIA (PC personal o labs con RTX) ──────────
+#
+# PC SIN GPU (laboratorio estándar): el código hace fallback automático a CPU.
+#   docker compose up -d
+#
+# PC CON GPU NVIDIA (driver + NVIDIA Container Toolkit instalados):
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml build ml-engine
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+#
+# El build-arg compila el ml-engine con TensorFlow[and-cuda] + PyTorch CUDA;
+# `deploy.resources` expone la GPU al contenedor. El executor autodetecta la GPU
+# (tf.config / torch.cuda) y entrena en ella; si no hay, usa CPU.
 
 services:
   ml-engine:
+    build:
+      args:
+        REQUIREMENTS: requirements-gpu.txt
+    environment:
+      # Asegura que CUDA sea visible dentro del contenedor.
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
     deploy:
       resources:
         reservations:

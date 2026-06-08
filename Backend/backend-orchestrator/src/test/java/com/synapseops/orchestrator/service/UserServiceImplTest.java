@@ -92,9 +92,9 @@ class UserServiceImplTest {
     class GetUserById {
 
         @Test
-        @DisplayName("Debe retornar el usuario cuando existe y está activo")
+        @DisplayName("Debe retornar el usuario cuando existe (incluye deshabilitados — visibilidad admin)")
         void shouldReturnUserWhenExists() {
-            when(userRepository.findByIdUserAndEnabledTrue(1L)).thenReturn(Optional.of(testUser));
+            when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
             when(userMapper.toResponse(testUser)).thenReturn(testUserResponse);
 
             StepVerifier.create(userService.getUserById(1L))
@@ -105,7 +105,7 @@ class UserServiceImplTest {
         @Test
         @DisplayName("Debe emitir error cuando el usuario no existe")
         void shouldEmitErrorWhenUserNotFound() {
-            when(userRepository.findByIdUserAndEnabledTrue(99L)).thenReturn(Optional.empty());
+            when(userRepository.findById(99L)).thenReturn(Optional.empty());
 
             StepVerifier.create(userService.getUserById(99L))
                     .expectError(ResourceNotFoundException.class)
@@ -114,28 +114,53 @@ class UserServiceImplTest {
     }
 
     @Nested
-    @DisplayName("toggleUserStatus()")
-    class ToggleUserStatus {
+    @DisplayName("setUserEnabled()")
+    class SetUserEnabled {
 
         @Test
-        @DisplayName("Debe deshabilitar un usuario activo")
+        @DisplayName("Debe deshabilitar un usuario activo (enabled=false)")
         void shouldDisableEnabledUser() {
             when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
-            when(userRepository.toggleEnabled(1L)).thenReturn(1);
+            when(userRepository.save(testUser)).thenReturn(testUser);
+            when(userMapper.toResponse(testUser)).thenReturn(testUserResponse);
 
-            StepVerifier.create(userService.toggleUserStatus(1L))
+            StepVerifier.create(userService.setUserEnabled(1L, false))
+                    .expectNext(testUserResponse)
                     .verifyComplete();
+
+            verify(userRepository).save(argThat(u -> !u.isEnabled()));
         }
 
         @Test
-        @DisplayName("Debe habilitar un usuario deshabilitado")
+        @DisplayName("Debe habilitar un usuario deshabilitado (enabled=true)")
         void shouldEnableDisabledUser() {
             testUser.setEnabled(false);
             when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
-            when(userRepository.toggleEnabled(1L)).thenReturn(1);
+            when(userRepository.save(testUser)).thenReturn(testUser);
+            when(userMapper.toResponse(testUser)).thenReturn(testUserResponse);
 
-            StepVerifier.create(userService.toggleUserStatus(1L))
+            StepVerifier.create(userService.setUserEnabled(1L, true))
+                    .expectNext(testUserResponse)
                     .verifyComplete();
+
+            verify(userRepository).save(argThat(User::isEnabled));
+        }
+
+        @Test
+        @DisplayName("Es idempotente: deshabilitar dos veces deja el mismo estado")
+        void shouldBeIdempotent() {
+            when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
+            when(userRepository.save(testUser)).thenReturn(testUser);
+            when(userMapper.toResponse(testUser)).thenReturn(testUserResponse);
+
+            StepVerifier.create(userService.setUserEnabled(1L, false))
+                    .expectNext(testUserResponse)
+                    .verifyComplete();
+            StepVerifier.create(userService.setUserEnabled(1L, false))
+                    .expectNext(testUserResponse)
+                    .verifyComplete();
+
+            verify(userRepository, times(2)).save(argThat(u -> !u.isEnabled()));
         }
 
         @Test
@@ -143,7 +168,7 @@ class UserServiceImplTest {
         void shouldEmitErrorWhenUserNotFound() {
             when(userRepository.findById(99L)).thenReturn(Optional.empty());
 
-            StepVerifier.create(userService.toggleUserStatus(99L))
+            StepVerifier.create(userService.setUserEnabled(99L, false))
                     .expectError(ResourceNotFoundException.class)
                     .verify();
         }

@@ -10,9 +10,11 @@ import java.util.List;
 import java.util.Optional;
 
 public interface PipelineExecutionRepository extends JpaRepository<PipelineExecution, Long> {
-    List<PipelineExecution> findByPipeline_IdPipelineOrderByStartedAtDesc(Long pipelineId);
     Optional<PipelineExecution> findByMlflowRunId(String mlflowRunId);
     List<PipelineExecution> findByStatus(ExecutionStatus status);
+
+    /** Nº de ejecuciones de un pipeline (sin tocar colecciones lazy fuera de sesión). */
+    long countByPipeline_IdPipeline(Long pipelineId);
 
     @Query("""
             SELECT e FROM PipelineExecution e

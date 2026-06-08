@@ -53,6 +53,19 @@ export const uploadDatasetFromUrl = async (
   return response.text()
 }
 
+export const registerKerasDataset = async (
+    token: string,
+    workspaceId: number,
+    kerasDataset: string,
+) => {
+  const response = await authorizedRequest(
+      `/workspaces/${workspaceId}/dataset/url`,
+      token,
+      { method: 'POST', body: JSON.stringify({ kerasDataset }) },
+  )
+  return response.text()
+}
+
 export const deleteDataset = (token: string, workspaceId: number, filename: string) => (
   sendVoid(`/workspaces/${workspaceId}/dataset/${filename}`, token, 'DELETE')
 )

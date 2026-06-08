@@ -1,7 +1,9 @@
-import type { ChangeEvent, FormEvent } from 'react'
+import { useState, type ChangeEvent, type FormEvent } from 'react'
 
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { Button } from '@/shared/components/ui/button'
+import { Input } from '@/shared/components/ui/input'
+import { Label } from '@/shared/components/ui/label'
+import { cn } from '@/lib/utils'
 
 import type { WorkspaceFormData } from '../types'
 
@@ -9,40 +11,78 @@ interface WorkspaceFormProps {
   form: WorkspaceFormData
   editingWorkspaceId: number | null
   isSaving: boolean
-  onChange: (field: keyof WorkspaceFormData) => (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => void
+  onChange: (
+    field: keyof WorkspaceFormData
+  ) => (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => void
   onSubmit: (event: FormEvent<HTMLFormElement>) => Promise<void>
   onCancel: () => void
 }
 
-function FieldLabel({ children }: { children: string }) {
-  return <label className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">{children}</label>
-}
+const MAX_NAME = 60
 
-export function WorkspaceForm({ form, editingWorkspaceId, isSaving, onChange, onSubmit, onCancel }: WorkspaceFormProps) {
+export function WorkspaceForm({
+  form,
+  editingWorkspaceId,
+  isSaving,
+  onChange,
+  onSubmit,
+  onCancel,
+}: WorkspaceFormProps) {
+  const [touched, setTouched] = useState(false)
+
+  const nameError = !form.name.trim()
+    ? 'El nombre del proyecto es obligatorio.'
+    : form.name.trim().length > MAX_NAME
+      ? `Máximo ${MAX_NAME} caracteres.`
+      : null
+  const showNameError = touched && nameError
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    setTouched(true)
+    if (nameError) {
+      event.preventDefault()
+      return
+    }
+    void onSubmit(event)
+  }
+
   return (
-    <form className="space-y-4" onSubmit={(event) => void onSubmit(event)}>
-      <div className="space-y-2">
-        <FieldLabel>Project Name</FieldLabel>
-        <Input value={form.name} onChange={onChange('name')} required />
+    <form className="space-y-4" onSubmit={handleSubmit} noValidate>
+      <div className="space-y-1.5">
+        <Label htmlFor="ws-name">Nombre del proyecto</Label>
+        <Input
+          id="ws-name"
+          value={form.name}
+          onChange={onChange('name')}
+          onBlur={() => setTouched(true)}
+          placeholder="Clasificador de imágenes"
+          autoFocus
+          aria-invalid={showNameError ? true : undefined}
+          className={cn('h-10', showNameError && 'border-destructive focus-visible:ring-destructive/30')}
+        />
+        {showNameError && <p className="text-xs font-medium text-destructive">{nameError}</p>}
       </div>
-      <div className="space-y-2">
-        <FieldLabel>Description</FieldLabel>
+
+      <div className="space-y-1.5">
+        <Label htmlFor="ws-desc">
+          Descripción <span className="font-normal text-muted-foreground">(opcional)</span>
+        </Label>
         <textarea
+          id="ws-desc"
           value={form.description}
           onChange={onChange('description')}
-          placeholder="Describe the workspace purpose"
-          className="min-h-28 w-full rounded-3xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus-visible:ring-[3px] focus-visible:ring-blue-500/30"
+          placeholder="Describe el propósito del proyecto"
+          className="min-h-24 w-full rounded-xl border border-input bg-card px-3 py-2.5 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/30"
         />
       </div>
-      <div className="flex gap-2">
-        <Button type="submit" disabled={isSaving}>
-          {isSaving ? 'Saving...' : editingWorkspaceId ? 'Update Project' : 'Create Project'}
+
+      <div className="flex justify-end gap-2 pt-1">
+        <Button type="button" variant="outline" onClick={onCancel}>
+          Cancelar
         </Button>
-        {editingWorkspaceId && (
-          <Button type="button" variant="outline" onClick={onCancel}>
-            Cancel Edit
-          </Button>
-        )}
+        <Button type="submit" variant="cta" loading={isSaving} disabled={touched && !!nameError}>
+          {editingWorkspaceId ? 'Guardar cambios' : 'Crear proyecto'}
+        </Button>
       </div>
     </form>
   )

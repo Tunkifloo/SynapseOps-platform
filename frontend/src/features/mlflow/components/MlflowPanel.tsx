@@ -1,263 +1,130 @@
-import { useCallback, useEffect, useState } from 'react'
-import { Activity, CheckCircle, XCircle, ChevronDown, ChevronRight, RefreshCw } from 'lucide-react'
+import { useCallback, useEffect, useState, type ComponentType, type ReactNode } from 'react'
+import { Activity, FlaskConical } from 'lucide-react'
 
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import {
-    getMlflowHealth,
-    getMlflowModelVersions,
-    getMlflowRunSummary,
-    listMlflowExperiments,
-    listMlflowModels,
-    type MlflowExperiment,
-    type MlflowModel,
-    type MlflowModelVersion,
-    type MlflowRunSummary,
-} from '../api'
+import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui/card'
+import { cn } from '@/lib/utils'
+import { getMlflowHealth, listMlflowExperiments, type MlflowExperiment } from '../api'
 
 interface MlflowPanelProps {
-    token: string
-    onAuthError: (error: unknown) => boolean
+  token: string
+  onAuthError: (error: unknown) => boolean
+}
+
+interface EmptyRegistryCardProps {
+  title: string
+  count: number
+  icon: ComponentType<{ className?: string }>
+  emptyTitle: string
+  emptyText: string
+  children?: ReactNode
+}
+
+function EmptyRegistryCard({ title, count, icon: Icon, emptyTitle, emptyText, children }: EmptyRegistryCardProps) {
+  return (
+    <Card className="py-0">
+      <CardContent className="space-y-4 p-5">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary ring-1 ring-primary/15">
+              <Icon className="size-5" />
+            </div>
+            <h3 className="font-heading text-lg font-semibold text-foreground">{title}</h3>
+          </div>
+          <span className="rounded-full bg-primary/10 px-4 py-1.5 text-sm font-semibold text-primary">{count}</span>
+        </div>
+
+        {count === 0 ? (
+          <div className="flex min-h-36 flex-col items-center justify-center rounded-xl border border-dashed border-border bg-muted/20 px-6 py-5 text-center">
+            <Icon className="mb-3 size-9 text-muted-foreground/60" />
+            <p className="text-base font-semibold text-foreground">{emptyTitle}</p>
+            <p className="mt-3 max-w-sm text-sm leading-6 text-muted-foreground">{emptyText}</p>
+          </div>
+        ) : (
+          children
+        )}
+      </CardContent>
+    </Card>
+  )
 }
 
 export function MlflowPanel({ token, onAuthError }: MlflowPanelProps) {
-    const [health, setHealth]             = useState<{ status: string; uri: string } | null>(null)
-    const [experiments, setExperiments]   = useState<MlflowExperiment[]>([])
-    const [models, setModels]             = useState<MlflowModel[]>([])
-    const [isLoading, setIsLoading]       = useState(true)
-    const [expandedModel, setExpandedModel] = useState<string | null>(null)
-    const [modelVersions, setModelVersions] = useState<Record<string, MlflowModelVersion[]>>({})
-    const [expandedRun, setExpandedRun]   = useState<string | null>(null)
-    const [runSummaries, setRunSummaries] = useState<Record<string, MlflowRunSummary>>({})
+  const [health, setHealth] = useState<{ status: string; uri: string } | null>(null)
+  const [experiments, setExperiments] = useState<MlflowExperiment[]>([])
 
-    const loadAll = useCallback(async () => {
-        setIsLoading(true)
-        try {
-            const [h, exps, mods] = await Promise.all([
-                getMlflowHealth(token),
-                listMlflowExperiments(token),
-                listMlflowModels(token),
-            ])
-            setHealth({ status: h.status, uri: h.uri })
-            setExperiments(exps)
-            setModels(mods)
-        } catch (err) {
-            if (!onAuthError(err)) { /* silenciar */ }
-        } finally {
-            setIsLoading(false)
-        }
-    }, [token, onAuthError])
-
-    useEffect(() => { void loadAll() }, [loadAll])
-
-    // Expandir modelo → cargar versiones
-    const toggleModel = async (modelName: string) => {
-        if (expandedModel === modelName) {
-            setExpandedModel(null)
-            return
-        }
-        setExpandedModel(modelName)
-        if (!modelVersions[modelName]) {
-            try {
-                const versions = await getMlflowModelVersions(token, modelName)
-                setModelVersions((prev) => ({ ...prev, [modelName]: versions }))
-            } catch { /* silenciar */ }
-        }
+  const loadAll = useCallback(async () => {
+    try {
+      const [h, exps] = await Promise.all([getMlflowHealth(token), listMlflowExperiments(token)])
+      setHealth({ status: h.status, uri: h.uri })
+      setExperiments(exps)
+    } catch (err) {
+      if (!onAuthError(err)) setExperiments([])
     }
+  }, [token, onAuthError])
 
-    // Expandir run → cargar métricas
-    const toggleRun = async (runId: string) => {
-        if (expandedRun === runId) {
-            setExpandedRun(null)
-            return
-        }
-        setExpandedRun(runId)
-        if (!runSummaries[runId]) {
-            try {
-                const summary = await getMlflowRunSummary(token, runId)
-                setRunSummaries((prev) => ({ ...prev, [runId]: summary }))
-            } catch { /* silenciar */ }
-        }
+  /* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
+  useEffect(() => {
+    void loadAll()
+  }, [token, onAuthError])
+  /* eslint-enable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
+
+  useEffect(() => {
+    const refresh = () => {
+      void loadAll()
     }
+    window.addEventListener('synapseops:refresh-mlflow', refresh)
+    return () => window.removeEventListener('synapseops:refresh-mlflow', refresh)
+  }, [loadAll])
 
-    return (
-        <div className="space-y-6">
+  const isUp = health?.status === 'UP'
 
-            {/* ── Header + Health ── */}
-            <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                    <Activity size={18} className="text-blue-400" />
-                    <div>
-                        <p className="text-sm font-semibold text-white">MLflow Tracking Server</p>
-                        {health && (
-                            <p className="text-[11px] text-slate-500 font-mono">{health.uri}</p>
-                        )}
-                    </div>
-                </div>
-                <div className="flex items-center gap-2">
-                    {health && (
-                        <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium ${
-                            health.status === 'UP'
-                                ? 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20'
-                                : 'text-red-400 bg-red-400/10 border-red-400/20'
-                        }`}>
-              {health.status === 'UP'
-                  ? <CheckCircle size={11} />
-                  : <XCircle size={11} />}
-                            {health.status}
-            </span>
-                    )}
-                    <button
-                        onClick={() => void loadAll()}
-                        className="text-slate-500 hover:text-slate-300 transition-colors"
-                    >
-                        <RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} />
-                    </button>
-                </div>
-            </div>
-
-            {isLoading && (
-                <p className="text-sm text-slate-500">Loading MLflow data...</p>
-            )}
-
-            {/* ── Experiments ── */}
-            {!isLoading && (
-                <Card className="border-white/5 bg-black/20">
-                    <CardHeader className="pb-3">
-                        <CardTitle className="text-white text-sm">
-                            Experiments ({experiments.length})
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        {experiments.length === 0 && (
-                            <p className="text-sm text-slate-500">No experiments found.</p>
-                        )}
-                        <div className="space-y-2">
-                            {experiments.map((exp) => (
-                                <div
-                                    key={exp.experimentId}
-                                    className="flex items-center justify-between rounded-xl border border-white/5 bg-white/[0.02] px-4 py-3"
-                                >
-                                    <div>
-                                        <p className="text-sm text-white font-medium">{exp.name}</p>
-                                        <p className="text-[10px] text-slate-500 font-mono">id: {exp.experimentId}</p>
-                                    </div>
-                                    <span className="text-[10px] rounded-full bg-slate-800 px-2 py-0.5 text-slate-400">
-                    {exp.lifecycleStage}
+  return (
+    <div className="space-y-5">
+      <Card className="py-0">
+        <CardHeader className="px-6 pt-5">
+          <div className="flex items-start gap-4">
+            <Activity className={cn('mt-0.5 size-6', isUp ? 'text-success' : 'text-muted-foreground')} />
+            <div>
+              <CardTitle className="text-xl">Servidor de seguimiento MLflow</CardTitle>
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                Estado del registro de experimentos y modelos.
+                {health && (
+                  <span className={cn('ml-2 font-semibold', isUp ? 'text-success' : 'text-warning')}>
+                    {isUp ? 'Operativo' : 'No disponible'}
                   </span>
-                                </div>
-                            ))}
-                        </div>
-                    </CardContent>
-                </Card>
-            )}
+                )}
+              </p>
+              {health?.uri && <p className="mt-1 font-mono text-xs text-muted-foreground/70">{health.uri}</p>}
+            </div>
+          </div>
+        </CardHeader>
 
-            {/* ── Model Registry ── */}
-            {!isLoading && (
-                <Card className="border-white/5 bg-black/20">
-                    <CardHeader className="pb-3">
-                        <CardTitle className="text-white text-sm">
-                            Model Registry ({models.length})
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                        {models.length === 0 && (
-                            <p className="text-sm text-slate-500">No registered models.</p>
-                        )}
-                        {models.map((model) => (
-                            <div key={model.name} className="rounded-xl border border-white/5 bg-white/[0.02]">
-                                {/* Fila del modelo — clickeable para expandir */}
-                                <button
-                                    onClick={() => void toggleModel(model.name)}
-                                    className="w-full flex items-center justify-between px-4 py-3 text-left"
-                                >
-                                    <div>
-                                        <p className="text-sm text-white font-medium">{model.name}</p>
-                                        <p className="text-[10px] text-slate-500">
-                                            Latest: <span className="text-blue-400">v{model.latestVersion}</span>
-                                        </p>
-                                    </div>
-                                    {expandedModel === model.name
-                                        ? <ChevronDown size={14} className="text-slate-400" />
-                                        : <ChevronRight size={14} className="text-slate-400" />}
-                                </button>
-
-                                {/* Versiones expandidas */}
-                                {expandedModel === model.name && (
-                                    <div className="border-t border-white/5 px-4 py-3 space-y-2">
-                                        {!modelVersions[model.name] && (
-                                            <p className="text-xs text-slate-500">Loading versions...</p>
-                                        )}
-                                        {modelVersions[model.name]?.map((ver) => (
-                                            <div key={ver.version} className="space-y-1">
-                                                {/* Fila de versión */}
-                                                <button
-                                                    onClick={() => void toggleRun(ver.runId)}
-                                                    className="w-full flex items-center justify-between rounded-lg bg-white/[0.03] px-3 py-2 text-left"
-                                                >
-                                                    <div className="flex items-center gap-3">
-                                                        <span className="text-xs font-bold text-white">v{ver.version}</span>
-                                                        <span className="text-[10px] font-mono text-slate-500 truncate max-w-[140px]">
-                              {ver.runId}
-                            </span>
-                                                    </div>
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="text-[10px] text-slate-400">{ver.stage}</span>
-                                                        {expandedRun === ver.runId
-                                                            ? <ChevronDown size={12} className="text-slate-500" />
-                                                            : <ChevronRight size={12} className="text-slate-500" />}
-                                                    </div>
-                                                </button>
-
-                                                {/* Métricas del run expandido */}
-                                                {expandedRun === ver.runId && runSummaries[ver.runId] && (
-                                                    <div className="rounded-lg border border-white/5 bg-black/30 px-3 py-3 space-y-2">
-                                                        {/* Parámetros */}
-                                                        {Object.keys(runSummaries[ver.runId].params).length > 0 && (
-                                                            <div>
-                                                                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">
-                                                                    Parameters
-                                                                </p>
-                                                                <div className="grid grid-cols-2 gap-1">
-                                                                    {Object.entries(runSummaries[ver.runId].params).map(([k, v]) => (
-                                                                        <div key={k} className="flex gap-1 text-[11px]">
-                                                                            <span className="text-slate-500">{k}:</span>
-                                                                            <span className="text-white">{v}</span>
-                                                                        </div>
-                                                                    ))}
-                                                                </div>
-                                                            </div>
-                                                        )}
-                                                        {/* Métricas */}
-                                                        {Object.keys(runSummaries[ver.runId].metrics).length > 0 && (
-                                                            <div>
-                                                                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">
-                                                                    Metrics
-                                                                </p>
-                                                                <div className="grid grid-cols-2 gap-2">
-                                                                    {Object.entries(runSummaries[ver.runId].metrics).map(([k, v]) => (
-                                                                        <div key={k} className="rounded-lg bg-white/[0.03] p-2">
-                                                                            <p className="text-[9px] text-slate-500 uppercase tracking-widest">
-                                                                                {k.replace(/_/g, ' ')}
-                                                                            </p>
-                                                                            <p className="text-sm font-bold text-emerald-400">
-                                                                                {typeof v === 'number' ? v.toFixed(4) : v}
-                                                                            </p>
-                                                                        </div>
-                                                                    ))}
-                                                                </div>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                        ))}
-                    </CardContent>
-                </Card>
-            )}
-        </div>
-    )
+        <CardContent className="space-y-5 p-6 pt-3">
+          <EmptyRegistryCard
+            title="Experimentos"
+            count={experiments.length}
+            icon={FlaskConical}
+            emptyTitle="No hay experimentos registrados."
+            emptyText="Los entrenamientos aparecerán aquí cuando se ejecuten desde un pipeline."
+          >
+            <div className="grid gap-2 sm:grid-cols-2">
+              {experiments.map((experiment) => (
+                <div
+                  key={experiment.experimentId}
+                  className="flex items-center justify-between rounded-xl border border-border bg-muted/30 px-4 py-3"
+                >
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">{experiment.name}</p>
+                    <p className="mt-1 font-mono text-xs text-muted-foreground">id: {experiment.experimentId}</p>
+                  </div>
+                  <span className="rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground">
+                    {experiment.lifecycleStage}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </EmptyRegistryCard>
+        </CardContent>
+      </Card>
+    </div>
+  )
 }

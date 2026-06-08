@@ -1,9 +1,11 @@
 import { useState, type ChangeEvent, type FormEvent } from 'react'
-import { Eye, EyeOff } from 'lucide-react'
+import { ArrowRight, Eye, EyeOff, GraduationCap, Lock, User } from 'lucide-react'
+import { Link } from 'react-router-dom'
 
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
+import { Brand } from '@/shared/components/Brand'
+import { Button } from '@/shared/components/ui/button'
+import { Input } from '@/shared/components/ui/input'
+import { cn } from '@/lib/utils'
 
 interface LoginFormProps {
   credential: string
@@ -25,69 +27,176 @@ export function LoginForm({
   onSubmit,
 }: LoginFormProps) {
   const [showPassword, setShowPassword] = useState(false)
+  const [touched, setTouched] = useState({ credential: false, password: false })
+
+  const credentialError =
+    touched.credential && !credential.trim() ? 'El usuario o correo es obligatorio.' : null
+  const passwordError = touched.password && !password ? 'La contraseña es obligatoria.' : null
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    setTouched({ credential: true, password: true })
+    if (!credential.trim() || !password) {
+      event.preventDefault()
+      return
+    }
+    void onSubmit(event)
+  }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#050505] px-4">
-      <Card className="w-full max-w-md border-white/10 bg-black/40 backdrop-blur-md">
-        <CardHeader>
-          <CardTitle className="text-center text-2xl font-bold italic text-white">
-            Synapse<span className="text-blue-500">Ops</span>
-          </CardTitle>
-          <p className="mt-2 text-center text-[10px] uppercase tracking-[0.3em] text-slate-500">Secure Access Gateway</p>
-        </CardHeader>
+    <div className="flex min-h-[100svh] items-center justify-center bg-background p-4 md:p-8">
+      <div className="flex w-full max-w-6xl flex-col overflow-hidden rounded-3xl border border-border bg-card shadow-[0_24px_60px_-24px_rgba(15,23,42,0.35)] md:min-h-[620px] md:flex-row">
+        {/* ── Panel de marca (navy) ─────────────────────────────────────── */}
+        <div className="relative flex flex-col justify-between overflow-hidden bg-sidebar p-8 text-white md:w-5/12 md:p-12">
+          <div
+            className="pointer-events-none absolute -top-1/4 -left-1/4 h-[120%] w-[120%] bg-[radial-gradient(ellipse_at_top_left,rgba(255,106,0,0.22),transparent_60%)]"
+            aria-hidden="true"
+          />
+          <div
+            className="pointer-events-none absolute -right-1/4 -bottom-1/4 h-full w-full bg-[radial-gradient(circle_at_bottom_right,rgba(0,187,255,0.18),transparent_55%)]"
+            aria-hidden="true"
+          />
 
-        <form onSubmit={(event) => void onSubmit(event)}>
-          <CardContent className="space-y-5">
-            <div className="space-y-2">
-              <label className="text-xs font-bold uppercase text-slate-400">Usuario</label>
-              <Input
-                className="border-white/10 bg-white/5 text-white focus:ring-blue-500/50"
-                type="text"
-                value={credential}
-                onChange={onCredentialChange}
-                placeholder="superadmin"
-                autoComplete="username"
-                required
-              />
-            </div>
+          <div className="relative z-10">
+            <Brand size="lg" tone="invert" className="mb-12" />
+            <h1 className="font-heading text-4xl leading-tight font-bold tracking-tight md:text-5xl">
+              Construye modelos.
+              <br />
+              No infraestructura.
+            </h1>
+            <p className="mt-6 max-w-md text-base leading-relaxed text-white/70">
+              Gestión low-code del ciclo de vida MLOps. La plataforma cercana, pensada para que los
+              estudiantes cierren la brecha entre la teoría y la producción sin fricción.
+            </p>
+          </div>
 
-            <div className="space-y-2">
-              <label className="text-xs font-bold uppercase text-slate-400">Password</label>
-              <div className="relative">
-                <Input
-                  className="border-white/10 bg-white/5 pr-10 text-white focus:ring-blue-500/50"
-                  type={showPassword ? 'text' : 'password'}
-                  value={password}
-                  onChange={onPasswordChange}
-                  placeholder="••••••••"
-                  autoComplete="current-password"
-                  required
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword((prev) => !prev)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
-                  tabIndex={-1}
-                >
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
-              </div>
-            </div>
+          <div className="relative z-10 mt-12 flex items-center gap-3 text-sm text-white/55">
+            <GraduationCap className="size-5 shrink-0" />
+            <span>Impulsando a la próxima generación de científicos de datos.</span>
+          </div>
+        </div>
 
-            {error && (
-              <p className="rounded border border-red-400/20 bg-red-400/10 p-2.5 text-[10px] font-bold text-red-400 animate-pulse">
-                {error}
+        {/* ── Formulario ────────────────────────────────────────────────── */}
+        <div className="flex flex-col justify-center bg-card p-8 md:w-7/12 md:p-14">
+          <div className="mx-auto w-full max-w-md">
+            <div className="mb-9 text-center md:text-left">
+              <h2 className="font-heading text-3xl font-bold tracking-tight text-foreground">
+                Bienvenido de nuevo
+              </h2>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Ingresa tus credenciales para acceder a tu espacio de trabajo.
               </p>
-            )}
-          </CardContent>
+            </div>
 
-          <CardFooter className="pb-6 pt-8">
-            <Button type="submit" className="h-11 w-full bg-blue-600 font-bold text-white hover:bg-blue-500" disabled={isLoading}>
-              {isLoading ? 'Authenticating...' : 'Access System'}
-            </Button>
-          </CardFooter>
-        </form>
-      </Card>
+            <form onSubmit={handleSubmit} noValidate className="space-y-5">
+              {/* Usuario o correo */}
+              <div className="space-y-1.5">
+                <label htmlFor="credential" className="text-sm font-semibold text-foreground">
+                  Usuario o correo
+                </label>
+                <div className="relative">
+                  <User className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    id="credential"
+                    type="text"
+                    value={credential}
+                    onChange={onCredentialChange}
+                    onBlur={() => setTouched((t) => ({ ...t, credential: true }))}
+                    placeholder="superadmin"
+                    autoComplete="username"
+                    aria-invalid={credentialError ? true : undefined}
+                    className={cn(
+                      'h-12 pl-10',
+                      credentialError && 'border-destructive focus-visible:ring-destructive/30'
+                    )}
+                    required
+                  />
+                </div>
+                {credentialError && (
+                  <p className="text-xs font-medium text-destructive">{credentialError}</p>
+                )}
+              </div>
+
+              {/* Contraseña */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label htmlFor="password" className="text-sm font-semibold text-foreground">
+                    Contraseña
+                  </label>
+                  <Link
+                    to="/forgot-password"
+                    className="text-sm font-medium text-cta transition-colors hover:text-cta/80"
+                  >
+                    ¿Olvidaste tu contraseña?
+                  </Link>
+                </div>
+                <div className="relative">
+                  <Lock className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    id="password"
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={onPasswordChange}
+                    onBlur={() => setTouched((t) => ({ ...t, password: true }))}
+                    placeholder="••••••••"
+                    autoComplete="current-password"
+                    aria-invalid={passwordError ? true : undefined}
+                    className={cn(
+                      'h-12 pl-10 pr-11',
+                      passwordError && 'border-destructive focus-visible:ring-destructive/30'
+                    )}
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((v) => !v)}
+                    aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                    className="absolute top-1/2 right-3.5 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
+                    tabIndex={-1}
+                  >
+                    {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                  </button>
+                </div>
+                {passwordError && (
+                  <p className="text-xs font-medium text-destructive">{passwordError}</p>
+                )}
+              </div>
+
+              {error && (
+                <p
+                  role="alert"
+                  className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm font-medium text-destructive"
+                >
+                  {error}
+                </p>
+              )}
+
+              <Button
+                type="submit"
+                variant="cta"
+                size="lg"
+                loading={isLoading}
+                className="h-12 w-full text-base"
+              >
+                {isLoading ? (
+                  'Autenticando…'
+                ) : (
+                  <>
+                    Iniciar sesión
+                    <ArrowRight className="size-4" />
+                  </>
+                )}
+              </Button>
+            </form>
+
+            <p className="mt-8 text-center text-sm text-muted-foreground">
+              ¿No tienes cuenta?{' '}
+              <Link to="/signup" className="font-semibold text-primary hover:underline">
+                Regístrate
+              </Link>
+            </p>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

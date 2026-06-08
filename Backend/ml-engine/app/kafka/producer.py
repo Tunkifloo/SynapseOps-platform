@@ -35,3 +35,32 @@ class ResultProducer:
         else:
             log.debug("Mensaje entregado → %s [%d]",
                       msg.topic(), msg.partition())
+
+
+class LogProducer:
+    """Publica logs/progreso por epoch al tópico de logs (HU-023 → SSE)."""
+
+    def __init__(self) -> None:
+        self._producer = Producer({
+            "bootstrap.servers": settings.kafka_bootstrap_servers,
+            "client.id": "ml-engine-logs",
+        })
+
+    def log(self, execution_id: str, message: str, level: str = "INFO") -> None:
+        try:
+            payload = json.dumps({
+                "execution_id": execution_id,
+                "level": level,
+                "message": message,
+            })
+            self._producer.produce(
+                topic=settings.kafka_topic_logs,
+                key=execution_id,
+                value=payload,
+            )
+            # flush() fuerza la entrega INMEDIATA (streaming real por época/fase).
+            # Con poll(0) los mensajes quedaban en el buffer de librdkafka y solo
+            # llegaban al final en entrenamientos largos (PyTorch).
+            self._producer.flush(timeout=5)
+        except Exception as e:  # noqa: BLE001 — los logs nunca deben romper el entrenamiento
+            log.debug("No se pudo publicar log: %s", e)

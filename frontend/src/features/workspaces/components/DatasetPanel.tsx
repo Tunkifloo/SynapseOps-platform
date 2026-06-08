@@ -1,8 +1,8 @@
 import { useState, type ChangeEvent, type FormEvent } from 'react'
 import { Database, Link, Upload, CheckCircle } from 'lucide-react'
 
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { Button } from '@/shared/components/ui/button'
+import { Input } from '@/shared/components/ui/input'
 import { API_BASE_URL } from '@/shared/api/env'
 
 type DatasetMode = 'keras' | 'url' | 'file'
@@ -10,8 +10,6 @@ type DatasetMode = 'keras' | 'url' | 'file'
 const KERAS_DATASETS = [
   { value: 'mnist',        label: 'MNIST — Handwritten Digits (60k)' },
   { value: 'fashion_mnist', label: 'Fashion MNIST — Clothing (60k)' },
-  { value: 'cifar10',      label: 'CIFAR-10 — Objects 10 classes (50k)' },
-  { value: 'cifar100',     label: 'CIFAR-100 — Objects 100 classes (50k)' },
 ]
 
 interface DatasetPanelProps {
@@ -171,7 +169,7 @@ export function DatasetPanel({
               <Input
                   type="text"
                   value={urlValue}
-                  onChange={(e) => setUrl(e.target.value)}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) => setUrl(e.target.value)}
                   placeholder="https://github.com/user/repo o https://ejemplo.com/data.zip"
                   className="bg-white/[0.04] border-white/10 text-white text-xs"
               />
