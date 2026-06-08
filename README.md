@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="Frontend/public/SynapseOpsLogo.png" width="130" alt="SynapseOps logo" />
+<img src="https://github.com/Tunkifloo/SynapseOps-platform/blob/847b979ceca5c1dcfdf6a68d3a6e761ca3ff09be/frontend/src/assets/synapseops-logo.png" width="300" alt="SynapseOps logo" />
 
 # SynapseOps
 
