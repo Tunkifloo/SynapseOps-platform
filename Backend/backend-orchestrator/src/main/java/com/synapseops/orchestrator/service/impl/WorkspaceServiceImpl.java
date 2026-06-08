@@ -87,7 +87,12 @@ public class WorkspaceServiceImpl implements WorkspaceService {
             }
 
             workspaceMapper.updateFromRequest(workspace, request);
-            return workspaceMapper.toResponse(workspaceRepository.save(workspace));
+            workspaceRepository.save(workspace);
+            // Se mapea la entidad ORIGINAL (con `user` ya cargado vía @EntityGraph en
+            // findById). El resultado de save() es la copia de merge con un proxy lazy
+            // nuevo → LazyInitializationException al leer user fuera de sesión (el save
+            // ya persistió, por eso el cambio quedaba guardado pese al 500).
+            return workspaceMapper.toResponse(workspace);
         }).subscribeOn(Schedulers.boundedElastic());
     }
 

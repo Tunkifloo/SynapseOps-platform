@@ -314,13 +314,20 @@ def _load_flat_with_autosplit(root: Path, size: Tuple[int, int], ratio: float) -
 
 # ── Helpers de carga ────────────────────────────────────────────────────────────
 def _normalize_root(root: Path) -> Path:
-    """Si todo viene envuelto en una única carpeta (típico al extraer un zip),
-    desciende una vez para encontrar la raíz real del dataset."""
-    entries = [e for e in root.iterdir() if not e.name.startswith(("__MACOSX", "."))]
-    subdirs = [e for e in entries if e.is_dir()]
-    files   = [e for e in entries if e.is_file()]
-    if len(subdirs) == 1 and not files:
-        return subdirs[0]
+    """Si todo viene envuelto en carpetas (típico al extraer un zip), desciende
+    hasta la raíz real del dataset. Ignora archivos no-imagen sueltos (licencias,
+    README, .txt/.pdf/.docx) que suelen acompañar a datasets públicos — p. ej. la
+    zip de cats/dogs trae PetImages/{Cat,Dog} + documentos de licencia en la raíz."""
+    for _ in range(4):  # hasta 4 niveles de envoltura
+        entries = [e for e in root.iterdir() if not e.name.startswith(("__MACOSX", "."))]
+        subdirs = [e for e in entries if e.is_dir()]
+        image_files = [e for e in entries
+                       if e.is_file() and e.suffix.lower() in IMAGE_EXTS]
+        # Desciende solo si hay UNA carpeta y ninguna imagen suelta en este nivel.
+        if len(subdirs) == 1 and not image_files:
+            root = subdirs[0]
+        else:
+            break
     return root
 
 
