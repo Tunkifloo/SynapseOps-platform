@@ -105,8 +105,8 @@ jobs:
             -t ${{ env.FRONTEND_IMAGE }}:${{ gitea.sha }} \
             -t ${{ env.FRONTEND_IMAGE }}:latest \
             --build-arg VITE_API_BASE_URL=/api/v1 \
-            -f Frontend/Dockerfile \
-            Frontend
+            -f frontend/Dockerfile \
+            frontend
 
       - name: "Verificar imágenes construidas"
         run: |
