@@ -13,6 +13,10 @@
 
 services:
   ml-engine:
+    # Nombre LOCAL propio (distinto del CD en GHCR, que es CPU). Así compose usa
+    # esta imagen GPU si existe y la construye si falta — nunca hace pull del CD.
+    # No se ve afectado por REGISTRY/APP_VERSION del .env.
+    image: synapseops/ml-engine:gpu
     build:
       args:
         REQUIREMENTS: requirements-gpu.txt

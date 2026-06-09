@@ -23,11 +23,13 @@ Variables de entorno (inyectadas por el orquestador):
 import base64
 import io
 import os
+import time
 from typing import List, Optional
 
 import numpy as np
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, Request, Response, UploadFile
 from PIL import Image
+from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 from pydantic import BaseModel
 
 MODEL_PATH = os.environ.get("MODEL_PATH", "/model/artifact")
@@ -36,6 +38,35 @@ CHANNELS = int(os.environ.get("CHANNELS", "3"))
 CLASS_NAMES: List[str] = [c for c in os.environ.get("CLASS_NAMES", "").split(",") if c]
 
 app = FastAPI(title="SynapseOps Model Service", version="1.0.0")
+
+# ── Métricas Prometheus (TEL-03) ──────────────────────────────────────────────
+# Nombres alineados con el dashboard EN-012 / ADR-003 (job="model-service"):
+#   http_request_duration_seconds (histograma) → P95 de inferencia (RN-002).
+#   http_requests_total{status}                → throughput e índice de errores.
+REQUEST_LATENCY = Histogram(
+    "http_request_duration_seconds", "Latencia de las peticiones HTTP", ["endpoint"])
+REQUEST_COUNT = Counter(
+    "http_requests_total", "Total de peticiones HTTP", ["endpoint", "status"])
+
+
+@app.middleware("http")
+async def _metrics_middleware(request: Request, call_next):
+    if request.url.path == "/metrics":
+        return await call_next(request)
+    start = time.perf_counter()
+    response = await call_next(request)
+    elapsed = time.perf_counter() - start
+    endpoint = request.url.path
+    REQUEST_LATENCY.labels(endpoint=endpoint).observe(elapsed)
+    REQUEST_COUNT.labels(endpoint=endpoint, status=str(response.status_code)).inc()
+    return response
+
+
+@app.get("/metrics")
+def metrics() -> Response:
+    """Exposición Prometheus (scrapeada vía docker_sd, HU-009)."""
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
 
 # Estado del modelo cargado (se resuelve en el startup).
 _state = {"model": None, "framework": None, "loaded": False}

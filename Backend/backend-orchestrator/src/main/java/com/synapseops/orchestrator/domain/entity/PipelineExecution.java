@@ -38,6 +38,19 @@ public class PipelineExecution {
     @Column(name = "mlflow_run_id", length = 100)
     private String mlflowRunId;
 
+    // ── Despliegue del model-service (TA-002 puerto dinámico · TA-003 nombre único) ──
+    @Column(name = "deploy_port")
+    private Integer deployPort;
+
+    @Column(name = "deploy_container_name", length = 150)
+    private String deployContainerName;
+
+    @Column(name = "cold_start_ms")          // TA-001 · ms hasta el primer /health 200
+    private Long coldStartMs;
+
+    @Column(name = "deploy_status", length = 20)   // TA-004/TEL-02 · SUCCESS | FAILED
+    private String deployStatus;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "id_pipeline", nullable = false)
     private Pipeline pipeline;

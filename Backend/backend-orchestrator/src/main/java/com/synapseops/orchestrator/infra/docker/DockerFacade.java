@@ -6,7 +6,10 @@ import com.github.dockerjava.api.command.BuildImageResultCallback;
 import com.github.dockerjava.api.command.InspectContainerResponse;
 import com.github.dockerjava.api.model.Frame;
 import com.github.dockerjava.api.model.Bind;
+import com.github.dockerjava.api.model.Container;
+import com.github.dockerjava.api.model.ExposedPort;
 import com.github.dockerjava.api.model.HostConfig;
+import com.github.dockerjava.api.model.Ports;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
@@ -22,8 +25,14 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
+import java.net.ServerSocket;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -123,6 +132,139 @@ public class DockerFacade {
         dockerClient.startContainerCmd(containerId).exec();
         log.info("Contenedor iniciado. ID: {}", containerId);
         return containerId;
+    }
+
+    /**
+     * TA-002 · Escanea y devuelve el primer puerto TCP libre del host a partir de
+     * {@code startInclusive} (p. ej. 8001), evitando colisiones cuando varios
+     * estudiantes despliegan model-services simultáneamente.
+     */
+    public int findFreePort(int startInclusive) {
+        for (int port = startInclusive; port < startInclusive + 1000; port++) {
+            try (ServerSocket socket = new ServerSocket(port)) {
+                socket.setReuseAddress(true);
+                return port;
+            } catch (java.io.IOException ignored) {
+                // puerto ocupado → siguiente
+            }
+        }
+        throw new IllegalStateException(
+                "No se encontró puerto libre desde " + startInclusive);
+    }
+
+    /**
+     * TA-002 / TA-003 · Levanta el model-service con un nombre único
+     * ({@code modelo_{workspaceId}}) y publica host:{@code hostPort} → contenedor:8000.
+     * Elimina cualquier contenedor previo con el mismo nombre para permitir el
+     * redepliegue sin conflicto.
+     */
+    public String runContainer(String imageId, Map<String, String> envVars,
+                               String containerName, int hostPort) {
+        removeContainerByName(containerName);
+
+        List<String> envList = envVars.entrySet().stream()
+                .map(e -> e.getKey() + "=" + e.getValue())
+                .toList();
+
+        ExposedPort exposed = ExposedPort.tcp(8000);
+        Ports portBindings = new Ports();
+        portBindings.bind(exposed, Ports.Binding.bindPort(hostPort));
+
+        String containerId = dockerClient.createContainerCmd(imageId)
+                .withName(containerName)
+                .withEnv(envList)
+                .withExposedPorts(exposed)
+                // HU-009 · labels para que Prometheus (docker_sd) descubra y scrapee /metrics.
+                .withLabels(Map.of(
+                        "metrics", "true",
+                        "com.synapseops.service", "model-service"))
+                .withHostConfig(HostConfig.newHostConfig()
+                        .withNetworkMode("mlops-network")
+                        .withPortBindings(portBindings)
+                        .withBinds(Bind.parse(storageBasePath + ":" + storageBasePath + ":ro")))
+                .exec()
+                .getId();
+
+        dockerClient.startContainerCmd(containerId).exec();
+        log.info("model-service '{}' levantado en :{} → {}", containerName, hostPort, containerId);
+        return containerId;
+    }
+
+    /**
+     * TA-004 · Contenedores model-service activos (running), identificados por el
+     * label {@code metrics=true} que inyecta {@link #runContainer}. Base del tope
+     * de despliegues concurrentes.
+     */
+    public List<Container> listModelServiceContainers() {
+        try {
+            return dockerClient.listContainersCmd()
+                    .withShowAll(false)   // solo running
+                    .withLabelFilter(Map.of("metrics", "true"))
+                    .exec();
+        } catch (Exception e) {
+            log.warn("No se pudo listar model-services activos: {}", e.getMessage());
+            return List.of();
+        }
+    }
+
+    /**
+     * TA-001 · Health check HTTP con reintentos contra {@code GET http://{host}:{port}/health}
+     * del model-service (alcanzable por nombre de contenedor en la red mlops-network).
+     * Devuelve true en el primer 200 OK; false si agota los reintentos.
+     *
+     * @param retries   número de intentos (p. ej. 5).
+     * @param backoffMs espera fija entre intentos en ms (p. ej. 2000).
+     */
+    public boolean waitForHttpHealthy(String host, int port, int retries, long backoffMs) {
+        HttpClient client = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(2))
+                .build();
+        URI uri = URI.create("http://" + host + ":" + port + "/health");
+        for (int attempt = 1; attempt <= retries; attempt++) {
+            try {
+                HttpResponse<String> resp = client.send(
+                        HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(2)).GET().build(),
+                        HttpResponse.BodyHandlers.ofString());
+                if (resp.statusCode() == 200) {
+                    log.info("Health check OK ({}) en intento {}/{}", uri, attempt, retries);
+                    return true;
+                }
+                log.warn("Health check {} → HTTP {} (intento {}/{})",
+                        uri, resp.statusCode(), attempt, retries);
+            } catch (Exception e) {
+                log.warn("Health check {} sin respuesta (intento {}/{}): {}",
+                        uri, attempt, retries, e.getMessage());
+            }
+            if (attempt < retries) {
+                try {
+                    Thread.sleep(backoffMs);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+        }
+        return false;
+    }
+
+    /** Elimina (best-effort) un contenedor existente por nombre, para redepliegue. */
+    private void removeContainerByName(String name) {
+        try {
+            dockerClient.listContainersCmd()
+                    .withShowAll(true)
+                    .withNameFilter(List.of(name))
+                    .exec()
+                    .forEach(c -> {
+                        try {
+                            dockerClient.removeContainerCmd(c.getId()).withForce(true).exec();
+                            log.info("Contenedor previo '{}' eliminado para redepliegue.", name);
+                        } catch (Exception e) {
+                            log.warn("No se pudo eliminar contenedor previo {}: {}", name, e.getMessage());
+                        }
+                    });
+        } catch (Exception e) {
+            log.warn("No se pudo listar contenedores para limpiar '{}': {}", name, e.getMessage());
+        }
     }
 
     public void stopContainer(String containerId) {
