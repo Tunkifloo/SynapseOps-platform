@@ -192,9 +192,12 @@ services:
       ADMIN_USERNAME: ${ADMIN_USERNAME}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
       ADMIN_EMAIL: ${ADMIN_EMAIL}
+      MODEL_SERVICE_TEMPLATE_DIR: /app/model-service-template
     volumes:
       - storage_data:/storage
-      - /var/run/docker.sock:/var/run/docker.sock   
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Plantilla TA-007 del model-service (HU-007 la usa como contexto de build).
+      - ./Backend/model-service:/app/model-service-template:ro
     ports:
       - "8080:8080"
     networks:
@@ -249,7 +252,7 @@ services:
   frontend-app:
     image: ${REGISTRY:-synapseops}/frontend-app:${APP_VERSION:-1.0.0}
     build:
-      context: ./Frontend
+      context: ./frontend
       dockerfile: Dockerfile
       args:
         VITE_API_BASE_URL: /api/v1    

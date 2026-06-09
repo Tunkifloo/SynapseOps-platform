@@ -1,0 +1,2 @@
+# Inferencia TensorFlow (artefactos .keras/.h5). CPU para el load test (RN-001/002).
+tensorflow-cpu==2.18.0

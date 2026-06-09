@@ -11,8 +11,8 @@ public class DockerComposeBuilder {
 
     private String              serviceName   = "model-service";
     private String              image         = "synapseops/model-service:latest";
-    private int                 hostPort      = 8500;
-    private int                 containerPort = 8500;
+    private int                 hostPort      = 8000;
+    private int                 containerPort = 8000;
     private String              network       = "mlops-network";
     private Map<String, String> envVars       = new LinkedHashMap<>();
     private List<String>        volumes       = new ArrayList<>();

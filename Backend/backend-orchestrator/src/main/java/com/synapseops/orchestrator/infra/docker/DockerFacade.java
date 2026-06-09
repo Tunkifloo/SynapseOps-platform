@@ -5,12 +5,13 @@ import com.github.dockerjava.api.async.ResultCallback;
 import com.github.dockerjava.api.command.BuildImageResultCallback;
 import com.github.dockerjava.api.command.InspectContainerResponse;
 import com.github.dockerjava.api.model.Frame;
+import com.github.dockerjava.api.model.Bind;
 import com.github.dockerjava.api.model.HostConfig;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
-import org.springframework.core.io.ClassPathResource;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
@@ -21,6 +22,8 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -32,13 +35,30 @@ public class DockerFacade {
 
     private final DockerClient dockerClient;
 
-    public String buildImage(String dockerfileContent, String imageName) {
-        log.info("Construyendo imagen Docker: {}", imageName);
+    /** Directorio de la plantilla del model-service (TA-007), montado como volumen. */
+    @Value("${synapseops.model-service.template-dir:/app/model-service-template}")
+    private String templateDir;
+
+    /** Volumen compartido donde residen los artefactos entrenados (ml-engine ↔ orchestrator). */
+    @Value("${storage.base-path:/storage}")
+    private String storageBasePath;
+
+    /**
+     * Construye la imagen del model-service desde la plantilla TA-007.
+     *
+     * @param dockerfileContent contenido del Dockerfile (de {@code DockerfileBuilder}).
+     * @param imageName         tag de la imagen.
+     * @param framework         {@code tf} o {@code torch}; inyectado como {@code --build-arg FRAMEWORK}
+     *                          para seleccionar el {@code requirements-<fw>.txt} correcto.
+     */
+    public String buildImage(String dockerfileContent, String imageName, String framework) {
+        log.info("Construyendo imagen Docker: {} (framework={})", imageName, framework);
         try {
             byte[] tarBytes = buildContextTar(dockerfileContent);
             InputStream tarStream = new ByteArrayInputStream(tarBytes);
 
             String imageId = dockerClient.buildImageCmd(tarStream)
+                    .withBuildArg("FRAMEWORK", framework)
                     .withTags(Set.of(imageName + ":latest"))
                     .exec(new BuildImageResultCallback())
                     .awaitImageId();
@@ -51,13 +71,12 @@ public class DockerFacade {
         }
     }
 
+    /**
+     * Empaqueta el contexto de build: el Dockerfile recibido + los archivos estáticos
+     * de la plantilla TA-007 ({@code server.py}, {@code requirements-base.txt} y ambos
+     * {@code requirements-<fw>.txt}) leídos desde {@link #templateDir} (filesystem).
+     */
     private byte[] buildContextTar(String dockerfileContent) throws IOException {
-        String serveModelPy;
-        try (InputStream is = new ClassPathResource(
-                "templates/serve_model.py").getInputStream()) {
-            serveModelPy = new String(is.readAllBytes(), StandardCharsets.UTF_8);
-        }
-
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         try (TarArchiveOutputStream tar = new TarArchiveOutputStream(baos)) {
             tar.setLongFileMode(TarArchiveOutputStream.LONGFILE_GNU);
@@ -65,8 +84,12 @@ public class DockerFacade {
             addToTar(tar, "Dockerfile",
                     dockerfileContent.getBytes(StandardCharsets.UTF_8));
 
-            addToTar(tar, "serve_model.py",
-                    serveModelPy.getBytes(StandardCharsets.UTF_8));
+            // Archivos copiados por el Dockerfile de la plantilla (ambos requirements
+            // de framework, porque el COPY los referencia con un ARG).
+            for (String file : List.of("server.py", "requirements-base.txt",
+                    "requirements-tf.txt", "requirements-torch.txt")) {
+                addToTar(tar, file, Files.readAllBytes(Path.of(templateDir, file)));
+            }
         }
         return baos.toByteArray();
     }
@@ -87,10 +110,13 @@ public class DockerFacade {
                 .map(e -> e.getKey() + "=" + e.getValue())
                 .toList();
 
+        // Monta el volumen de artefactos compartido para que el model-service pueda
+        // leer el modelo en MODEL_PATH (mismo /storage que escribe el ml-engine).
         String containerId = dockerClient.createContainerCmd(imageId)
                 .withEnv(envList)
                 .withHostConfig(HostConfig.newHostConfig()
-                        .withNetworkMode("mlops-network"))
+                        .withNetworkMode("mlops-network")
+                        .withBinds(Bind.parse(storageBasePath + ":" + storageBasePath + ":ro")))
                 .exec()
                 .getId();
 

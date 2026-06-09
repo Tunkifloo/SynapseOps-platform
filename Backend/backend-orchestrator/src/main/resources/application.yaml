@@ -90,6 +90,13 @@ mlflow:
   tracking:
     uri: ${MLFLOW_TRACKING_URI:http://localhost:5000}
 
+# ── SynapseOps · Despliegue dinámico ───────────────────────────────────────────
+synapseops:
+  model-service:
+    # Plantilla TA-007 (módulo Backend/model-service/) que se copia al contexto de
+    # build del contenedor del model-service. En prod se monta como volumen.
+    template-dir: ${MODEL_SERVICE_TEMPLATE_DIR:/app/model-service-template}
+
 # ── Actuator  ──────────────────────────────────
 management:
   endpoints:
