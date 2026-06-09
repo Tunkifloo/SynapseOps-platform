@@ -1,0 +1,6 @@
+# Dependencias comunes del model-service (servidor + imagen). Ligeras.
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20
+Pillow==11.1.0
+numpy==1.26.4

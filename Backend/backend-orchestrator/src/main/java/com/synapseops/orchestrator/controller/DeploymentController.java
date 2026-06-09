@@ -24,7 +24,7 @@ public class DeploymentController {
     private final DeploymentService deploymentService;
 
     @Operation(summary = "Desplegar model-service",
-            description = "Construye imagen Docker y levanta contenedor model-service en :8500")
+            description = "Construye imagen Docker y levanta contenedor model-service en :8000")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Despliegue iniciado — retorna containerId"),
             @ApiResponse(responseCode = "400", description = "Ejecución sin artefacto"),

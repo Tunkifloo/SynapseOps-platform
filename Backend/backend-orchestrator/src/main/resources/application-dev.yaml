@@ -8,6 +8,12 @@ spring:
 storage:
   base-path: ${STORAGE_BASE_PATH:./storage-dev}
 
+# Ruta de la plantilla del model-service relativa al módulo backend-orchestrator
+# (al correr `mvn spring-boot:run` el cwd es el directorio del módulo).
+synapseops:
+  model-service:
+    template-dir: ${MODEL_SERVICE_TEMPLATE_DIR:../model-service}
+
 logging:
   level:
     com.synapseops.orchestrator: DEBUG

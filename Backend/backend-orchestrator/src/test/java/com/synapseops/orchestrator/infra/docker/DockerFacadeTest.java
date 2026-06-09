@@ -8,10 +8,14 @@ import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.*;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.junit.jupiter.api.io.TempDir;
 import org.springframework.http.codec.ServerSentEvent;
+import org.springframework.test.util.ReflectionTestUtils;
 import reactor.core.publisher.Flux;
 import reactor.test.StepVerifier;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
@@ -31,6 +35,19 @@ class DockerFacadeTest {
     @DisplayName("buildImage()")
     class BuildImage {
 
+        @TempDir Path templateDir;
+
+        @BeforeEach
+        void seedTemplate() throws Exception {
+            // Plantilla TA-007 mínima: buildContextTar la lee del filesystem.
+            for (String f : List.of("server.py", "requirements-base.txt",
+                    "requirements-tf.txt", "requirements-torch.txt")) {
+                Files.writeString(templateDir.resolve(f), "# stub " + f);
+            }
+            ReflectionTestUtils.setField(dockerFacade, "templateDir", templateDir.toString());
+            ReflectionTestUtils.setField(dockerFacade, "storageBasePath", "/storage");
+        }
+
         @Test
         @DisplayName("Debe retornar el imageId tras construir la imagen exitosamente")
         void shouldReturnImageIdOnSuccess() {
@@ -39,14 +56,16 @@ class DockerFacadeTest {
 
             when(dockerClient.buildImageCmd(any(java.io.InputStream.class)))
                     .thenReturn(buildCmd);
+            when(buildCmd.withBuildArg(anyString(), anyString())).thenReturn(buildCmd);
             when(buildCmd.withTags(anySet())).thenReturn(buildCmd);
             when(buildCmd.exec(any(BuildImageResultCallback.class)))
                     .thenReturn(callback);
             when(callback.awaitImageId()).thenReturn("sha256:abc123");
 
-            String result = dockerFacade.buildImage("FROM python:3.11", "model-service");
+            String result = dockerFacade.buildImage("FROM python:3.11", "model-service", "tf");
 
             assertThat(result).isEqualTo("sha256:abc123");
+            verify(buildCmd).withBuildArg("FRAMEWORK", "tf");
             verify(buildCmd).withTags(argThat(tags -> tags.contains("model-service:latest")));
         }
     }

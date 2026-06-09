@@ -12,7 +12,6 @@ import com.synapseops.orchestrator.service.builder.DockerfileBuilder;
 import com.synapseops.orchestrator.service.builder.DockerComposeBuilder;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
@@ -30,9 +29,6 @@ public class DeploymentServiceImpl implements DeploymentService {
     private final DockerFacade                dockerFacade;
     private final DockerfileBuilder           dockerfileBuilder;
     private final DockerComposeBuilder        dockerComposeBuilder;
-
-    @Value("${mlflow.tracking.uri:http://mlflow-server:5000}")
-    private String mlflowTrackingUri;
 
     @Override
     public Mono<DeploymentResponse> deploy(Long executionId, String username) {
@@ -59,23 +55,23 @@ public class DeploymentServiceImpl implements DeploymentService {
             String artifactPath = artifact.getArtifactPath();
             String serviceName  = "model-service-exec-" + executionId;
 
-            log.info("Iniciando despliegue — executionId={} model={} path={}",
-                    executionId, modelName, artifactPath);
-
-            String dockerfile = dockerfileBuilder
-                    .reset()
+            // Framework según la extensión del artefacto (.keras/.h5 → tf, .pt/.pth → torch).
+            String framework = dockerfileBuilder.reset()
                     .setArtifactPath(artifactPath)
-                    .setModelName(modelName)
-                    .setMlflowTrackingUri(mlflowTrackingUri)
-                    .build();
+                    .resolveFramework();
 
-            String imageId = dockerFacade.buildImage(dockerfile, serviceName);
+            log.info("Iniciando despliegue — executionId={} model={} framework={} path={}",
+                    executionId, modelName, framework, artifactPath);
+
+            String dockerfile = dockerfileBuilder.build();
+
+            String imageId = dockerFacade.buildImage(dockerfile, serviceName, framework);
             log.info("Imagen construida: {} → {}", serviceName, imageId);
 
+            // Contrato de la plantilla TA-007: el artefacto se lee de MODEL_PATH
+            // (sobre el volumen /storage compartido montado por DockerFacade).
             Map<String, String> envVars = Map.of(
-                    "ARTIFACT_PATH",        artifactPath,
-                    "MODEL_NAME",           modelName,
-                    "MLFLOW_TRACKING_URI",  mlflowTrackingUri
+                    "MODEL_PATH", artifactPath
             );
 
             String containerId = dockerFacade.runContainer(imageId, envVars);
@@ -91,7 +87,7 @@ public class DeploymentServiceImpl implements DeploymentService {
                     containerId,
                     modelName,
                     artifact.getModelVersion(),
-                    "http://localhost:8500",
+                    "http://localhost:8000",
                     "RUNNING"
             );
 
@@ -128,7 +124,7 @@ public class DeploymentServiceImpl implements DeploymentService {
                     containerId,
                     artifact.getModelVersion(),
                     artifact.getModelVersion(),
-                    "http://localhost:8500",
+                    "http://localhost:8000",
                     running ? "RUNNING" : "STOPPED"
             );
         }).subscribeOn(Schedulers.boundedElastic());
