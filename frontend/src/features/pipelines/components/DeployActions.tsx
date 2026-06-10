@@ -19,6 +19,7 @@ import {
   type WorkspaceModel,
 } from '@/features/mlflow/api'
 import { consumeDeployHandoff } from '@/features/pipelines/deployHandoff'
+import { deployModel } from '@/features/deployments/api'
 import type { NodeConfig } from '@/features/pipelines/nodeConfig'
 
 interface DeployActionsProps {
@@ -130,6 +131,35 @@ export function DeployActions({
   }
 
   const ready = !!selectedModel && !!selectedVersion
+  const runId = String(config.runId ?? '')
+
+  const [deploying, setDeploying] = useState(false)
+  const [deployedEndpoint, setDeployedEndpoint] = useState<string | null>(null)
+
+  const handleDeploy = async () => {
+    if (!runId) {
+      notify.warning('Selecciona un modelo y versión antes de desplegar')
+      return
+    }
+    setDeploying(true)
+    try {
+      const res = await deployModel(token, runId)
+      if (res.status === 'RUNNING') {
+        setDeployedEndpoint(res.endpoint ?? null)
+        notify.success('model-service desplegado', { description: res.endpoint ?? undefined })
+      } else {
+        notify.error('El despliegue no pasó el health check del model-service')
+      }
+    } catch (err) {
+      if (!onAuthError(err)) {
+        notify.error('No se pudo desplegar', {
+          description: err instanceof Error ? err.message : undefined,
+        })
+      }
+    } finally {
+      setDeploying(false)
+    }
+  }
 
   return (
     <div className="space-y-3 rounded-xl border border-border bg-card/40 p-3">
@@ -193,16 +223,32 @@ export function DeployActions({
         </div>
       )}
 
-      <Button variant="cta" size="sm" className="w-full" disabled title="Disponible en el Sprint 3">
+      <Button
+        variant="cta"
+        size="sm"
+        className="w-full"
+        onClick={() => void handleDeploy()}
+        disabled={!ready || deploying}
+        loading={deploying}
+        title={ready ? 'Desplegar el model-service' : 'Selecciona modelo y versión'}
+      >
         <Rocket />
-        Desplegar
+        {deploying ? 'Desplegando…' : 'Desplegar'}
       </Button>
-      <p className="flex items-start gap-1.5 text-[11px] leading-relaxed text-muted-foreground">
-        <Info className="mt-0.5 size-3 shrink-0" />
-        El despliegue del <span className="font-mono">model-service</span> y el endpoint{' '}
-        <span className="font-mono">/predict</span> se habilitan en el Sprint 3 (HU-007 / HU-008).
-        Aquí dejas seleccionado el modelo, puerto y contenedor; se guardan con el lienzo.
-      </p>
+      {deployedEndpoint ? (
+        <p className="flex items-start gap-1.5 text-[11px] leading-relaxed text-success">
+          <Info className="mt-0.5 size-3 shrink-0" />
+          Desplegado. Endpoint <span className="font-mono">{deployedEndpoint}/predict</span>. Gestiónalo en la
+          sección <span className="font-semibold">Despliegues</span>.
+        </p>
+      ) : (
+        <p className="flex items-start gap-1.5 text-[11px] leading-relaxed text-muted-foreground">
+          <Info className="mt-0.5 size-3 shrink-0" />
+          Al desplegar se levanta el <span className="font-mono">model-service</span> y su endpoint{' '}
+          <span className="font-mono">/predict</span>. Puede tardar unos segundos (health check). Lo gestionas en{' '}
+          <span className="font-semibold">Despliegues</span>.
+        </p>
+      )}
     </div>
   )
 }
