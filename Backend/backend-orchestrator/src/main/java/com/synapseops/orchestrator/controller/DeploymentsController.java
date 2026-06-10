@@ -1,6 +1,7 @@
 package com.synapseops.orchestrator.controller;
 
 import com.synapseops.orchestrator.domain.dto.request.DeployRequest;
+import com.synapseops.orchestrator.domain.dto.request.PredictProxyRequest;
 import com.synapseops.orchestrator.domain.dto.response.DeploymentResponse;
 import com.synapseops.orchestrator.domain.dto.response.DeploymentsView;
 import com.synapseops.orchestrator.service.DeploymentService;
@@ -8,6 +9,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -59,5 +61,16 @@ public class DeploymentsController {
             Mono<Principal> principal) {
         return principal.flatMap(p -> deploymentService.undeploy(executionId, p.getName()))
                 .thenReturn(ResponseEntity.<Void>noContent().build());
+    }
+
+    @Operation(summary = "Probar el /predict del model-service",
+            description = "Proxy: reenvía la imagen (base64) al model-service y devuelve {prediction, confidence}.")
+    @PostMapping(value = "/{executionId}/predict", produces = MediaType.APPLICATION_JSON_VALUE)
+    public Mono<ResponseEntity<String>> predict(
+            @PathVariable Long executionId,
+            @RequestBody PredictProxyRequest request,
+            Mono<Principal> principal) {
+        return principal.flatMap(p -> deploymentService.predict(executionId, p.getName(), request.image()))
+                .map(ResponseEntity::ok);
     }
 }

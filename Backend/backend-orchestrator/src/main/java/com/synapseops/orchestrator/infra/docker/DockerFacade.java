@@ -48,9 +48,17 @@ public class DockerFacade {
     @Value("${synapseops.model-service.template-dir:/app/model-service-template}")
     private String templateDir;
 
-    /** Volumen compartido donde residen los artefactos entrenados (ml-engine ↔ orchestrator). */
+    /** Ruta de los artefactos dentro de los contenedores (ml-engine ↔ orchestrator ↔ model-service). */
     @Value("${storage.base-path:/storage}")
     private String storageBasePath;
+
+    /**
+     * Volumen Docker NOMBRADO que respalda /storage. DooD: el model-service debe montar
+     * el mismo volumen nombrado que usan backend y ml-engine, NO un bind a la ruta /storage
+     * (el daemon resolvería esa ruta contra el host, no contra el volumen → artefacto ausente).
+     */
+    @Value("${synapseops.model-service.storage-volume:synapseops_storage_data}")
+    private String storageVolume;
 
     /**
      * Construye la imagen del model-service desde la plantilla TA-007.
@@ -181,7 +189,8 @@ public class DockerFacade {
                 .withHostConfig(HostConfig.newHostConfig()
                         .withNetworkMode("mlops-network")
                         .withPortBindings(portBindings)
-                        .withBinds(Bind.parse(storageBasePath + ":" + storageBasePath + ":ro")))
+                        // Volumen NOMBRADO (no bind de ruta) para compartir los artefactos vía DooD.
+                        .withBinds(Bind.parse(storageVolume + ":" + storageBasePath + ":ro")))
                 .exec()
                 .getId();
 
@@ -208,32 +217,39 @@ public class DockerFacade {
     }
 
     /**
-     * TA-001 · Health check HTTP con reintentos contra {@code GET http://{host}:{port}/health}
-     * del model-service (alcanzable por nombre de contenedor en la red mlops-network).
-     * Devuelve true en el primer 200 OK; false si agota los reintentos.
+     * TA-001 · Health check HTTP con reintentos contra {@code GET http://{ip}:{port}/health}
+     * del model-service. Se usa la <b>IP</b> del contenedor (no su nombre): los nombres con
+     * guion bajo ({@code modelo_{ws}}) no son hostnames válidos y java.net.http.HttpClient
+     * los rechaza ("unsupported URI"). Devuelve true en el primer 200 OK.
      *
-     * @param retries   número de intentos (p. ej. 5).
-     * @param backoffMs espera fija entre intentos en ms (p. ej. 2000).
+     * @param containerId contenedor a inspeccionar para resolver su IP.
+     * @param retries     número de intentos.
+     * @param backoffMs   espera fija entre intentos en ms.
      */
-    public boolean waitForHttpHealthy(String host, int port, int retries, long backoffMs) {
+    public boolean waitForHttpHealthy(String containerId, int port, int retries, long backoffMs) {
         HttpClient client = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(2))
                 .build();
-        URI uri = URI.create("http://" + host + ":" + port + "/health");
         for (int attempt = 1; attempt <= retries; attempt++) {
-            try {
-                HttpResponse<String> resp = client.send(
-                        HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(2)).GET().build(),
-                        HttpResponse.BodyHandlers.ofString());
-                if (resp.statusCode() == 200) {
-                    log.info("Health check OK ({}) en intento {}/{}", uri, attempt, retries);
-                    return true;
+            String ip = resolveContainerIp(containerId);
+            if (ip != null && !ip.isBlank()) {
+                URI uri = URI.create("http://" + ip + ":" + port + "/health");
+                try {
+                    HttpResponse<String> resp = client.send(
+                            HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(2)).GET().build(),
+                            HttpResponse.BodyHandlers.ofString());
+                    if (resp.statusCode() == 200) {
+                        log.info("Health check OK ({}) en intento {}/{}", uri, attempt, retries);
+                        return true;
+                    }
+                    log.warn("Health check {} → HTTP {} (intento {}/{})",
+                            uri, resp.statusCode(), attempt, retries);
+                } catch (Exception e) {
+                    log.warn("Health check {} sin respuesta (intento {}/{}): {}",
+                            uri, attempt, retries, e.getMessage());
                 }
-                log.warn("Health check {} → HTTP {} (intento {}/{})",
-                        uri, resp.statusCode(), attempt, retries);
-            } catch (Exception e) {
-                log.warn("Health check {} sin respuesta (intento {}/{}): {}",
-                        uri, attempt, retries, e.getMessage());
+            } else {
+                log.warn("Sin IP aún para {} (intento {}/{})", containerId, attempt, retries);
             }
             if (attempt < retries) {
                 try {
@@ -247,8 +263,79 @@ public class DockerFacade {
         return false;
     }
 
-    /** Elimina (best-effort) un contenedor existente por nombre, para redepliegue. */
-    private void removeContainerByName(String name) {
+    /**
+     * Reenvía un POST JSON al model-service (por su IP interna) y devuelve el body.
+     * Usado como proxy del /predict desde la UI (evita CORS y mantiene el servicio interno).
+     */
+    public String forwardJson(String containerNameOrId, int port, String path, String jsonBody) {
+        String ip = resolveContainerIp(containerNameOrId);
+        if (ip == null || ip.isBlank()) {
+            throw new IllegalStateException("model-service no alcanzable: " + containerNameOrId);
+        }
+        HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
+        try {
+            HttpResponse<String> resp = client.send(
+                    HttpRequest.newBuilder(URI.create("http://" + ip + ":" + port + path))
+                            .timeout(Duration.ofSeconds(30))
+                            .header("Content-Type", "application/json")
+                            .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
+                            .build(),
+                    HttpResponse.BodyHandlers.ofString());
+            if (resp.statusCode() != 200) {
+                throw new IllegalStateException(
+                        "model-service respondió HTTP " + resp.statusCode() + ": " + resp.body());
+            }
+            return resp.body();
+        } catch (java.io.IOException e) {
+            throw new IllegalStateException("Error llamando al model-service: " + e.getMessage(), e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Llamada al model-service interrumpida", e);
+        }
+    }
+
+    /** IP del contenedor en mlops-network (o la primera red disponible). */
+    public String resolveContainerIp(String containerId) {
+        try {
+            var settings = dockerClient.inspectContainerCmd(containerId).exec().getNetworkSettings();
+            if (settings == null || settings.getNetworks() == null || settings.getNetworks().isEmpty()) {
+                return null;
+            }
+            var networks = settings.getNetworks();
+            var net = networks.getOrDefault("mlops-network", networks.values().iterator().next());
+            return net != null ? net.getIpAddress() : null;
+        } catch (Exception e) {
+            log.warn("No se pudo resolver IP del contenedor {}: {}", containerId, e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Lee (best-effort) las últimas {@code tail} líneas de logs de un contenedor.
+     * Se usa para mostrar al usuario por qué falló el arranque del model-service.
+     */
+    public String tailContainerLogs(String containerId, int tail) {
+        StringBuilder sb = new StringBuilder();
+        try {
+            dockerClient.logContainerCmd(containerId)
+                    .withStdOut(true)
+                    .withStdErr(true)
+                    .withTail(tail)
+                    .exec(new ResultCallback.Adapter<Frame>() {
+                        @Override
+                        public void onNext(Frame frame) {
+                            sb.append(new String(frame.getPayload(), StandardCharsets.UTF_8));
+                        }
+                    })
+                    .awaitCompletion(5, java.util.concurrent.TimeUnit.SECONDS);
+        } catch (Exception e) {
+            log.warn("No se pudieron leer logs del contenedor {}: {}", containerId, e.getMessage());
+        }
+        return sb.toString();
+    }
+
+    /** Elimina (best-effort) un contenedor existente por nombre (redepliegue/derribo). */
+    public void removeContainerByName(String name) {
         try {
             dockerClient.listContainersCmd()
                     .withShowAll(true)
@@ -268,17 +355,20 @@ public class DockerFacade {
     }
 
     public void stopContainer(String containerId) {
-        log.info("Deteniendo contenedor: {}", containerId);
+        log.info("Derribando contenedor: {}", containerId);
+        // Stop y remove en bloques independientes: si el contenedor YA está detenido
+        // (p. ej. crasheó), el stop lanza excepción; eso NO debe impedir el remove.
         try {
-            dockerClient.stopContainerCmd(containerId)
-                    .withTimeout(10)
-                    .exec();
-            dockerClient.removeContainerCmd(containerId)
-                    .withForce(true)
-                    .exec();
-            log.info("Contenedor detenido y eliminado: {}", containerId);
+            dockerClient.stopContainerCmd(containerId).withTimeout(10).exec();
         } catch (Exception e) {
-            log.warn("No se pudo detener el contenedor {}: {}", containerId, e.getMessage());
+            log.debug("Stop no aplicable para {} (¿ya detenido?): {}", containerId, e.getMessage());
+        }
+        try {
+            // withForce elimina el contenedor esté corriendo o detenido.
+            dockerClient.removeContainerCmd(containerId).withForce(true).exec();
+            log.info("Contenedor eliminado: {}", containerId);
+        } catch (Exception e) {
+            log.warn("No se pudo eliminar el contenedor {}: {}", containerId, e.getMessage());
         }
     }
 

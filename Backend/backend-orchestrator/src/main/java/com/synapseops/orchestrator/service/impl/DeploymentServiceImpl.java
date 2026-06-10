@@ -14,6 +14,8 @@ import com.synapseops.orchestrator.service.builder.DockerfileBuilder;
 import com.synapseops.orchestrator.service.builder.DockerComposeBuilder;
 import com.synapseops.orchestrator.infra.mlflow.MLflowFacade;
 import com.synapseops.orchestrator.infra.sse.ExecutionEventBus;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -26,7 +28,9 @@ import reactor.core.scheduler.Schedulers;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -44,6 +48,7 @@ public class DeploymentServiceImpl implements DeploymentService {
     private final DockerComposeBuilder        dockerComposeBuilder;
     private final MLflowFacade                mlflowFacade;
     private final ExecutionEventBus           executionEventBus;
+    private final ObjectMapper                objectMapper;
 
     @Value("${storage.base-path:/storage}")
     private String storageBasePath;
@@ -102,6 +107,9 @@ public class DeploymentServiceImpl implements DeploymentService {
 
             log.info("Iniciando despliegue — executionId={} model={} framework={} path={}",
                     executionId, modelName, framework, artifactPath);
+            executionEventBus.publish(execId, "INFO",
+                    "Despliegue iniciado para '" + containerName + "'. Puede tardar varios minutos "
+                            + "(build de la imagen); te notificaremos cuando esté listo.");
 
             long genStart = System.currentTimeMillis();
 
@@ -133,14 +141,21 @@ public class DeploymentServiceImpl implements DeploymentService {
             long genElapsed = System.currentTimeMillis() - genStart;
             log.info("HU-007 · Artefactos generados y validados en {} ms (umbral 5000 ms)", genElapsed);
 
+            executionEventBus.publish(execId, "INFO",
+                    "Construyendo imagen del model-service (framework=" + framework
+                            + ", puede tardar)…");
             String imageId = dockerFacade.buildImage(dockerfile, serviceName, framework);
             log.info("Imagen construida: {} → {}", serviceName, imageId);
+            executionEventBus.publish(execId, "INFO", "Imagen construida. Levantando contenedor…");
 
             // Contrato de la plantilla TA-007: el artefacto se lee de MODEL_PATH
             // (sobre el volumen /storage compartido montado por DockerFacade).
-            Map<String, String> envVars = Map.of(
-                    "MODEL_PATH", artifactPath
-            );
+            // CLASS_NAMES (opcional): etiqueta las predicciones del /predict con los
+            // nombres reales de clase (desde el tag confusion_matrix del run en MLflow).
+            String classNames = resolveClassNames(artifact.getRunId());
+            Map<String, String> envVars = classNames.isBlank()
+                    ? Map.of("MODEL_PATH", artifactPath)
+                    : Map.of("MODEL_PATH", artifactPath, "CLASS_NAMES", classNames);
 
             String containerId = dockerFacade.runContainer(imageId, envVars, containerName, hostPort);
             log.info("Contenedor levantado: {} (:{}) → {}", containerName, hostPort, containerId);
@@ -155,8 +170,10 @@ public class DeploymentServiceImpl implements DeploymentService {
 
             // TA-001 · Health check con reintentos (5 × backoff 2 s) + medición de cold start.
             // El backend alcanza al model-service por nombre de contenedor en mlops-network.
+            // 20 reintentos × 2 s (≈40 s): el arranque del model-service (importar torch/TF
+            // + cargar el modelo) puede tardar bastante en discos lentos.
             long coldStartStart = System.currentTimeMillis();
-            boolean healthy = dockerFacade.waitForHttpHealthy(containerName, 8000, 5, 2000);
+            boolean healthy = dockerFacade.waitForHttpHealthy(containerId, 8000, 20, 2000);
             long coldStartMs = System.currentTimeMillis() - coldStartStart;
 
             // TA-002/TA-003/TA-001 · Persistir puerto, nombre y cold start del despliegue.
@@ -167,10 +184,16 @@ public class DeploymentServiceImpl implements DeploymentService {
             executionRepository.save(execution);
 
             if (!healthy) {
+                // Captura el log del contenedor para mostrar la causa real (no solo "timeout").
+                String tail = dockerFacade.tailContainerLogs(containerId, 40);
+                if (tail != null && !tail.isBlank()) {
+                    executionEventBus.publish(execId, "ERROR",
+                            "Log del model-service:\n" + tail.strip());
+                }
                 dockerFacade.stopContainer(containerId);
                 executionEventBus.publish(execId, "ERROR",
-                        "Despliegue FALLIDO: el model-service no respondió al health check "
-                                + "(5 reintentos, " + coldStartMs + " ms). Contenedor detenido.");
+                        "Despliegue FALLIDO: el model-service no respondió al health check ("
+                                + coldStartMs + " ms). Contenedor detenido. Revisa el log de arriba.");
                 return new DeploymentResponse(executionId, containerId, modelName,
                         artifact.getModelVersion(), "http://localhost:" + hostPort, "FAILED");
             }
@@ -240,15 +263,35 @@ public class DeploymentServiceImpl implements DeploymentService {
                 throw new AccessDeniedException("Sin permisos.");
             }
 
-            MLArtifact artifact = execution.getArtifact();
-            if (artifact == null) return;
-
-            String containerId = extractContainerId(artifact.getHyperparameters());
-            if (containerId != null) {
-                dockerFacade.stopContainer(containerId);
-                log.info("Contenedor detenido: {}", containerId);
+            // Se derriba por NOMBRE de contenedor (estable: modelo_{ws}). El containerId
+            // almacenado puede apuntar a un contenedor ya reemplazado por un redepliegue → 404.
+            String name = execution.getDeployContainerName();
+            if (name != null && !name.isBlank()) {
+                dockerFacade.removeContainerByName(name);
             }
+            execution.setDeployStatus("STOPPED");
+            executionRepository.save(execution);
         }).subscribeOn(Schedulers.boundedElastic()).then();
+    }
+
+    /** Nombres de clase desde el tag confusion_matrix (labels) del run en MLflow. */
+    private String resolveClassNames(String runId) {
+        if (runId == null || runId.isBlank()) return "";
+        try {
+            Map<String, Object> summary = mlflowFacade.getRunSummary(runId)
+                    .onErrorReturn(Map.of()).blockOptional().orElse(Map.of());
+            if (!(summary.get("tags") instanceof Map<?, ?> tags)) return "";
+            Object cm = tags.get("confusion_matrix");
+            if (cm == null) return "";
+            JsonNode labels = objectMapper.readTree(cm.toString()).path("labels");
+            if (!labels.isArray()) return "";
+            List<String> names = new ArrayList<>();
+            labels.forEach(n -> names.add(n.asText()));
+            return String.join(",", names);
+        } catch (Exception e) {
+            log.warn("No se pudieron resolver class_names (runId={}): {}", runId, e.getMessage());
+            return "";
+        }
     }
 
     /** HU-007 · Valida que el docker-compose.yml generado es YAML sintácticamente correcto. */
@@ -317,7 +360,35 @@ public class DeploymentServiceImpl implements DeploymentService {
                         running);
             }).toList();
 
-            return new DeploymentsView(maxDeployments, active.size(), items);
+            // El contenedor es por workspace (modelo_{ws}); varias ejecuciones comparten
+            // nombre. Se colapsa a UNO por contenedor (el más reciente: la query viene
+            // ordenada por id DESC) para no mostrar versiones "fantasma" como activas.
+            Map<String, DeploymentItem> latestByContainer = new LinkedHashMap<>();
+            for (DeploymentItem it : items) {
+                String key = it.containerName() != null ? it.containerName() : "exec-" + it.executionId();
+                latestByContainer.putIfAbsent(key, it);
+            }
+            return new DeploymentsView(maxDeployments, active.size(),
+                    new ArrayList<>(latestByContainer.values()));
+        }).subscribeOn(Schedulers.boundedElastic());
+    }
+
+    @Override
+    public Mono<String> predict(Long executionId, String username, String base64Image) {
+        return Mono.fromCallable(() -> {
+            PipelineExecution execution = executionRepository.findByIdWithDetails(executionId)
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            "Ejecución no encontrada: " + executionId));
+            if (!execution.getPipeline().getWorkspace().getUser().getUsername().equals(username)) {
+                throw new AccessDeniedException("Sin permisos sobre esta ejecución.");
+            }
+            String name = execution.getDeployContainerName();
+            if (name == null || name.isBlank()) {
+                throw new IllegalStateException("Esta ejecución no tiene un model-service desplegado.");
+            }
+            // base64 es seguro dentro de comillas JSON (no contiene comillas ni '\').
+            String body = "{\"image\":\"" + base64Image + "\"}";
+            return dockerFacade.forwardJson(name, 8000, "/predict", body);
         }).subscribeOn(Schedulers.boundedElastic());
     }
 

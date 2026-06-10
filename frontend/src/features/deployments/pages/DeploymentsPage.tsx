@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Boxes, Copy, RefreshCw, Rocket, Server, Trash2, Zap } from 'lucide-react'
+import { Boxes, Copy, FlaskConical, RefreshCw, Rocket, Server, Trash2, Upload, Zap } from 'lucide-react'
 
 import { Badge } from '@/shared/components/ui/badge'
 import { Button } from '@/shared/components/ui/button'
@@ -7,8 +7,17 @@ import { Spinner } from '@/shared/components/ui/spinner'
 import { ConfirmDialog } from '@/shared/components/ConfirmDialog'
 import { isApiError } from '@/shared/api/client'
 import { notify } from '@/shared/notify'
-import { deployModel, listDeployments, undeployModel } from '../api'
-import type { DeploymentItem, DeploymentsView } from '../types'
+import { deployModel, listDeployments, predictWithImage, undeployModel } from '../api'
+import type { DeploymentItem, DeploymentsView, PredictResult } from '../types'
+
+/** Lee un File como base64 puro (sin el prefijo data-URL). */
+const fileToBase64 = (file: File) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result).split(',', 2)[1] ?? '')
+    reader.onerror = () => reject(new Error('No se pudo leer el archivo'))
+    reader.readAsDataURL(file)
+  })
 
 interface DeploymentsPageProps {
   token: string
@@ -134,6 +143,7 @@ export function DeploymentsPage({ token, onAuthError }: DeploymentsPageProps) {
           {view.deployments.map((d) => (
             <DeploymentCard
               key={d.executionId}
+              token={token}
               item={d}
               busy={busy === d.executionId}
               onCopy={copyEndpoint}
@@ -166,6 +176,7 @@ function statusBadge(item: DeploymentItem) {
 }
 
 interface DeploymentCardProps {
+  token: string
   item: DeploymentItem
   busy: boolean
   onCopy: (endpoint: string) => void
@@ -173,7 +184,7 @@ interface DeploymentCardProps {
   onKill: () => void
 }
 
-function DeploymentCard({ item, busy, onCopy, onRedeploy, onKill }: DeploymentCardProps) {
+function DeploymentCard({ token, item, busy, onCopy, onRedeploy, onKill }: DeploymentCardProps) {
   return (
     <div className="space-y-3 rounded-2xl border border-border bg-card/60 p-4">
       <div className="flex items-start justify-between gap-2">
@@ -228,6 +239,85 @@ function DeploymentCard({ item, busy, onCopy, onRedeploy, onKill }: DeploymentCa
           Derribar
         </Button>
       </div>
+
+      {item.running && <DeploymentTester token={token} executionId={item.executionId} />}
+    </div>
+  )
+}
+
+/** Probador inline del /predict (sube una imagen y muestra la predicción). */
+function DeploymentTester({ token, executionId }: { token: string; executionId: number }) {
+  const [open, setOpen] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [result, setResult] = useState<PredictResult | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [fileName, setFileName] = useState<string | null>(null)
+
+  const onFile = async (file: File) => {
+    setFileName(file.name)
+    setError(null)
+    setResult(null)
+    setBusy(true)
+    try {
+      const base64 = await fileToBase64(file)
+      setResult(await predictWithImage(token, executionId, base64))
+    } catch (err) {
+      setError(isApiError(err) ? err.message : err instanceof Error ? err.message : 'Error al predecir')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (!open) {
+    return (
+      <Button variant="outline" size="sm" className="w-full" onClick={() => setOpen(true)}>
+        <FlaskConical />
+        Probar /predict
+      </Button>
+    )
+  }
+
+  return (
+    <div className="space-y-2 rounded-lg border border-border bg-background/50 p-2.5">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-semibold text-foreground">Probar /predict</span>
+        <button
+          type="button"
+          onClick={() => setOpen(false)}
+          className="text-xs text-muted-foreground transition-colors hover:text-foreground"
+        >
+          Cerrar
+        </button>
+      </div>
+      <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-border px-2.5 py-2 text-xs text-muted-foreground transition-colors hover:bg-accent/40">
+        <Upload className="size-3.5 shrink-0" />
+        <span className="truncate">{fileName ?? 'Elige una imagen…'}</span>
+        <input
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0]
+            if (f) void onFile(f)
+          }}
+        />
+      </label>
+      {busy && (
+        <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <Spinner size="sm" /> Infiriendo…
+        </p>
+      )}
+      {error && <p className="text-xs text-destructive">{error}</p>}
+      {result && (
+        <div className="rounded-lg bg-card/60 px-2.5 py-2 text-xs">
+          <p className="text-foreground">
+            Predicción: <span className="font-mono">{result.class_name ?? `clase ${result.prediction}`}</span>
+          </p>
+          <p className="text-muted-foreground">
+            Confianza: <span className="font-mono text-foreground">{(result.confidence * 100).toFixed(1)}%</span>
+          </p>
+        </div>
+      )}
     </div>
   )
 }

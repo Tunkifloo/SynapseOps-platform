@@ -20,6 +20,12 @@ export interface DeploymentsView {
   deployments: DeploymentItem[]
 }
 
+export interface PredictResult {
+  prediction: number
+  confidence: number
+  class_name?: string
+}
+
 export interface DeploymentResponse {
   executionId: number
   containerId: string | null

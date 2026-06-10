@@ -15,4 +15,7 @@ public interface DeploymentService {
 
     /** HU-029 · Despliegues del usuario + cupo (módulo "Despliegues"). */
     Mono<DeploymentsView> listDeployments(String username);
+
+    /** Proxy de inferencia: reenvía la imagen (base64) al /predict del model-service. */
+    Mono<String> predict(Long executionId, String username, String base64Image);
 }

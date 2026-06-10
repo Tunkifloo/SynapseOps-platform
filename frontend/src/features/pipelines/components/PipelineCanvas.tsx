@@ -17,6 +17,7 @@ import { notify } from '@/shared/notify'
 import { ConfirmDialog } from '@/shared/components/ConfirmDialog'
 import { useAppStore } from '@/store/useAppStore'
 import { launchExecution, getExecution } from '@/features/executions/api'
+import { deployModel } from '@/features/deployments/api'
 import type { ExecutionRequest } from '@/features/executions/types'
 import { NODE_KIND_MAP, type NodeKind } from '@/features/pipelines/nodeKinds'
 import { defaultConfig, validateConfig, type NodeConfig } from '@/features/pipelines/nodeConfig'
@@ -226,7 +227,9 @@ export function PipelineCanvas({
           const exec = await launchExecution(token, wsId, pipelineId, payload)
           executionId = exec.idExecution
           setActiveExecutionId(executionId) // abre la consola SSE (HU-023)
-          notify.info('Entrenamiento iniciado', { description: `Ejecución #${executionId}` })
+          notify.info('Entrenamiento en curso', {
+            description: `Ejecución #${executionId} · puede tardar varios minutos. Te notificaremos cuando esté listo.`,
+          })
         } catch (err) {
           patchNode('error', err instanceof Error ? err.message : 'No se pudo lanzar el entrenamiento.')
           return
@@ -375,11 +378,39 @@ export function PipelineCanvas({
         const exec = await launchExecution(token, wsId, pipelineId, payload)
         executionId = exec.idExecution
         setActiveExecution(executionId)
-        notify.info('Flujo iniciado', { description: `Ejecución #${executionId}` })
+        notify.info('Flujo en curso', {
+          description: `Ejecución #${executionId} · puede tardar varios minutos. Te notificaremos cuando esté listo.`,
+        })
       } catch (err) {
         setStatusByKind(['ingest'], 'error', err instanceof Error ? err.message : 'No se pudo iniciar el flujo.')
         setFlowRunning(false)
         return
+      }
+
+      // #3 · Auto-despliegue del modelo recién entrenado (si el nodo Despliegue está
+      // presente y conectado). Los logs del despliegue fluyen por la misma consola SSE.
+      const autoDeploy = async (runId: string, deployNodeId: string) => {
+        setNodes((nds) => nds.map((n) => (n.id === deployNodeId
+          ? { ...n, data: { ...n.data, status: 'running' as const, error: undefined } } : n)))
+        notify.info('Desplegando el modelo entrenado…', {
+          description: 'Construyendo el model-service; puede tardar varios minutos.',
+        })
+        try {
+          const res = await deployModel(token, runId)
+          const ok = res.status === 'RUNNING'
+          setNodes((nds) => nds.map((n) => (n.id === deployNodeId
+            ? { ...n, data: { ...n.data, status: ok ? ('success' as const) : ('error' as const),
+                error: ok ? undefined : 'El model-service no pasó el health check.' } } : n)))
+          if (ok) notify.success('model-service desplegado', { description: 'Gestiona tu despliegue en "Despliegues".' })
+          else notify.error('El despliegue no pasó el health check del model-service')
+        } catch (err) {
+          setNodes((nds) => nds.map((n) => (n.id === deployNodeId
+            ? { ...n, data: { ...n.data, status: 'error' as const,
+                error: err instanceof Error ? err.message : 'No se pudo desplegar.' } } : n)))
+          if (!onAuthError?.(err)) notify.error('No se pudo desplegar automáticamente')
+        } finally {
+          setFlowRunning(false)
+        }
       }
 
       let attempts = 0
@@ -390,12 +421,20 @@ export function PipelineCanvas({
           const exec = await getExecution(token, wsId, pipelineId, executionId)
           if (exec.status === 'COMPLETED') {
             setStatusByKind(['ingest', 'preprocess', 'split'], 'success')
+            const runId = exec.mlflowRunId ?? ''
             setNodes((nds) => nds.map((n) => n.data.kind === 'train'
               ? { ...n, data: { ...n.data, status: 'success', error: undefined,
-                  config: { ...n.data.config, runId: exec.mlflowRunId ?? '', modelVersion: exec.modelVersion ?? '', metrics: exec.metrics ?? '' } } }
+                  config: { ...n.data.config, runId, modelVersion: exec.modelVersion ?? '', metrics: exec.metrics ?? '' } } }
               : n))
             notify.success('Flujo completado', { description: exec.mlflowRunId ? `Run ${exec.mlflowRunId}` : undefined })
-            setFlowRunning(false)
+            // Auto-despliegue si el nodo Despliegue está presente y conectado al flujo.
+            const deployNode = nodes.find((n) => n.data.kind === 'deploy')
+            const connected = !!deployNode && edges.some((e) => e.target === deployNode.id)
+            if (deployNode && connected && runId) {
+              void autoDeploy(runId, deployNode.id)
+            } else {
+              setFlowRunning(false)
+            }
             return
           }
           if (exec.status === 'FAILED') {
@@ -413,7 +452,7 @@ export function PipelineCanvas({
       }
       window.setTimeout(() => void poll(), 3000)
     })()
-  }, [token, workspace, pipelineId, nodes, setNodes, setStatusByKind, setActiveExecution])
+  }, [token, workspace, pipelineId, nodes, edges, setNodes, setStatusByKind, setActiveExecution, onAuthError])
 
   // "Iniciar flujo": valida y pide confirmación (acción crítica) antes de ejecutar.
   const runFlow = useCallback(() => {
@@ -467,32 +506,37 @@ export function PipelineCanvas({
       setFlowRunning(false)
       return
     }
-    if (m.includes('cargando dataset')) {
-      setStatusByKind(['ingest'], 'running')
+    // Secuencia real: ingesta → preprocesamiento → split → entrenamiento.
+    // Se evalúa del paso MÁS avanzado al más temprano; cada etapa marca 'success'
+    // las anteriores y 'running' la suya. El kickoff ("Job publicado … entrenamiento
+    // en curso") NO debe disparar el entrenamiento (solo arranca la ingesta).
+    if (m.startsWith('epoch') || m.includes('entrenando') || m.includes('val_accuracy')
+        || m.includes('registro') || m.includes('registrando')) {
+      setStatusByKind(['ingest', 'preprocess', 'split'], 'success')
+      setStatusByKind(['train'], 'running')
+    } else if (m.includes('split')) {
+      setStatusByKind(['ingest', 'preprocess'], 'success')
+      setStatusByKind(['split'], 'running')
+    } else if (m.includes('preprocesamiento')) {
+      setStatusByKind(['ingest'], 'success')
+      setStatusByKind(['preprocess'], 'running')
     } else if (m.includes('dataset listo')) {
       setStatusByKind(['ingest'], 'success')
       setStatusByKind(['preprocess'], 'running')
-    } else if (m.includes('preprocesamiento')) {
-      setStatusByKind(['ingest', 'preprocess'], 'success')
-      setStatusByKind(['split'], 'running')
-    } else if (m.includes('split')) {
-      setStatusByKind(['ingest', 'preprocess', 'split'], 'success')
-    } else if (m.includes('entrenamiento') || m.includes('entrenando') || m.startsWith('epoch')) {
-      setStatusByKind(['ingest', 'preprocess', 'split'], 'success')
-      setStatusByKind(['train'], 'running')
-    } else if (m.includes('registro')) {
-      setStatusByKind(['train'], 'running')
+    } else if (m.includes('cargando dataset') || m.includes('job publicado')) {
+      setStatusByKind(['ingest'], 'running')
     }
   }, [setStatusByKind, setNodes])
 
   // Contexto para el Nodo de Despliegue (HU-028): modelos del workspace + handoff.
+  const deployTrainNode = nodes.find((n) => n.data.kind === 'train')
   const deployContext =
     token && workspace
       ? {
           token,
-          workspaceId: workspace.idWorkspace,
-          pipelineId: pipelineId ?? null,
-          projectName,
+          flowRunId: String(deployTrainNode?.data.config?.runId ?? ''),
+          flowModelVersion: String(deployTrainNode?.data.config?.modelVersion ?? ''),
+          trainStatus: deployTrainNode?.data.status ?? 'idle',
           onAuthError: onAuthError ?? (() => false),
         }
       : undefined
