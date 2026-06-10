@@ -1,6 +1,8 @@
 package com.synapseops.orchestrator.service.impl;
 
 import com.synapseops.orchestrator.domain.dto.response.DeploymentResponse;
+import com.synapseops.orchestrator.domain.dto.response.DeploymentItem;
+import com.synapseops.orchestrator.domain.dto.response.DeploymentsView;
 import com.synapseops.orchestrator.domain.entity.MLArtifact;
 import com.synapseops.orchestrator.domain.entity.PipelineExecution;
 import com.synapseops.orchestrator.infra.docker.DockerFacade;
@@ -24,7 +26,11 @@ import reactor.core.scheduler.Schedulers;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -49,7 +55,7 @@ public class DeploymentServiceImpl implements DeploymentService {
     public Mono<DeploymentResponse> deploy(Long executionId, String username) {
         return Mono.fromCallable(() -> {
 
-            PipelineExecution execution = executionRepository.findById(executionId)
+            PipelineExecution execution = executionRepository.findByIdWithDetails(executionId)
                     .orElseThrow(() -> new ResourceNotFoundException(
                             "Ejecución no encontrada: " + executionId));
 
@@ -189,7 +195,7 @@ public class DeploymentServiceImpl implements DeploymentService {
     public Mono<DeploymentResponse> getDeploymentStatus(Long executionId,
                                                         String username) {
         return Mono.fromCallable(() -> {
-            PipelineExecution execution = executionRepository.findById(executionId)
+            PipelineExecution execution = executionRepository.findByIdWithDetails(executionId)
                     .orElseThrow(() -> new ResourceNotFoundException(
                             "Ejecución no encontrada: " + executionId));
 
@@ -225,7 +231,7 @@ public class DeploymentServiceImpl implements DeploymentService {
     @Override
     public Mono<Void> undeploy(Long executionId, String username) {
         return Mono.fromRunnable(() -> {
-            PipelineExecution execution = executionRepository.findById(executionId)
+            PipelineExecution execution = executionRepository.findByIdWithDetails(executionId)
                     .orElseThrow(() -> new ResourceNotFoundException(
                             "Ejecución no encontrada: " + executionId));
 
@@ -268,6 +274,51 @@ public class DeploymentServiceImpl implements DeploymentService {
             log.warn("No se pudieron persistir los manifiestos de despliegue (exec={}): {}",
                     executionId, e.getMessage());
         }
+    }
+
+    @Override
+    public Mono<DeploymentResponse> deployByRunId(String runId, String username) {
+        return Mono.fromCallable(() -> executionRepository.findByMlflowRunId(runId)
+                        .map(PipelineExecution::getIdExecution)
+                        .orElseThrow(() -> new ResourceNotFoundException(
+                                "No hay una ejecución asociada al run: " + runId)))
+                .subscribeOn(Schedulers.boundedElastic())
+                .flatMap(execId -> deploy(execId, username));
+    }
+
+    @Override
+    public Mono<DeploymentsView> listDeployments(String username) {
+        return Mono.fromCallable(() -> {
+            List<PipelineExecution> execs =
+                    executionRepository.findDeploymentsByUsername(username);
+
+            var active = dockerFacade.listModelServiceContainers();
+            Set<String> runningNames = active.stream()
+                    .flatMap(c -> Arrays.stream(c.getNames()))
+                    .map(n -> n.startsWith("/") ? n.substring(1) : n)
+                    .collect(Collectors.toSet());
+
+            List<DeploymentItem> items = execs.stream().map(e -> {
+                var ws  = e.getPipeline().getWorkspace();
+                MLArtifact art = e.getArtifact();
+                boolean running = e.getDeployContainerName() != null
+                        && runningNames.contains(e.getDeployContainerName());
+                return new DeploymentItem(
+                        e.getIdExecution(),
+                        ws.getIdWorkspace(),
+                        ws.getName(),
+                        art != null ? art.getModelVersion() : null,
+                        e.getMlflowRunId(),
+                        e.getDeployContainerName(),
+                        e.getDeployPort(),
+                        e.getDeployPort() != null ? "http://localhost:" + e.getDeployPort() : null,
+                        e.getDeployStatus(),
+                        e.getColdStartMs(),
+                        running);
+            }).toList();
+
+            return new DeploymentsView(maxDeployments, active.size(), items);
+        }).subscribeOn(Schedulers.boundedElastic());
     }
 
     private String extractContainerId(String hyperparamsJson) {
