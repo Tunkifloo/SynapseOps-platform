@@ -47,12 +47,23 @@ export function PipelineBuilderPage({ token, onAuthError }: PipelineBuilderPageP
   const [savingRename, setSavingRename] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const navigate = useNavigate()
+  const CARD_KEY = 'synapseops:builder-ws-id'
+  const LAST_KEY = 'synapseops:last-builder-ws'
 
   const loadWorkspaces = useCallback(async () => {
     try {
+      const raw = localStorage.getItem(CARD_KEY)
+      const preferredId = raw ? Number(raw) : undefined
       const data = await listMyWorkspaces(token)
       setWorkspaces(data)
-      setActiveWsId((prev) => prev ?? data[0]?.idWorkspace ?? null)
+      let target = preferredId
+        ? data.find((w) => w.idWorkspace === preferredId)
+        : undefined
+      if (!target) {
+        const lastName = localStorage.getItem(LAST_KEY)
+        target = lastName ? data.find((w) => w.name === lastName) : undefined
+      }
+      setActiveWsId((prev) => target?.idWorkspace ?? prev ?? data[0]?.idWorkspace ?? null)
     } catch (err) {
       onAuthError(err)
     } finally {
@@ -83,6 +94,12 @@ export function PipelineBuilderPage({ token, onAuthError }: PipelineBuilderPageP
 
   const activeWorkspace = workspaces.find((w) => w.idWorkspace === activeWsId) ?? null
   const activePipeline = pipelines.find((p) => p.idPipeline === activePipelineId) ?? null
+
+  useEffect(() => {
+    if (activeWorkspace?.name) {
+      localStorage.setItem(LAST_KEY, activeWorkspace.name)
+    }
+  }, [activeWorkspace?.name, LAST_KEY])
 
   const handleRenamePipeline = async () => {
     if (!activeWsId || !activePipelineId || !renameValue.trim()) { setRenaming(false); return }

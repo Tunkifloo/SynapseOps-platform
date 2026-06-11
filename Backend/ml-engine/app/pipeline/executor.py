@@ -25,6 +25,34 @@ from app.pipeline.training.pytorch_strategy import PyTorchStrategy
 log = logging.getLogger(__name__)
 
 
+def _compute_overfit_warning(result: TrainingResult, bundle) -> dict | None:
+    """Detecta overfitting comparando train vs validation accuracy."""
+    if not result.history.get("accuracy") or not result.history.get("val_accuracy"):
+        return None
+    train_acc = float(result.history["accuracy"][-1])
+    val_acc = float(result.history["val_accuracy"][-1])
+    gap = train_acc - val_acc
+    if gap > 0.15:
+        return {
+            "gap": round(float(gap), 4),
+            "train_accuracy": round(train_acc, 4),
+            "val_accuracy": round(val_acc, 4),
+            "severity": "high" if gap > 0.25 else "moderate",
+            "message": f"Posible overfitting detectado: diferencia train/val de {gap:.1%}. "
+                       f"Considera aumentar data augmentation, reducir epochs, o añadir dropout.",
+        }
+    if gap > 0.08:
+        return {
+            "gap": round(float(gap), 4),
+            "train_accuracy": round(train_acc, 4),
+            "val_accuracy": round(val_acc, 4),
+            "severity": "mild",
+            "message": f"Ligera diferencia entre train y validation ({gap:.1%}). "
+                       f"Monitorea epochs futuras.",
+        }
+    return None
+
+
 @dataclass
 class PipelineJob:
     execution_id: str
@@ -196,11 +224,16 @@ class PipelineExecutor:
                    f"Entrenamiento: entrenando con {job.framework} · {job.epochs} epochs (batch {job.batch_size})…")
 
         def on_epoch(epoch: int, total: int, metrics: dict) -> None:
-            self._emit(
-                job.execution_id,
-                f"Epoch {epoch}/{total} — loss={metrics.get('loss', 0):.4f} "
-                f"acc={metrics.get('accuracy', 0):.4f}",
-            )
+            parts = [f"Epoch {epoch}/{total}"]
+            if "loss" in metrics:
+                parts.append(f"loss={metrics['loss']:.4f}")
+            if "accuracy" in metrics:
+                parts.append(f"acc={metrics['accuracy']:.4f}")
+            if "val_loss" in metrics:
+                parts.append(f"val_loss={metrics['val_loss']:.4f}")
+            if "val_accuracy" in metrics:
+                parts.append(f"val_acc={metrics['val_accuracy']:.4f}")
+            self._emit(job.execution_id, " — ".join(parts))
 
         result: TrainingResult = strategy.train(
             X_train, y_train, X_val, y_val, hp, output_dir,
@@ -277,14 +310,14 @@ class PipelineExecutor:
             "metrics": {
                 "final_accuracy": result.final_accuracy,
                 "final_loss":     result.final_loss,
-                # val_accuracy/val_loss (última época) → el encabezado del modelo
-                # prioriza test→val sobre train (métrica honesta de desempeño).
                 "val_accuracy":   (result.history.get("val_accuracy") or [None])[-1],
                 "val_loss":       (result.history.get("val_loss") or [None])[-1],
                 "test_accuracy":  result.test_accuracy,
                 "test_loss":      result.test_loss,
                 **advanced,
             },
+            # Detección de overfitting: gap > 15% entre train y validation accuracy
+            "overfit_warning": _compute_overfit_warning(result, bundle),
             "confusion_matrix": confusion,
         }
 

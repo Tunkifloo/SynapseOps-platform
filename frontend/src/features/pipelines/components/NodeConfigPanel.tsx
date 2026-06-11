@@ -29,6 +29,7 @@ import { DeployActions } from './DeployActions'
 export interface IngestContext {
   token: string
   workspaceId: number
+  datasetPath?: string | null
   onAssigned: (descriptor: string) => void
 }
 
@@ -258,6 +259,7 @@ export function NodeConfigPanel({
           <IngestActions
             token={ingest.token}
             workspaceId={ingest.workspaceId}
+            datasetPath={ingest.datasetPath}
             mode={String(config.mode ?? 'keras')}
             kerasDataset={String(config.kerasDataset ?? '')}
             url={String(config.url ?? '')}

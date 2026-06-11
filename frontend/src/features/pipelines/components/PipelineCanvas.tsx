@@ -174,7 +174,9 @@ export function PipelineCanvas({
       ? {
           token,
           workspaceId: workspace.idWorkspace,
+          datasetPath: workspace.datasetPath,
           onAssigned: (descriptor: string) => {
+            const dsLabel = workspace.datasetPath?.split(/[/\\]/).pop() || descriptor
             setNodes((nds) =>
               nds.map((n) =>
                 n.id === selectedNodeId
@@ -183,6 +185,7 @@ export function PipelineCanvas({
                       data: {
                         ...n.data,
                         status: 'success' as const,
+                        datasetDescriptor: dsLabel,
                         config: { ...n.data.config, dataset: descriptor },
                       },
                     }
@@ -709,8 +712,17 @@ export function PipelineCanvas({
       try {
         // Estado del nodo (running/success) es transitorio → se reinicia a idle al
         // cargar; el estado en vivo lo reconstruye el replay SSE (item 1).
+        const dsLabel = workspace?.datasetPath?.split(/[/\\]/).pop()
         const idle = (ns: Node<PipelineNodeData>[]) =>
-          ns.map((n) => ({ ...n, data: { ...n.data, status: 'idle' as const, error: undefined } }))
+          ns.map((n) => ({
+            ...n,
+            data: {
+              ...n.data,
+              status: 'idle' as const,
+              error: undefined,
+              ...(n.data.kind === 'ingest' && dsLabel ? { datasetDescriptor: dsLabel } : {}),
+            },
+          }))
 
         const canvas = await loadCanvas(token, wsId, pipelineId)
         if (cancelled) return
@@ -824,11 +836,17 @@ export function PipelineCanvas({
       }
 
       const position = screenToFlowPosition({ x: event.clientX, y: event.clientY })
+      const dsLabel = kind === 'ingest' ? workspace?.datasetPath?.split(/[/\\]/).pop() : undefined
       const node: Node<PipelineNodeData> = {
         id: nextId(),
         type: 'pipelineNode',
         position,
-        data: { label: config.label, kind, config: defaultConfig(kind) },
+        data: {
+          label: config.label,
+          kind,
+          config: defaultConfig(kind),
+          ...(dsLabel ? { datasetDescriptor: dsLabel } : {}),
+        },
       }
       setNodes((nds) => nds.concat(node))
     },

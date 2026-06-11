@@ -1,5 +1,5 @@
 import { useState, type ChangeEvent } from 'react'
-import { UploadCloud } from 'lucide-react'
+import { CheckCircle, UploadCloud } from 'lucide-react'
 
 import { Button } from '@/shared/components/ui/button'
 import { Input } from '@/shared/components/ui/input'
@@ -15,6 +15,7 @@ const ALLOWED_EXTS = ['.png', '.jpg', '.jpeg', '.zip']
 interface IngestActionsProps {
   token: string
   workspaceId: number
+  datasetPath?: string | null
   mode: string
   kerasDataset?: string
   url?: string
@@ -28,6 +29,7 @@ interface IngestActionsProps {
 export function IngestActions({
   token,
   workspaceId,
+  datasetPath,
   mode,
   kerasDataset,
   url,
@@ -86,6 +88,18 @@ export function IngestActions({
         Asignar dataset
       </p>
 
+      {datasetPath ? (
+        <div className="flex items-start gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-2.5">
+          <CheckCircle className="size-3.5 text-emerald-400 mt-0.5 shrink-0" />
+          <div className="min-w-0 flex-1">
+            <p className="text-[11px] font-semibold text-emerald-400">Dataset activo</p>
+            <p className="truncate text-xs text-slate-300 font-mono" title={datasetPath}>{datasetPath}</p>
+          </div>
+        </div>
+      ) : (
+        <p className="text-xs text-muted-foreground">No hay dataset asignado. Configura el origen abajo.</p>
+      )}
+
       {mode === 'zip' && (
         <Input
           type="file"
@@ -107,7 +121,7 @@ export function IngestActions({
 
       <Button variant="cta" size="sm" className="w-full" loading={loading} onClick={() => void apply()}>
         <UploadCloud />
-        Asignar al workspace
+        {datasetPath ? 'Reemplazar dataset' : 'Asignar al workspace'}
       </Button>
     </div>
   )
