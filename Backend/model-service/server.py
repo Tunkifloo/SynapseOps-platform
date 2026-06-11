@@ -27,10 +27,9 @@ import time
 from typing import List, Optional
 
 import numpy as np
-from fastapi import FastAPI, File, HTTPException, Request, Response, UploadFile
+from fastapi import FastAPI, HTTPException, Request, Response
 from PIL import Image
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
-from pydantic import BaseModel
 
 MODEL_PATH = os.environ.get("MODEL_PATH", "/model/artifact")
 INPUT_SIZE = int(os.environ.get("INPUT_SIZE", "64"))
@@ -100,10 +99,6 @@ def load_model() -> None:
     _state["loaded"] = True
 
 
-class PredictRequest(BaseModel):
-    image: Optional[str] = None  # imagen en base64 (data URL o b64 puro)
-
-
 def _preprocess(raw: bytes) -> np.ndarray:
     """Bytes de imagen → tensor float32 [0,1] de tamaño (INPUT_SIZE, INPUT_SIZE, C)."""
     mode = "RGB" if CHANNELS == 3 else "L"
@@ -145,20 +140,40 @@ def health() -> dict:
     }
 
 
+def _b64_to_bytes(b64: str) -> bytes:
+    """Decodifica base64 (admite data URL 'data:image/png;base64,....')."""
+    try:
+        return base64.b64decode(b64.split(",", 1)[-1])
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=f"Base64 inválido: {exc}")
+
+
 @app.post("/predict")
-async def predict(body: Optional[PredictRequest] = None, file: Optional[UploadFile] = File(None)) -> dict:
+async def predict(request: Request) -> dict:
+    # IMPORTANTE: se parsea el body manualmente según el Content-Type. NO se mezcla un
+    # modelo Pydantic (JSON) con File()/UploadFile en la firma: FastAPI fuerza entonces
+    # multipart/form-data para TODO el endpoint y un POST JSON deja el body vacío
+    # (→ 400 "Envía una imagen" aunque sí venía la imagen). El orquestador envía JSON.
     if not _state["loaded"]:
         raise HTTPException(status_code=503, detail="El modelo aún se está cargando.")
 
     raw: Optional[bytes] = None
-    if file is not None:
-        raw = await file.read()
-    elif body is not None and body.image:
-        b64 = body.image.split(",", 1)[-1]  # admite data URL "data:image/png;base64,...."
+    ctype = request.headers.get("content-type", "").lower()
+
+    if "multipart/form-data" in ctype:
+        form = await request.form()
+        upload = form.get("file")
+        if upload is not None and hasattr(upload, "read"):
+            raw = await upload.read()
+    else:
+        # JSON {"image": "<base64>"} (default; también si el Content-Type falta).
         try:
-            raw = base64.b64decode(b64)
-        except Exception as exc:  # noqa: BLE001
-            raise HTTPException(status_code=400, detail=f"Base64 inválido: {exc}")
+            data = await request.json()
+        except Exception:  # noqa: BLE001
+            data = None
+        b64 = (data or {}).get("image") if isinstance(data, dict) else None
+        if b64:
+            raw = _b64_to_bytes(b64)
 
     if not raw:
         raise HTTPException(

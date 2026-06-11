@@ -32,10 +32,14 @@ build/
 ### VS Code ###
 .vscode/
 
-# Python
-ml-engine/.venv/
-ml-engine/__pycache__/
-ml-engine/*.pyc
+# Python (recursivo: el código vive en Backend/ml-engine, Backend/model-service, …)
+**/.venv/
+**/__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 ml-engine/.env
 
 # Environment variables

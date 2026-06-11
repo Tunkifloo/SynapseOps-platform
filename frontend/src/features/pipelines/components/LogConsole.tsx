@@ -19,6 +19,12 @@ interface LogConsoleProps {
   executionId: number | null
   /** Notifica cada evento SSE para que el lienzo anime los estados por nodo (T-D.2). */
   onLogEvent?: (level: string, message: string, terminal: boolean) => void
+  /**
+   * Contador que, al incrementar, cierra el stream SSE desde el padre. Se usa cuando el
+   * ciclo termina sin despliegue: el evento de entrenamiento ya no es terminal (para no
+   * cortar el stream antes de un posible auto-despliegue), así que el lienzo cierra aquí.
+   */
+  closeSignal?: number
 }
 
 const levelClass = (level: string) =>
@@ -29,10 +35,11 @@ const levelClass = (level: string) =>
  * (EventSource con `?token=` porque no admite cabeceras) y muestra los eventos
  * de la ejecución con auto-scroll. Cierra el stream al recibir el evento terminal.
  */
-export function LogConsole({ token, workspaceId, pipelineId, executionId, onLogEvent }: LogConsoleProps) {
+export function LogConsole({ token, workspaceId, pipelineId, executionId, onLogEvent, closeSignal }: LogConsoleProps) {
   const [lines, setLines] = useState<LogLine[]>([])
   const [open, setOpen] = useState(true)
   const bottomRef = useRef<HTMLDivElement | null>(null)
+  const sourceRef = useRef<EventSource | null>(null)
   const onLogEventRef = useRef(onLogEvent)
   useEffect(() => { onLogEventRef.current = onLogEvent }, [onLogEvent])
 
@@ -43,6 +50,7 @@ export function LogConsole({ token, workspaceId, pipelineId, executionId, onLogE
       `${API_BASE_URL}/workspaces/${workspaceId}/pipelines/${pipelineId}` +
       `/executions/${executionId}/logs?token=${encodeURIComponent(token)}`
     const source = new EventSource(url)
+    sourceRef.current = source
 
     source.addEventListener('log', (event: Event) => {
       try {
@@ -64,8 +72,14 @@ export function LogConsole({ token, workspaceId, pipelineId, executionId, onLogE
     })
     source.onerror = () => source.close()
 
-    return () => source.close()
+    return () => { source.close(); sourceRef.current = null }
   }, [token, workspaceId, pipelineId, executionId])
+
+  // Cierre dirigido por el padre (fin de ciclo sin despliegue). El valor 0 inicial no
+  // cierra nada; solo los incrementos posteriores cierran el stream activo.
+  useEffect(() => {
+    if (closeSignal && closeSignal > 0) sourceRef.current?.close()
+  }, [closeSignal])
 
   useEffect(() => {
     if (open) bottomRef.current?.scrollIntoView({ behavior: 'smooth' })

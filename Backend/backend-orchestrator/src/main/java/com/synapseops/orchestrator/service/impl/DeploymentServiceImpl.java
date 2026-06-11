@@ -93,7 +93,8 @@ public class DeploymentServiceImpl implements DeploymentService {
             if (!isRedeploy && activeDeployments.size() >= maxDeployments) {
                 executionEventBus.publish(execId, "ERROR",
                         "Límite de despliegues activos alcanzado (" + maxDeployments
-                                + "). Derriba un model-service en 'Despliegues' antes de crear otro.");
+                                + "). Derriba un model-service en 'Despliegues' antes de crear otro.",
+                        true);   // terminal: fin del ciclo (despliegue rechazado)
                 throw new IllegalStateException(
                         "Límite de despliegues activos alcanzado (" + maxDeployments + ").");
             }
@@ -193,14 +194,16 @@ public class DeploymentServiceImpl implements DeploymentService {
                 dockerFacade.stopContainer(containerId);
                 executionEventBus.publish(execId, "ERROR",
                         "Despliegue FALLIDO: el model-service no respondió al health check ("
-                                + coldStartMs + " ms). Contenedor detenido. Revisa el log de arriba.");
+                                + coldStartMs + " ms). Contenedor detenido. Revisa el log de arriba.",
+                        true);   // terminal: fin del ciclo (despliegue fallido)
                 return new DeploymentResponse(executionId, containerId, modelName,
                         artifact.getModelVersion(), "http://localhost:" + hostPort, "FAILED");
             }
 
             executionEventBus.publish(execId, "INFO",
                     "model-service desplegado y healthy en :" + hostPort
-                            + " (cold start " + coldStartMs + " ms). Endpoint /predict disponible.");
+                            + " (cold start " + coldStartMs + " ms). Endpoint /predict disponible.",
+                    true);   // terminal: fin del ciclo (despliegue exitoso)
 
             return new DeploymentResponse(
                     executionId,

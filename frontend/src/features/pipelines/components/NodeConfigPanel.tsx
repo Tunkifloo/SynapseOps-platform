@@ -42,10 +42,16 @@ export interface TrainContext {
 
 export interface DeployContext {
   token: string
-  /** Output del flujo: runId/version del modelo entrenado + estado del nodo de entrenamiento. */
+  /** Output del flujo: runId/version/métricas del modelo entrenado + estado del nodo de entrenamiento. */
   flowRunId: string
   flowModelVersion: string
+  flowMetrics: string
   trainStatus: PipelineNodeStatus
+  /** Estado y endpoint EN VIVO del propio nodo de Despliegue (lo gobierna el auto-despliegue). */
+  deployStatus: PipelineNodeStatus
+  deployEndpoint: string
+  /** Disparador manual del despliegue (handoff de "Mis modelos" o reintento). Actualiza el nodo. */
+  onDeploy: (runId: string) => void
   onAuthError: (error: unknown) => boolean
 }
 
@@ -221,11 +227,13 @@ export function NodeConfigPanel({
 
         {data.kind === 'deploy' && deploy && (
           <DeployActions
-            token={deploy.token}
             flowRunId={deploy.flowRunId}
             flowModelVersion={deploy.flowModelVersion}
+            flowMetrics={deploy.flowMetrics}
             trainStatus={deploy.trainStatus}
-            onAuthError={deploy.onAuthError}
+            deployStatus={deploy.deployStatus}
+            deployEndpoint={deploy.deployEndpoint}
+            onDeploy={deploy.onDeploy}
           />
         )}
 

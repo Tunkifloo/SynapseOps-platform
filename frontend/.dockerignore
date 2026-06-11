@@ -1,0 +1,27 @@
+# Dependencias y build — se reinstalan/recompilan dentro de la imagen.
+# Sin esto, `COPY . .` envía node_modules/dist al daemon en cada build
+# (cientos de MB sobre OneDrive → builds lentísimos).
+node_modules
+dist
+.vite
+
+# Caches y logs
+.cache
+*.log
+npm-debug.log*
+
+# VCS / editor / SO
+.git
+.gitignore
+.vscode
+.idea
+.DS_Store
+
+# Env locales (la URL de la API se inyecta por build-arg)
+.env
+.env.*
+!.env.example
+
+# Docs y tests (no van a la imagen de runtime)
+*.md
+coverage

@@ -82,10 +82,15 @@ public class PipelineResultProcessor {
                 pipelineRepository.save(pipeline);
                 log.info("Pipeline COMPLETADO — executionId={}", executionId);
 
+                // NO terminal: el entrenamiento es una FASE del ciclo, no su fin. Si el
+                // lienzo tiene un nodo Despliegue conectado, el auto-despliegue continúa
+                // publicando logs en este mismo stream SSE. Marcar terminal aquí cerraría
+                // la consola antes de mostrar el despliegue. El evento terminal real lo
+                // emite el despliegue (éxito/fallo) en DeploymentServiceImpl.
                 executionEventBus.publish(executionId, "INFO",
                         "Entrenamiento COMPLETADO — runId=" + runId
                                 + (modelVersion.isBlank() ? "" : " · versión " + modelVersion),
-                        true);
+                        false);
 
             } else {
                 execution.fail();

@@ -228,6 +228,7 @@ public class DockerFacade {
      */
     public boolean waitForHttpHealthy(String containerId, int port, int retries, long backoffMs) {
         HttpClient client = HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_1_1)   // evita el upgrade h2c que h11 rechaza
                 .connectTimeout(Duration.ofSeconds(2))
                 .build();
         for (int attempt = 1; attempt <= retries; attempt++) {
@@ -272,7 +273,14 @@ public class DockerFacade {
         if (ip == null || ip.isBlank()) {
             throw new IllegalStateException("model-service no alcanzable: " + containerNameOrId);
         }
-        HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
+        // HTTP/1.1 forzado: el cliente JDK por defecto negocia HTTP/2 vía upgrade h2c
+        // en texto plano, que uvicorn/h11 rechaza con "400 Invalid HTTP request received"
+        // (visible en los logs del model-service al hacer POST /predict). Forzar 1.1 evita
+        // el upgrade. Aplica a ambos frameworks (TF y PyTorch comparten este servidor).
+        HttpClient client = HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_1_1)
+                .connectTimeout(Duration.ofSeconds(5))
+                .build();
         try {
             HttpResponse<String> resp = client.send(
                     HttpRequest.newBuilder(URI.create("http://" + ip + ":" + port + path))
