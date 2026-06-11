@@ -1,4 +1,3 @@
-/* eslint-disable react-refresh/only-export-components */
 // Hook de notificaciones (patrón shadcn/ui adaptado).
 // HU-020: máx 3 toasts apilados; el auto-cierre a 5s lo aplica <Toaster> (duration).
 import * as React from "react"
@@ -7,6 +6,11 @@ import type { ToastActionElement, ToastProps } from "@/shared/components/ui/toas
 
 const TOAST_LIMIT = 3
 const TOAST_REMOVE_DELAY = 1000
+// Cierre uniforme en TODOS los módulos. Radix pausa su propio timer cuando la pestaña
+// pierde el foco o el puntero está encima → algunos toasts no se cerraban a los 3 s
+// (típico durante entrenamientos largos con el usuario en otra pestaña). Este timer
+// propio es inmune a ese pausado y garantiza el auto-cierre.
+const TOAST_DEFAULT_DURATION = 3000
 
 type ToasterToast = Omit<ToastProps, "title"> & {
   id: string
@@ -108,6 +112,13 @@ function toast({ ...props }: Toast) {
       },
     },
   })
+
+  // Auto-cierre garantizado (independiente del timer de Radix, que se pausa al perder
+  // foco/hover). duration: Infinity o <= 0 lo deja persistente a propósito.
+  const duration = (props as ToasterToast).duration ?? TOAST_DEFAULT_DURATION
+  if (duration !== Infinity && duration > 0) {
+    setTimeout(dismiss, duration)
+  }
 
   return { id, dismiss, update }
 }

@@ -57,14 +57,9 @@ export function LogConsole({ token, workspaceId, pipelineId, executionId, onLogE
         const data = JSON.parse((event as MessageEvent).data) as LogLine & { terminal?: boolean }
         setLines((prev) => [...prev, { level: data.level, message: data.message, timestamp: data.timestamp }])
         onLogEventRef.current?.(data.level, data.message, !!data.terminal)
-        // Eventos significativos → campana de notificaciones global (navbar).
-        if (data.terminal || data.level === 'ERROR' || data.level === 'WARN') {
-          window.dispatchEvent(
-            new CustomEvent('synapseops:notify', {
-              detail: { level: data.level, message: data.message, terminal: !!data.terminal },
-            })
-          )
-        }
+        // La campana global la alimenta un suscriptor SSE persistente en AppShell
+        // (notifica aunque el usuario esté en otro módulo y deduplica el replay).
+        // Aquí solo se anima la consola del lienzo; no se emite a la campana.
         if (data.terminal) source.close()
       } catch {
         /* evento no parseable: ignorar */

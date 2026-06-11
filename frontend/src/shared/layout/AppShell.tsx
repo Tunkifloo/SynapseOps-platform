@@ -35,6 +35,7 @@ import { Input } from '@/shared/components/ui/input'
 import { Badge } from '@/shared/components/ui/badge'
 import { ConfirmDialog } from '@/shared/components/ConfirmDialog'
 import { getMlflowHealth } from '@/features/mlflow/api'
+import { API_BASE_URL } from '@/shared/api/env'
 import { cn } from '@/lib/utils'
 import type { Role } from '@/types'
 
@@ -503,25 +504,77 @@ function NotificationsBell({ token, role }: { token: string; role?: Role }) {
   // El healthcheck (MLflow) es de alcance ADMIN; para colaboradores se omite.
   const canCheckHealth = role === 'ADMIN'
 
-  // Eventos del lienzo (emitidos por LogConsole).
+  const addNotif = useCallback((level: string, message: string, terminal: boolean) => {
+    idRef.current += 1
+    const item: NotifItem = {
+      id: idRef.current,
+      level,
+      message,
+      time: new Date().toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' }),
+      terminal,
+    }
+    setItems((prev) => [item, ...prev].slice(0, 30))
+    setUnread((u) => u + 1)
+  }, [])
+
+  // Fuente externa genérica: cualquier módulo puede emitir 'synapseops:notify'.
   useEffect(() => {
     const handler = (event: Event) => {
-      const detail = (event as CustomEvent).detail as { level: string; message: string; terminal: boolean }
-      if (!detail) return
-      idRef.current += 1
-      const item: NotifItem = {
-        id: idRef.current,
-        level: detail.level,
-        message: detail.message,
-        time: new Date().toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' }),
-        terminal: detail.terminal,
-      }
-      setItems((prev) => [item, ...prev].slice(0, 30))
-      setUnread((u) => u + 1)
+      const d = (event as CustomEvent).detail as { level: string; message: string; terminal: boolean }
+      if (d) addNotif(d.level, d.message, !!d.terminal)
     }
     window.addEventListener('synapseops:notify', handler)
     return () => window.removeEventListener('synapseops:notify', handler)
+  }, [addNotif])
+
+  // ── Suscriptor SSE PERSISTENTE de la ejecución activa ───────────────────────
+  // Vive en AppShell (siempre montado) → notifica ingesta/entrenamiento/despliegue
+  // AUNQUE el usuario esté en otro módulo, y DEDUPLICA el replay (no re-notifica al
+  // volver al lienzo). El lienzo difunde la ejecución vía 'synapseops:active-execution'.
+  const [activeExec, setActiveExec] =
+    useState<{ executionId: number; workspaceId: number; pipelineId: number } | null>(null)
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const d = (event as CustomEvent).detail as
+        | { executionId: number; workspaceId: number; pipelineId: number }
+        | null
+      // Ignora re-emisiones de la MISMA ejecución (evita re-suscribir y re-notificar).
+      setActiveExec((prev) => (prev?.executionId === d?.executionId ? prev : d))
+    }
+    window.addEventListener('synapseops:active-execution', handler)
+    return () => window.removeEventListener('synapseops:active-execution', handler)
   }, [])
+
+  useEffect(() => {
+    if (!activeExec || !token) return
+    const seen = new Set<string>()
+    const url =
+      `${API_BASE_URL}/workspaces/${activeExec.workspaceId}/pipelines/${activeExec.pipelineId}` +
+      `/executions/${activeExec.executionId}/logs?token=${encodeURIComponent(token)}`
+    const source = new EventSource(url)
+    source.addEventListener('log', (event: Event) => {
+      try {
+        const d = JSON.parse((event as MessageEvent).data) as
+          { level: string; message: string; terminal?: boolean }
+        const m = (d.message ?? '').toLowerCase()
+        // Hitos a notificar: ingesta lista, entrenamiento completado, despliegue
+        // exitoso, y cualquier error/fallo o evento terminal.
+        const milestone =
+          d.level === 'ERROR' || m.includes('fallid') ||
+          m.includes('dataset listo') ||
+          m.includes('entrenamiento completado') ||
+          m.includes('desplegado y healthy') ||
+          !!d.terminal
+        if (!milestone) return
+        const key = `${d.level}::${d.message}`
+        if (seen.has(key)) return   // dedup del replay / reconexión
+        seen.add(key)
+        addNotif(d.level, d.message, !!d.terminal)
+      } catch { /* evento no parseable: ignorar */ }
+    })
+    // Sin cerrar en onerror: EventSource reconecta solo; el seen-set evita duplicados.
+    return () => source.close()
+  }, [activeExec, token, addNotif])
 
   const checkHealth = useCallback(async () => {
     if (!canCheckHealth) return

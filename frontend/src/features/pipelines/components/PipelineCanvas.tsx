@@ -154,6 +154,17 @@ export function PipelineCanvas({
       } catch { /* almacenamiento no disponible */ }
     }
   }, [execKey])
+
+  // Difunde la ejecución activa a la campana global (AppShell) para que notifique
+  // ingesta/entrenamiento/despliegue aunque el usuario esté en otro módulo. NO se
+  // emite null al desmontar el lienzo: la campana debe permanecer suscrita.
+  useEffect(() => {
+    if (activeExecutionId == null || !workspace || !pipelineId) return
+    window.dispatchEvent(new CustomEvent('synapseops:active-execution', {
+      detail: { executionId: activeExecutionId, workspaceId: workspace.idWorkspace, pipelineId },
+    }))
+  }, [activeExecutionId, workspace, pipelineId])
+
   const storeWorkspace = useAppStore((s) => s.currentWorkspace)
   const projectName = workspace?.name ?? storeWorkspace
 
