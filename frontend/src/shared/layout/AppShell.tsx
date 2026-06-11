@@ -8,8 +8,10 @@ import {
   type ReactNode,
 } from 'react'
 import {
+  Activity,
   Bell,
   Boxes,
+  ChartColumn,
   CheckCircle2,
   CircleAlert,
   FolderPlus,
@@ -45,7 +47,7 @@ interface SessionUser {
   role: Role
 }
 
-type Section = 'dashboard' | 'workspaces' | 'builder' | 'models' | 'deployments' | 'admin' | 'mlflow' | 'profile'
+type Section = 'dashboard' | 'workspaces' | 'builder' | 'models' | 'deployments' | 'monitoring' | 'analytics' | 'admin' | 'mlflow' | 'profile'
 
 interface NavigationItem {
   key: Section
@@ -88,12 +90,14 @@ export function AppShell({
     { key: 'builder', label: 'Lienzo', icon: Network, path: '/builder' },
     { key: 'models', label: 'Mis modelos', icon: Boxes, path: '/models' },
     { key: 'deployments', label: 'Despliegues', icon: Rocket, path: '/deployments' },
+    { key: 'monitoring', label: 'Monitoreo', icon: Activity, path: '/monitoring' },
   ]
   const adminItems: NavigationItem[] =
     user?.role === 'ADMIN'
       ? [
           { key: 'admin', label: 'Usuarios', icon: Users, path: '/admin' },
           { key: 'mlflow', label: 'Registro de modelos', icon: Boxes, path: '/mlflow' },
+          { key: 'analytics', label: 'Analítica', icon: ChartColumn, path: '/analytics' },
         ]
       : []
 

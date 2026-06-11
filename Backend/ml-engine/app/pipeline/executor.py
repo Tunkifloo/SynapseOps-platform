@@ -6,6 +6,7 @@ No conoce detalles de carga, preproceso ni frameworks.
 import json
 import logging
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 
 import mlflow
@@ -123,6 +124,8 @@ class PipelineExecutor:
                 f"Actualmente solo está disponible 'cnn'.")
 
         # ── Nodo Ingesta: cargar dataset (delegado a ingestion) ───────────────
+        # TEL-01 · t_inicio_ingesta: marca de tiempo del inicio del ciclo (Process Tracker).
+        t_inicio_ingesta = datetime.now().isoformat(timespec="milliseconds")
         self._emit(job.execution_id, "Ingesta: cargando dataset…")
         bundle = load_dataset(
             job.dataset_path, job.workspace_id, job.execution_id,
@@ -205,6 +208,8 @@ class PipelineExecutor:
         result: TrainingResult = strategy.train(
             X_train, y_train, X_val, y_val, hp, output_dir,
             X_test=bundle.X_test, y_test=bundle.y_test, on_epoch=on_epoch)
+        # TEL-01 · t_fin_entrenamiento: fin del entrenamiento (antes del registro en MLflow).
+        t_fin_entrenamiento = datetime.now().isoformat(timespec="milliseconds")
 
         # ── Paso 4: Loguear métricas en MLflow ────────────────────────────────
         for step, (acc, loss) in enumerate(
@@ -264,6 +269,9 @@ class PipelineExecutor:
             "run_id":        run_id,
             "model_version": model_version,
             "artifact_path": result.artifact_path,
+            # TEL-01 · timestamps del ciclo (ISO-8601 local) para el Process Tracker.
+            "t_inicio_ingesta":    t_inicio_ingesta,
+            "t_fin_entrenamiento": t_fin_entrenamiento,
             "hyperparameters": {
                 "framework":     result.framework,
                 "architecture":  "cnn_adaptive",

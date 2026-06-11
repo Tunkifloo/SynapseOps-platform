@@ -182,6 +182,10 @@ public class DeploymentServiceImpl implements DeploymentService {
             execution.setDeployContainerName(containerName);
             execution.setColdStartMs(coldStartMs);
             execution.setDeployStatus(healthy ? "SUCCESS" : "FAILED");   // TA-004/TEL-02
+            // TEL-01 · t_despliegue_disponible: el model-service quedó healthy y servible.
+            if (healthy) {
+                execution.setDeployAvailableAt(java.time.LocalDateTime.now());
+            }
             executionRepository.save(execution);
 
             if (!healthy) {

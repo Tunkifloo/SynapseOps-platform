@@ -10,6 +10,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -58,6 +60,12 @@ public class PipelineResultProcessor {
                 String metricsJson     = result.path("metrics").toString();
 
                 execution.complete(runId);
+                // TEL-01 · Process Tracker: timestamps del ciclo. Los del ml-engine
+                // (ingesta/entrenamiento) vienen en el resultado; la aprobación del
+                // modelo es AHORA (se registra en el Model Registry de MLflow).
+                execution.setIngestionStartedAt(parseTs(result.path("t_inicio_ingesta").asText(null)));
+                execution.setTrainingFinishedAt(parseTs(result.path("t_fin_entrenamiento").asText(null)));
+                execution.setModelApprovedAt(LocalDateTime.now());
                 executionRepository.save(execution);
                 log.info("Ejecución COMPLETADA — id={} runId={}", executionId, runId);
 
@@ -108,6 +116,19 @@ public class PipelineResultProcessor {
         } catch (Exception e) {
             log.error("Error procesando resultado Kafka: {}", e.getMessage(), e);
             throw new RuntimeException("Error en PipelineResultProcessor", e);
+        }
+    }
+
+    /** Parseo tolerante de un timestamp ISO-8601 local del ml-engine (null si falta/ inválido). */
+    private LocalDateTime parseTs(String iso) {
+        if (iso == null || iso.isBlank()) {
+            return null;
+        }
+        try {
+            return LocalDateTime.parse(iso);
+        } catch (Exception e) {
+            log.warn("Timestamp de ciclo inválido '{}': {}", iso, e.getMessage());
+            return null;
         }
     }
 }
