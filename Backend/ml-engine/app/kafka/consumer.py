@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import threading
 
 from confluent_kafka import Consumer, KafkaError, KafkaException
@@ -25,13 +26,25 @@ class PipelineConsumer:
             "group.id": settings.kafka_group_id,
             "auto.offset.reset": "earliest",
             "enable.auto.commit": False,
+            # El entrenamiento corre SÍNCRONO en este hilo, bloqueando poll() durante
+            # minutos. Con el default (5 min) Kafka expulsaba al consumidor a mitad de
+            # entrenamientos largos (_MAX_POLL_EXCEEDED → rebalanceos). Se eleva a 2 h.
+            # (Los heartbeats van por un hilo de fondo en librdkafka, así que el
+            #  session.timeout no se ve afectado por el procesamiento lento.)
+            "max.poll.interval.ms": 7200000,
         })
         self._executor = PipelineExecutor()
         self._producer = ResultProducer()
         self._running = False
         self._thread: threading.Thread | None = None
+        # Marcador de "trabajo en vuelo" en el volumen persistente /storage: si el
+        # proceso muere a mitad de un entrenamiento, al reiniciar se publica FAILED
+        # para no dejar la ejecución colgada (ver _recover_inflight).
+        self._inflight_path = os.path.join(settings.storage_base_path, ".ml_engine_inflight")
 
     def start(self) -> None:
+        # Recuperación de un trabajo que quedó a medias por un reinicio del proceso.
+        self._recover_inflight()
         self._running = True
         self._consumer.subscribe([settings.kafka_topic_requests])
         self._thread = threading.Thread(
@@ -70,6 +83,9 @@ class PipelineConsumer:
 
                 # Commit ANTES de procesar → este registro nunca se vuelve a leer.
                 self._consumer.commit(message=msg)
+                # Marca el trabajo como "en vuelo": si el proceso muere durante el
+                # entrenamiento, al reiniciar se publicará FAILED para esta ejecución.
+                self._mark_inflight(self._peek_execution_id(msg))
                 try:
                     self._process_message(msg)
                 except Exception as e:
@@ -78,10 +94,63 @@ class PipelineConsumer:
                         "re-entrenamientos: %s",
                         (msg.topic(), msg.partition(), msg.offset()), e,
                     )
+                finally:
+                    # El trabajo terminó (éxito o fallo manejado) → ya no está en vuelo.
+                    self._clear_inflight()
 
             except Exception as e:
                 log.exception("Error en consume loop: %s", e)
                 time.sleep(2)   # backoff ante errores del propio consumidor
+
+    @staticmethod
+    def _peek_execution_id(msg) -> str:
+        """executionId del mensaje (sin procesarlo) para el marcador de recuperación."""
+        try:
+            return str(json.loads(msg.value().decode("utf-8")).get("executionId", "")).strip()
+        except Exception:  # noqa: BLE001
+            return ""
+
+    def _mark_inflight(self, execution_id: str) -> None:
+        if not execution_id:
+            return
+        try:
+            os.makedirs(os.path.dirname(self._inflight_path), exist_ok=True)
+            with open(self._inflight_path, "w", encoding="utf-8") as f:
+                f.write(execution_id)
+        except Exception as e:  # noqa: BLE001 — el marcador nunca debe romper el flujo
+            log.debug("No se pudo escribir el marcador in-flight: %s", e)
+
+    def _clear_inflight(self) -> None:
+        try:
+            if os.path.exists(self._inflight_path):
+                os.remove(self._inflight_path)
+        except Exception as e:  # noqa: BLE001
+            log.debug("No se pudo limpiar el marcador in-flight: %s", e)
+
+    def _recover_inflight(self) -> None:
+        """Si el proceso murió a mitad de un entrenamiento (OOM, reinicio del contenedor),
+        el offset YA se commiteó (at-most-once) y el mensaje no se reentrega. Para no dejar
+        la ejecución colgada en 'RUNNING' para siempre, se publica un resultado FAILED al
+        arrancar, dando feedback al usuario para que reintente el flujo. La idempotencia del
+        orquestador ignora este FAILED si la ejecución ya hubiera terminado."""
+        try:
+            if not os.path.exists(self._inflight_path):
+                return
+            with open(self._inflight_path, encoding="utf-8") as f:
+                execution_id = f.read().strip()
+            if execution_id:
+                log.warning("Recuperación: la ejecución %s quedó a medias por un reinicio del "
+                            "ml-engine; publicando FAILED.", execution_id)
+                self._producer.publish_result({
+                    "execution_id": execution_id,
+                    "status": "FAILED",
+                    "error": "El ml-engine se reinició durante el entrenamiento (posible falta de "
+                             "memoria o reinicio del contenedor). El flujo no continuó; reintenta.",
+                })
+        except Exception as e:  # noqa: BLE001
+            log.warning("No se pudo recuperar la ejecución en vuelo: %s", e)
+        finally:
+            self._clear_inflight()
 
     def _process_message(self, msg) -> None:
         raw = msg.value().decode("utf-8")
