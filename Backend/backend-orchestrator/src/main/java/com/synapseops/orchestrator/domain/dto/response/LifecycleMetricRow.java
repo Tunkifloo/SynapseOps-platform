@@ -10,6 +10,7 @@ package com.synapseops.orchestrator.domain.dto.response;
  */
 public record LifecycleMetricRow(
         Long executionId,
+        String ownerUsername,
         String workspaceName,
         String pipelineName,
         String modelName,

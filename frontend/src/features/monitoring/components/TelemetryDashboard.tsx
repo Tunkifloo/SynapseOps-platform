@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Activity, Boxes, Download, Gauge, RefreshCw, Rocket, Timer } from 'lucide-react'
+import { Activity, Boxes, Download, Gauge, Info, RefreshCw, Rocket, Timer, Users } from 'lucide-react'
 
 import { Button } from '@/shared/components/ui/button'
 import { notify } from '@/shared/notify'
@@ -11,11 +11,10 @@ interface TelemetryDashboardProps {
   onAuthError?: (error: unknown) => boolean
   title: string
   subtitle: string
-  /** Carga de indicadores de ciclo de vida (alcance usuario o global). */
+  /** 'user' = Monitoreo (mis proyectos) · 'global' = Analítica (toda la plataforma, ADMIN). */
+  scope: 'user' | 'global'
   loadLifecycle: (token: string) => Promise<LifecycleMetrics>
-  /** Carga de indicadores agrupados por modelo. */
   loadByModel: (token: string) => Promise<ByModelView>
-  /** Descarga del CSV (alcance correspondiente). */
   downloadCsv: (token: string) => Promise<void>
 }
 
@@ -26,16 +25,28 @@ const eff = (v: number | null) => (v == null ? '—' : v.toFixed(1))
 const acc = (v: number | null) => (v == null ? '—' : `${(v * 100).toFixed(1)}%`)
 const statusTone = (s: string) => (s === 'COMPLETED' ? 'text-success' : s === 'FAILED' ? 'text-destructive' : 'text-info')
 
+// Glosario único: cada métrica explica QUÉ es, su unidad y la DIRECCIÓN deseada.
+const HELP = {
+  completion: 'Porcentaje de entrenamientos que terminaron sin fallar (completados ÷ completados+fallidos). Mayor es mejor.',
+  deploy: 'Porcentaje de despliegues que pasaron el health check del model-service. Mayor es mejor.',
+  tRe: 'Tiempo de Re-entrenamiento (T_re): desde que inicia la ingesta hasta que termina el entrenamiento. Menor es mejor.',
+  ltD: 'Lead Time de Despliegue (LT_d): desde que el modelo se aprueba/registra hasta que el model-service queda disponible. Menor es mejor.',
+  cold: 'Cold start: tiempo de arranque del model-service hasta su primer /health 200. Menor es mejor.',
+  effort: 'Esfuerzo de Interacción: nº de nodos que el usuario configuró en el lienzo low-code para el flujo. Menor = más automatizado.',
+  accuracy: 'Mejor accuracy de validación entre las versiones del modelo. Mayor es mejor.',
+} as const
+
 type Tab = 'general' | 'by-model'
 
 /**
- * Panel de telemetría reutilizable con dos pestañas: "Vista general" (tasas + tabla por
- * ejecución) y "Por modelo" (tarjetas por modelo: ciclo de vida + calidad ML). Lo usan
- * Monitoreo (alcance usuario) y Analítica (alcance global, ADMIN) cambiando los loaders.
+ * Panel de telemetría reutilizable: pestañas "Vista general" (tasas + tabla por ejecución) y
+ * "Por modelo" (tarjetas por modelo: ciclo de vida + calidad ML). Lo usan Monitoreo (scope
+ * 'user') y Analítica (scope 'global', ADMIN). En global se muestra el propietario.
  */
 export function TelemetryDashboard({
-  token, onAuthError, title, subtitle, loadLifecycle, loadByModel, downloadCsv,
+  token, onAuthError, title, subtitle, scope, loadLifecycle, loadByModel, downloadCsv,
 }: TelemetryDashboardProps) {
+  const isGlobal = scope === 'global'
   const [tab, setTab] = useState<Tab>('general')
   const [life, setLife] = useState<LifecycleMetrics | null>(null)
   const [byModel, setByModel] = useState<ByModelView | null>(null)
@@ -70,12 +81,12 @@ export function TelemetryDashboard({
   }
 
   const cards = [
-    { label: 'Tasa de Completitud', value: pct(life?.completionRate ?? null), icon: Gauge, hint: 'Entrenamientos finalizados sin interrupción' },
-    { label: 'Despliegues Exitosos', value: pct(life?.deploySuccessRate ?? null), icon: Rocket, hint: 'model-services que pasaron el health check' },
-    { label: 'Re-entrenamiento (T_re) prom.', value: secs(life?.avgRetrainSeconds ?? null), icon: Timer, hint: 'Ingesta → fin de entrenamiento' },
-    { label: 'Lead Time Despliegue (LT_d) prom.', value: secs(life?.avgLeadTimeDeploySeconds ?? null), icon: Activity, hint: 'Aprobación → model-service disponible' },
-    { label: 'Cold start prom.', value: ms(life?.avgColdStartMs ?? null), icon: Timer, hint: 'Arranque del model-service hasta /health 200' },
-    { label: 'Esfuerzo de Interacción prom.', value: eff(life?.avgInteractionEffort ?? null), icon: Gauge, hint: 'Nodos del lienzo por flujo' },
+    { label: 'Tasa de Completitud', value: pct(life?.completionRate ?? null), icon: Gauge, help: HELP.completion },
+    { label: 'Despliegues Exitosos', value: pct(life?.deploySuccessRate ?? null), icon: Rocket, help: HELP.deploy },
+    { label: 'Re-entrenamiento (T_re) prom.', value: secs(life?.avgRetrainSeconds ?? null), icon: Timer, help: HELP.tRe },
+    { label: 'Lead Time Despliegue (LT_d) prom.', value: secs(life?.avgLeadTimeDeploySeconds ?? null), icon: Activity, help: HELP.ltD },
+    { label: 'Cold start prom.', value: ms(life?.avgColdStartMs ?? null), icon: Timer, help: HELP.cold },
+    { label: 'Esfuerzo de Interacción prom.', value: eff(life?.avgInteractionEffort ?? null), icon: Gauge, help: HELP.effort },
   ]
 
   const tabBtn = (key: Tab, label: string) => (
@@ -96,7 +107,15 @@ export function TelemetryDashboard({
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">{title}</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-bold">{title}</h1>
+            <span className={cn(
+              'rounded-md px-2 py-0.5 text-[11px] font-semibold',
+              isGlobal ? 'bg-cta/15 text-cta' : 'bg-primary/10 text-primary',
+            )}>
+              {isGlobal ? 'Plataforma · ADMIN' : 'Mis proyectos'}
+            </span>
+          </div>
           <p className="text-sm text-muted-foreground">
             {subtitle}
             {life ? <span className="font-medium text-foreground"> · muestra n={life.sampleSize}</span> : null}
@@ -112,6 +131,18 @@ export function TelemetryDashboard({
         </div>
       </div>
 
+      {/* Banner explicativo: qué estás viendo, en lenguaje claro. */}
+      <div className="flex items-start gap-2 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-xs leading-relaxed text-muted-foreground">
+        <Info className="mt-0.5 size-4 shrink-0 text-primary" />
+        <p>
+          {isGlobal
+            ? 'Telemetría del ciclo de vida (OE4) de TODOS los proyectos de la plataforma — vista de administrador para el estudio. '
+            : 'Telemetría del ciclo de vida (OE4) de tus proyectos: cuánto tarda entrenar y desplegar, y qué tan automatizado es el flujo. '}
+          Pasa el cursor sobre <span className="font-medium text-foreground">cada métrica (ⓘ)</span> para ver su definición.
+          Mide cada flujo: <span className="font-medium text-foreground">Ingesta → Entrenamiento → Aprobación → Despliegue</span>.
+        </p>
+      </div>
+
       <div className="flex gap-1 rounded-xl border border-border bg-card/40 p-1">
         {tabBtn('general', 'Vista general')}
         {tabBtn('by-model', 'Por modelo')}
@@ -121,12 +152,13 @@ export function TelemetryDashboard({
         <>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {cards.map((c) => (
-              <div key={c.label} className="rounded-2xl border border-border bg-card/60 p-4">
+              <div key={c.label} className="rounded-2xl border border-border bg-card/60 p-4" title={c.help}>
                 <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
                   <c.icon className="size-4 text-primary" /> {c.label}
+                  <Info className="size-3 text-muted-foreground/60" />
                 </div>
                 <p className="mt-2 font-mono text-2xl font-semibold">{c.value}</p>
-                <p className="mt-1 text-[11px] text-muted-foreground">{c.hint}</p>
+                <p className="mt-1 line-clamp-2 text-[11px] text-muted-foreground">{c.help}</p>
               </div>
             ))}
           </div>
@@ -145,19 +177,21 @@ export function TelemetryDashboard({
                   <thead>
                     <tr className="border-b border-border text-left text-xs text-muted-foreground">
                       <th className="px-4 py-2 font-medium">#</th>
+                      {isGlobal && <th className="px-4 py-2 font-medium">Usuario</th>}
                       <th className="px-4 py-2 font-medium">Proyecto · Modelo</th>
                       <th className="px-4 py-2 font-medium">Estado</th>
-                      <th className="px-4 py-2 font-medium">T_re</th>
-                      <th className="px-4 py-2 font-medium">LT_d</th>
-                      <th className="px-4 py-2 font-medium">Cold start</th>
-                      <th className="px-4 py-2 font-medium">Despliegue</th>
-                      <th className="px-4 py-2 font-medium">Nodos</th>
+                      <th className="px-4 py-2 font-medium" title={HELP.tRe}>T_re ⓘ</th>
+                      <th className="px-4 py-2 font-medium" title={HELP.ltD}>LT_d ⓘ</th>
+                      <th className="px-4 py-2 font-medium" title={HELP.cold}>Cold start ⓘ</th>
+                      <th className="px-4 py-2 font-medium" title={HELP.deploy}>Despliegue</th>
+                      <th className="px-4 py-2 font-medium" title={HELP.effort}>Nodos ⓘ</th>
                     </tr>
                   </thead>
                   <tbody>
                     {life.rows.map((r) => (
                       <tr key={r.executionId} className="border-b border-border/50 last:border-0">
                         <td className="px-4 py-2 font-mono text-muted-foreground">{r.executionId}</td>
+                        {isGlobal && <td className="px-4 py-2 text-muted-foreground">{r.ownerUsername}</td>}
                         <td className="px-4 py-2">
                           <div className="font-medium">{r.workspaceName}</div>
                           <div className="text-[11px] text-muted-foreground">{r.modelName ?? r.pipelineName}</div>
@@ -179,7 +213,6 @@ export function TelemetryDashboard({
           </div>
         </>
       ) : (
-        // ── Pestaña "Por modelo" ──────────────────────────────────────────────
         loading && !byModel ? (
           <p className="rounded-2xl border border-border bg-card/60 p-6 text-sm text-muted-foreground">Cargando modelos…</p>
         ) : !byModel?.models.length ? (
@@ -191,22 +224,27 @@ export function TelemetryDashboard({
             {byModel.models.map((m) => (
               <div key={`${m.modelName}-${m.workspaceName}`} className="space-y-3 rounded-2xl border border-border bg-card/60 p-4">
                 <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 min-w-0">
+                  <div className="flex min-w-0 items-center gap-2">
                     <Boxes className="size-4 shrink-0 text-primary" />
                     <div className="min-w-0">
                       <p className="truncate font-semibold">{m.modelName}</p>
-                      <p className="truncate text-[11px] text-muted-foreground">{m.workspaceName} · {m.versions} versión(es)</p>
+                      <p className="flex items-center gap-1 truncate text-[11px] text-muted-foreground">
+                        {isGlobal && <><Users className="size-3" />{m.ownerUsername} ·{' '}</>}
+                        {m.workspaceName} · {m.versions} versión(es)
+                      </p>
                     </div>
                   </div>
-                  <span className="shrink-0 rounded-md bg-success/10 px-2 py-0.5 font-mono text-sm font-semibold text-success">{acc(m.bestAccuracy)}</span>
+                  <span className="shrink-0 rounded-md bg-success/10 px-2 py-0.5 font-mono text-sm font-semibold text-success" title={HELP.accuracy}>
+                    {acc(m.bestAccuracy)}
+                  </span>
                 </div>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
-                  <Stat label="Completitud" value={pct(m.completionRate)} />
-                  <Stat label="Despliegues OK" value={pct(m.deploySuccessRate)} />
-                  <Stat label="T_re prom." value={secs(m.avgRetrainSeconds)} />
-                  <Stat label="LT_d prom." value={secs(m.avgLeadTimeDeploySeconds)} />
-                  <Stat label="Cold start prom." value={ms(m.avgColdStartMs)} />
-                  <Stat label="Esfuerzo prom." value={eff(m.avgInteractionEffort)} />
+                  <Stat label="Completitud" value={pct(m.completionRate)} help={HELP.completion} />
+                  <Stat label="Despliegues OK" value={pct(m.deploySuccessRate)} help={HELP.deploy} />
+                  <Stat label="T_re prom." value={secs(m.avgRetrainSeconds)} help={HELP.tRe} />
+                  <Stat label="LT_d prom." value={secs(m.avgLeadTimeDeploySeconds)} help={HELP.ltD} />
+                  <Stat label="Cold start prom." value={ms(m.avgColdStartMs)} help={HELP.cold} />
+                  <Stat label="Esfuerzo prom." value={eff(m.avgInteractionEffort)} help={HELP.effort} />
                 </div>
               </div>
             ))}
@@ -217,9 +255,9 @@ export function TelemetryDashboard({
   )
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({ label, value, help }: { label: string; value: string; help: string }) {
   return (
-    <div className="flex items-center justify-between">
+    <div className="flex items-center justify-between" title={help}>
       <span className="text-muted-foreground">{label}</span>
       <span className="font-mono font-medium text-foreground">{value}</span>
     </div>

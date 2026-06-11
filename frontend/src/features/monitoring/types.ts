@@ -3,6 +3,7 @@
 
 export interface LifecycleMetricRow {
   executionId: number
+  ownerUsername: string
   workspaceName: string
   pipelineName: string
   modelName: string | null
@@ -31,6 +32,7 @@ export interface LifecycleMetrics {
 /** Telemetría agrupada por modelo (pestaña "Por modelo" / Analítica global). */
 export interface ModelMetrics {
   modelName: string
+  ownerUsername: string
   workspaceName: string
   versions: number
   completed: number

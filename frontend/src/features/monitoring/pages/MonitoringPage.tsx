@@ -17,6 +17,7 @@ export function MonitoringPage({ token, onAuthError }: MonitoringPageProps) {
       onAuthError={onAuthError}
       title="Monitoreo"
       subtitle="Indicadores del ciclo de vida (OE4 · Process/Lifecycle) de tus proyectos"
+      scope="user"
       loadLifecycle={getLifecycleMetrics}
       loadByModel={getByModelMetrics}
       downloadCsv={downloadLifecycleCsv}

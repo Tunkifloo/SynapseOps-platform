@@ -122,6 +122,7 @@ public class TelemetryServiceImpl implements TelemetryService {
 
             models.add(new ModelMetrics(
                     entry.getKey(),
+                    latest.getPipeline().getWorkspace().getUser().getUsername(),
                     latest.getPipeline().getWorkspace().getName(),
                     group.size(),
                     completed,
@@ -143,10 +144,11 @@ public class TelemetryServiceImpl implements TelemetryService {
 
     private String toCsv(LifecycleMetricsResponse view) {
         StringBuilder sb = new StringBuilder(
-                "execution_id,workspace,pipeline,model,status,t_re_seconds,lt_d_seconds,"
+                "execution_id,owner,workspace,pipeline,model,status,t_re_seconds,lt_d_seconds,"
                         + "cold_start_ms,deploy_status,interaction_effort\n");
         for (LifecycleMetricRow r : view.rows()) {
             sb.append(r.executionId()).append(',')
+                    .append(csv(r.ownerUsername())).append(',')
                     .append(csv(r.workspaceName())).append(',')
                     .append(csv(r.pipelineName())).append(',')
                     .append(csv(r.modelName())).append(',')
@@ -167,6 +169,7 @@ public class TelemetryServiceImpl implements TelemetryService {
         var ws = e.getPipeline().getWorkspace();
         return new LifecycleMetricRow(
                 e.getIdExecution(),
+                ws.getUser().getUsername(),
                 ws.getName(),
                 e.getPipeline().getName(),
                 e.getModelName(),

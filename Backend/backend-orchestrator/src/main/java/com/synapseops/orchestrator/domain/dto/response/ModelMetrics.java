@@ -9,6 +9,7 @@ package com.synapseops.orchestrator.domain.dto.response;
  */
 public record ModelMetrics(
         String modelName,
+        String ownerUsername,
         String workspaceName,
         int versions,
         long completed,
