@@ -14,6 +14,7 @@ import {
   ChartColumn,
   CheckCircle2,
   CircleAlert,
+  Database,
   FolderPlus,
   Info,
   LayoutDashboard,
@@ -47,7 +48,7 @@ interface SessionUser {
   role: Role
 }
 
-type Section = 'dashboard' | 'workspaces' | 'builder' | 'models' | 'deployments' | 'monitoring' | 'analytics' | 'admin' | 'mlflow' | 'profile'
+type Section = 'dashboard' | 'workspaces' | 'datasets' | 'builder' | 'models' | 'deployments' | 'monitoring' | 'analytics' | 'admin' | 'mlflow' | 'profile'
 
 interface NavigationItem {
   key: Section
@@ -89,6 +90,7 @@ export function AppShell({
     { key: 'workspaces', label: 'Espacios de trabajo', icon: Layers, path: '/workspaces' },
     { key: 'builder', label: 'Lienzo', icon: Network, path: '/builder' },
     { key: 'models', label: 'Mis modelos', icon: Boxes, path: '/models' },
+    { key: 'datasets', label: 'Gestión de Dataset', icon: Database, path: '/datasets' },
     { key: 'deployments', label: 'Despliegues', icon: Rocket, path: '/deployments' },
     { key: 'monitoring', label: 'Monitoreo', icon: Activity, path: '/monitoring' },
   ]

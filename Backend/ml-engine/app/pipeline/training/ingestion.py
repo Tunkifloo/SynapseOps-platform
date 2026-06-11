@@ -31,15 +31,15 @@ KERAS_DATASETS = ("mnist", "fashion_mnist")
 
 # ── Guardrails para el contenedor de 8GB ───────────────────────────────────────
 IMG_SIZE: Tuple[int, int] = (64, 64)   # tamaño fijo de entrada para datasets propios
-MAX_IMAGES = 20_000                    # tope de imágenes a materializar en memoria
-MAX_CLASSES = 50                       # tope de clases
-MIN_IMAGES = 4                         # mínimo razonable para entrenar
+MAX_IMAGES = 50_000                    # tope de imágenes a materializar en memoria
+MIN_IMAGES = 20                         # mínimo por clase para entrenar (evita overfitting)
+MAX_CLASSES = 50                        # tope de clases
 IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".bmp")
 
 _SPLIT_ALIASES = {
-    "train": ("train", "training"),
-    "val":   ("val", "valid", "validation"),
-    "test":  ("test", "testing"),
+    "train": ("train", "training", "train_data", "trainset"),
+    "val":   ("val", "valid", "validation", "val_data", "valset"),
+    "test":  ("test", "testing", "test_data", "testset"),
 }
 
 
