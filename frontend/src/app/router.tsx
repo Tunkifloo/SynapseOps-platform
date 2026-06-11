@@ -24,6 +24,9 @@ const PipelineBuilderPage = lazy(() =>
 const MlflowPage = lazy(() => import('@/features/mlflow/pages/MlflowPage').then((m) => ({ default: m.MlflowPage })))
 const MyModelsPage = lazy(() => import('@/features/mlflow/pages/MyModelsPage').then((m) => ({ default: m.MyModelsPage })))
 const ProfilePage = lazy(() => import('@/features/profile/pages/ProfilePage').then((m) => ({ default: m.ProfilePage })))
+const DatasetManagementPage = lazy(() =>
+  import('@/features/datasets/pages/DatasetManagementPage').then((m) => ({ default: m.DatasetManagementPage }))
+)
 const DeploymentsPage = lazy(() => import('@/features/deployments/pages/DeploymentsPage').then((m) => ({ default: m.DeploymentsPage })))
 const MonitoringPage = lazy(() => import('@/features/monitoring/pages/MonitoringPage').then((m) => ({ default: m.MonitoringPage })))
 const AnalyticsPage = lazy(() => import('@/features/analytics/pages/AnalyticsPage').then((m) => ({ default: m.AnalyticsPage })))
@@ -68,7 +71,7 @@ interface PageProps {
 }
 
 interface ShellPageProps {
-  section: 'dashboard' | 'workspaces' | 'builder' | 'models' | 'deployments' | 'monitoring' | 'analytics' | 'admin' | 'mlflow' | 'profile'
+  section: 'dashboard' | 'workspaces' | 'builder' | 'models' | 'datasets' | 'deployments' | 'monitoring' | 'analytics' | 'admin' | 'mlflow' | 'profile'
   renderPage: (props: PageProps) => ReactNode
 }
 
@@ -169,6 +172,20 @@ export function AppRouter() {
                 )}
               />
             </RoleRoute>
+          }
+        />
+
+        <Route
+          path="/datasets"
+          element={
+            <ProtectedRoute isAuthenticated={isAuthenticated}>
+              <ShellPage
+                section="datasets"
+                renderPage={({ token, searchQuery, onAuthError }) => (
+                  <DatasetManagementPage token={token} searchQuery={searchQuery} onAuthError={onAuthError} />
+                )}
+              />
+            </ProtectedRoute>
           }
         />
 
