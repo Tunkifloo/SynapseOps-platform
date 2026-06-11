@@ -1,10 +1,13 @@
+# syntax=docker/dockerfile:1
 FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Copiar dependencias primero (caching de capas)
+# Copiar dependencias primero (caching de capas).
+# Cache mount de BuildKit sobre /root/.npm: los paquetes descargados persisten
+# entre builds → npm ci reutiliza la caché y no re-descarga.
 COPY package*.json ./
-RUN npm ci --prefer-offline
+RUN --mount=type=cache,target=/root/.npm npm ci --prefer-offline
 
 # Build arg para la URL de la API — en Docker usa ruta relativa (nginx proxy)
 ARG  VITE_API_BASE_URL=/api/v1

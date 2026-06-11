@@ -58,6 +58,8 @@ export interface RegistryApi {
   /** Detalle completo (hiperparámetros + métricas) de una versión. */
   getDetails?: (modelName: string, version: string, runId: string) => Promise<VersionDetails>
   allowDeploy?: boolean
+  /** Despliega el model-service directamente (sin pasar por el lienzo). */
+  deploy?: (runId: string) => Promise<{ status: string; endpoint: string | null }>
 }
 
 interface ModelRegistryProps {
@@ -146,12 +148,38 @@ export function VersionCard({ api, modelName, version, onAuthError, onChanged }:
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [version.runId])
 
-  const handleDeploy = () => {
-    setDeployHandoff({ runId: version.runId, modelName, version: version.version })
-    notify.info('Modelo seleccionado para despliegue', {
-      description: `${modelName} · v${version.version} — configúralo en el nodo de Despliegue del pipeline.`,
+  const [deploying, setDeploying] = useState(false)
+
+  const handleDeploy = async () => {
+    // Despliegue directo si la capa de datos lo soporta; si no, handoff al lienzo.
+    if (!api.deploy) {
+      setDeployHandoff({ runId: version.runId, modelName, version: version.version })
+      notify.info('Modelo listo para desplegar', {
+        description: `${modelName} · v${version.version} — confírmalo en el nodo de Despliegue.`,
+      })
+      navigate('/builder')
+      return
+    }
+    setDeploying(true)
+    notify.info('Despliegue en curso', {
+      description: 'Puede tardar varios minutos (build de la imagen). Te notificaremos cuando esté listo.',
     })
-    navigate('/builder')
+    try {
+      const res = await api.deploy(version.runId)
+      if (res.status === 'RUNNING') {
+        notify.success('model-service desplegado', {
+          description: `${modelName} · v${version.version}${res.endpoint ? ` · ${res.endpoint}` : ''} — gestiónalo en "Despliegues".`,
+        })
+      } else {
+        notify.error('El despliegue no pasó el health check del model-service')
+      }
+    } catch (err) {
+      if (!onAuthError(err)) {
+        notify.error('No se pudo desplegar', { description: err instanceof Error ? err.message : undefined })
+      }
+    } finally {
+      setDeploying(false)
+    }
   }
 
   const handlePromote = async (next: string) => {
@@ -210,9 +238,17 @@ export function VersionCard({ api, modelName, version, onAuthError, onChanged }:
       {(api.allowDeploy || api.transitionStage || api.deleteVersion) && (
         <div className="mt-4 flex flex-wrap items-center gap-2">
           {api.allowDeploy && (
-            <Button type="button" size="sm" variant="cta" className="h-8" onClick={handleDeploy}>
+            <Button
+              type="button"
+              size="sm"
+              variant="cta"
+              className="h-8"
+              onClick={() => void handleDeploy()}
+              disabled={deploying}
+              loading={deploying}
+            >
               <Rocket className="mr-1.5 size-3.5" />
-              Desplegar
+              {deploying ? 'Desplegando…' : 'Desplegar'}
             </Button>
           )}
 

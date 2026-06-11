@@ -24,6 +24,7 @@ const PipelineBuilderPage = lazy(() =>
 const MlflowPage = lazy(() => import('@/features/mlflow/pages/MlflowPage').then((m) => ({ default: m.MlflowPage })))
 const MyModelsPage = lazy(() => import('@/features/mlflow/pages/MyModelsPage').then((m) => ({ default: m.MyModelsPage })))
 const ProfilePage = lazy(() => import('@/features/profile/pages/ProfilePage').then((m) => ({ default: m.ProfilePage })))
+const DeploymentsPage = lazy(() => import('@/features/deployments/pages/DeploymentsPage').then((m) => ({ default: m.DeploymentsPage })))
 
 function PageFallback() {
   return (
@@ -65,7 +66,7 @@ interface PageProps {
 }
 
 interface ShellPageProps {
-  section: 'dashboard' | 'workspaces' | 'builder' | 'models' | 'admin' | 'mlflow' | 'profile'
+  section: 'dashboard' | 'workspaces' | 'builder' | 'models' | 'deployments' | 'admin' | 'mlflow' | 'profile'
   renderPage: (props: PageProps) => ReactNode
 }
 
@@ -163,6 +164,20 @@ export function AppRouter() {
                 section="models"
                 renderPage={({ token, searchQuery, onAuthError }) => (
                   <MyModelsPage token={token} searchQuery={searchQuery} onAuthError={onAuthError} />
+                )}
+              />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/deployments"
+          element={
+            <ProtectedRoute isAuthenticated={isAuthenticated}>
+              <ShellPage
+                section="deployments"
+                renderPage={({ token, onAuthError }) => (
+                  <DeploymentsPage token={token} onAuthError={onAuthError} />
                 )}
               />
             </ProtectedRoute>

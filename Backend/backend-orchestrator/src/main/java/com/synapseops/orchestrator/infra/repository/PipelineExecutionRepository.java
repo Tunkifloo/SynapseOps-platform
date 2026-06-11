@@ -36,4 +36,16 @@ public interface PipelineExecutionRepository extends JpaRepository<PipelineExecu
             ORDER BY e.startedAt DESC
             """)
     List<PipelineExecution> findByPipelineIdWithDetails(@Param("pipelineId") Long pipelineId);
+
+    /** HU-029 · Despliegues del usuario (con detalles cargados para mapear sin lazy). */
+    @Query("""
+            SELECT e FROM PipelineExecution e
+            JOIN FETCH e.pipeline p
+            JOIN FETCH p.workspace w
+            JOIN FETCH w.user u
+            LEFT JOIN FETCH e.artifact
+            WHERE u.username = :username AND e.deployContainerName IS NOT NULL
+            ORDER BY e.idExecution DESC
+            """)
+    List<PipelineExecution> findDeploymentsByUsername(@Param("username") String username);
 }

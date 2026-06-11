@@ -9,6 +9,7 @@ import {
   transitionWorkspaceModelStage,
 } from '../api'
 import { ModelRegistry, type RegistryApi } from './ModelRegistry'
+import { deployModel } from '@/features/deployments/api'
 
 interface WorkspaceModelsPanelProps {
   token: string
@@ -33,6 +34,7 @@ export function WorkspaceModelsPanel({ token, workspaceId, onAuthError }: Worksp
       return { params: s.params ?? {}, metrics: s.metrics ?? {}, confusionMatrix: parseConfusion(s.tags) }
     },
     allowDeploy: true,
+    deploy: (runId) => deployModel(token, runId),
   }), [token, workspaceId])
 
   return <ModelRegistry api={api} onAuthError={onAuthError} />

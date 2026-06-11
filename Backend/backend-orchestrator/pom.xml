@@ -121,9 +121,17 @@
             <artifactId>docker-java</artifactId>
             <version>3.3.0</version>
         </dependency>
+        <!--
+            Transporte "zerodep" de docker-java: implementación de socket Unix
+            AUTOCONTENIDA (sin Apache HttpClient). Evita el conflicto de versiones
+            con Spring Boot 4: docker-java 3.3.0 espera Apache HttpComponents 5.2.x
+            (con HttpVersionPolicy y enrutado unix://), pero Spring Boot 4 gestiona
+            httpcore5 5.3.x. Con httpclient5 el cliente o crasheaba (NoClassDefFound)
+            o caía a TCP localhost:2375. zerodep no usa httpclient5 → sin conflicto.
+        -->
         <dependency>
             <groupId>com.github.docker-java</groupId>
-            <artifactId>docker-java-transport-httpclient5</artifactId>
+            <artifactId>docker-java-transport-zerodep</artifactId>
             <version>3.3.0</version>
         </dependency>
         <dependency>

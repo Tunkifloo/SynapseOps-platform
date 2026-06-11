@@ -96,6 +96,8 @@ synapseops:
     # Plantilla TA-007 (módulo Backend/model-service/) que se copia al contexto de
     # build del contenedor del model-service. En prod se monta como volumen.
     template-dir: ${MODEL_SERVICE_TEMPLATE_DIR:/app/model-service-template}
+    # TA-004 · Tope de model-services concurrentes (sesión 1:1 por PC · RN-001 ≤6 GB).
+    max-deployments: ${MAX_MODEL_DEPLOYMENTS:3}
 
 # ── Actuator  ──────────────────────────────────
 management:

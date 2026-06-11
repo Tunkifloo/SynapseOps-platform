@@ -42,9 +42,16 @@ export interface TrainContext {
 
 export interface DeployContext {
   token: string
-  workspaceId: number
-  pipelineId: number | null
-  projectName: string
+  /** Output del flujo: runId/version/métricas del modelo entrenado + estado del nodo de entrenamiento. */
+  flowRunId: string
+  flowModelVersion: string
+  flowMetrics: string
+  trainStatus: PipelineNodeStatus
+  /** Estado y endpoint EN VIVO del propio nodo de Despliegue (lo gobierna el auto-despliegue). */
+  deployStatus: PipelineNodeStatus
+  deployEndpoint: string
+  /** Disparador manual del despliegue (handoff de "Mis modelos" o reintento). Actualiza el nodo. */
+  onDeploy: (runId: string) => void
   onAuthError: (error: unknown) => boolean
 }
 
@@ -72,7 +79,7 @@ const KIND_HELP: Record<NodeKind, string> = {
   train:
     'Entrena una CNN adaptativa. Define framework, optimizador, epochs, batch size y técnicas (early stopping, batch norm). El nº de clases se autodetecta.',
   deploy:
-    'Registra y expone el modelo versionado entrenado. Selecciona la versión a desplegar y el puerto del servicio.',
+    'Despliega como servicio de inferencia (/predict) el modelo entrenado en este flujo. El puerto se asigna automáticamente; los modelos existentes se gestionan desde "Mis modelos".',
 }
 
 // Presentación (solo lectura) del estado del nodo: lo gobierna la ejecución (SSE).
@@ -102,7 +109,8 @@ export function NodeConfigPanel({
   const Icon = cfg.icon
   const fields = NODE_FIELDS[data.kind]
 
-  const [label, setLabel] = useState(data.label)
+  // El nombre del nodo no es editable (lo fija el tipo de nodo).
+  const [label] = useState(data.label)
   const [config, setConfig] = useState<NodeConfig>({
     ...defaultConfig(data.kind),
     ...(data.config ?? {}),
@@ -215,22 +223,17 @@ export function NodeConfigPanel({
           {KIND_HELP[data.kind]}
         </p>
 
-        <div className="space-y-1.5">
-          <Label htmlFor="cfg-label">Nombre del nodo</Label>
-          <Input id="cfg-label" value={label} onChange={(e) => setLabel(e.target.value)} />
-        </div>
-
         {fields.length > 0 && fields.map(renderField)}
 
         {data.kind === 'deploy' && deploy && (
           <DeployActions
-            token={deploy.token}
-            workspaceId={deploy.workspaceId}
-            pipelineId={deploy.pipelineId}
-            projectName={deploy.projectName}
-            config={config}
-            onConfigChange={mergeConfig}
-            onAuthError={deploy.onAuthError}
+            flowRunId={deploy.flowRunId}
+            flowModelVersion={deploy.flowModelVersion}
+            flowMetrics={deploy.flowMetrics}
+            trainStatus={deploy.trainStatus}
+            deployStatus={deploy.deployStatus}
+            deployEndpoint={deploy.deployEndpoint}
+            onDeploy={deploy.onDeploy}
           />
         )}
 
@@ -286,9 +289,6 @@ export function NodeConfigPanel({
             />
             <span className="font-medium text-foreground">{STATUS_LABEL[data.status ?? 'idle'].label}</span>
           </div>
-          <p className="text-[11px] text-muted-foreground">
-            Se actualiza automáticamente durante la ejecución (HU-005 / HU-023). No es editable.
-          </p>
           {data.status === 'error' && data.error && (
             <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs font-medium text-destructive">
               {data.error}

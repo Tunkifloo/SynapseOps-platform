@@ -17,6 +17,7 @@ import { notify } from '@/shared/notify'
 import { ConfirmDialog } from '@/shared/components/ConfirmDialog'
 import { useAppStore } from '@/store/useAppStore'
 import { launchExecution, getExecution } from '@/features/executions/api'
+import { deployModel } from '@/features/deployments/api'
 import type { ExecutionRequest } from '@/features/executions/types'
 import { NODE_KIND_MAP, type NodeKind } from '@/features/pipelines/nodeKinds'
 import { defaultConfig, validateConfig, type NodeConfig } from '@/features/pipelines/nodeConfig'
@@ -123,6 +124,9 @@ export function PipelineCanvas({
   const [saving, setSaving] = useState(false)
   const [flowRunning, setFlowRunning] = useState(false)
   const [activeExecutionId, setActiveExecutionId] = useState<number | null>(null)
+  // Señal para cerrar el stream SSE limpiamente cuando el ciclo termina sin despliegue
+  // (el evento de entrenamiento ya no es terminal, así que no se autocierra).
+  const [logCloseSignal, setLogCloseSignal] = useState(0)
   const [dirty, setDirty] = useState(false)       // cambios del lienzo sin guardar (item 3)
   // Confirmación de acciones críticas (limpiar / eliminar nodo / iniciar flujo).
   const [confirm, setConfirm] = useState<{
@@ -150,6 +154,17 @@ export function PipelineCanvas({
       } catch { /* almacenamiento no disponible */ }
     }
   }, [execKey])
+
+  // Difunde la ejecución activa a la campana global (AppShell) para que notifique
+  // ingesta/entrenamiento/despliegue aunque el usuario esté en otro módulo. NO se
+  // emite null al desmontar el lienzo: la campana debe permanecer suscrita.
+  useEffect(() => {
+    if (activeExecutionId == null || !workspace || !pipelineId) return
+    window.dispatchEvent(new CustomEvent('synapseops:active-execution', {
+      detail: { executionId: activeExecutionId, workspaceId: workspace.idWorkspace, pipelineId },
+    }))
+  }, [activeExecutionId, workspace, pipelineId])
+
   const storeWorkspace = useAppStore((s) => s.currentWorkspace)
   const projectName = workspace?.name ?? storeWorkspace
 
@@ -226,7 +241,9 @@ export function PipelineCanvas({
           const exec = await launchExecution(token, wsId, pipelineId, payload)
           executionId = exec.idExecution
           setActiveExecutionId(executionId) // abre la consola SSE (HU-023)
-          notify.info('Entrenamiento iniciado', { description: `Ejecución #${executionId}` })
+          notify.info('Entrenamiento en curso', {
+            description: `Ejecución #${executionId} · puede tardar varios minutos. Te notificaremos cuando esté listo.`,
+          })
         } catch (err) {
           patchNode('error', err instanceof Error ? err.message : 'No se pudo lanzar el entrenamiento.')
           return
@@ -332,6 +349,39 @@ export function PipelineCanvas({
     return errors
   }, [nodes, edges, workspace])
 
+  // Despliegue del model-service. Unifica la transición de estado del nodo Despliegue
+  // (running → success/error) y guarda el endpoint en su config. Lo usan tanto el
+  // auto-despliegue (al terminar el flujo) como el botón manual del panel (handoff de
+  // "Mis modelos" o reintento tras error).
+  const deployFlowModel = useCallback(async (runId: string, deployNodeId: string) => {
+    if (!token || !runId) return
+    setFlowRunning(true)
+    setNodes((nds) => nds.map((n) => (n.id === deployNodeId
+      ? { ...n, data: { ...n.data, status: 'running' as const, error: undefined } } : n)))
+    notify.info('Desplegando el modelo…', {
+      description: 'Construyendo el model-service; puede tardar varios minutos.',
+    })
+    try {
+      const res = await deployModel(token, runId)
+      const ok = res.status === 'RUNNING'
+      setNodes((nds) => nds.map((n) => (n.id === deployNodeId
+        ? { ...n, data: { ...n.data, status: ok ? ('success' as const) : ('error' as const),
+            error: ok ? undefined : 'El model-service no pasó el health check.',
+            config: { ...n.data.config, endpoint: ok ? (res.endpoint ?? '') : '' } } } : n)))
+      if (ok) notify.success('model-service desplegado', { description: res.endpoint ?? 'Gestiónalo en "Despliegues".' })
+      else notify.error('El despliegue no pasó el health check del model-service')
+    } catch (err) {
+      setNodes((nds) => nds.map((n) => (n.id === deployNodeId
+        ? { ...n, data: { ...n.data, status: 'error' as const,
+            error: err instanceof Error ? err.message : 'No se pudo desplegar.' } } : n)))
+      if (!onAuthError?.(err)) {
+        notify.error('No se pudo desplegar', { description: err instanceof Error ? err.message : undefined })
+      }
+    } finally {
+      setFlowRunning(false)
+    }
+  }, [token, setNodes, onAuthError])
+
   const executeFlow = useCallback(() => {
     if (!token || !workspace || !pipelineId) return
     const wsId = workspace.idWorkspace
@@ -375,27 +425,44 @@ export function PipelineCanvas({
         const exec = await launchExecution(token, wsId, pipelineId, payload)
         executionId = exec.idExecution
         setActiveExecution(executionId)
-        notify.info('Flujo iniciado', { description: `Ejecución #${executionId}` })
+        notify.info('Flujo en curso', {
+          description: `Ejecución #${executionId} · puede tardar varios minutos. Te notificaremos cuando esté listo.`,
+        })
       } catch (err) {
         setStatusByKind(['ingest'], 'error', err instanceof Error ? err.message : 'No se pudo iniciar el flujo.')
         setFlowRunning(false)
         return
       }
 
+      // Entrenamientos LARGOS: sondea hasta ~60 min. Los logs por época siguen
+      // llegando en vivo por SSE; este poll solo detecta COMPLETED/FAILED y dispara
+      // el auto-despliegue. (Antes: 6 min → daba "timeout" falso en flujos largos.)
       let attempts = 0
-      const MAX_ATTEMPTS = 120
+      const POLL_INTERVAL_MS = 5000
+      const MAX_ATTEMPTS = 720   // 720 × 5 s ≈ 60 min
       const poll = async () => {
         attempts += 1
         try {
           const exec = await getExecution(token, wsId, pipelineId, executionId)
           if (exec.status === 'COMPLETED') {
             setStatusByKind(['ingest', 'preprocess', 'split'], 'success')
+            const runId = exec.mlflowRunId ?? ''
             setNodes((nds) => nds.map((n) => n.data.kind === 'train'
               ? { ...n, data: { ...n.data, status: 'success', error: undefined,
-                  config: { ...n.data.config, runId: exec.mlflowRunId ?? '', modelVersion: exec.modelVersion ?? '', metrics: exec.metrics ?? '' } } }
+                  config: { ...n.data.config, runId, modelVersion: exec.modelVersion ?? '', metrics: exec.metrics ?? '' } } }
               : n))
             notify.success('Flujo completado', { description: exec.mlflowRunId ? `Run ${exec.mlflowRunId}` : undefined })
-            setFlowRunning(false)
+            // Auto-despliegue si el nodo Despliegue está presente y conectado al flujo.
+            const deployNode = nodes.find((n) => n.data.kind === 'deploy')
+            const connected = !!deployNode && edges.some((e) => e.target === deployNode.id)
+            if (deployNode && connected && runId) {
+              void deployFlowModel(runId, deployNode.id)
+            } else {
+              // Sin nodo de Despliegue: el ciclo termina en el entrenamiento. Cierra la
+              // consola SSE limpiamente (el evento de entrenamiento ya no es terminal).
+              setLogCloseSignal((s) => s + 1)
+              setFlowRunning(false)
+            }
             return
           }
           if (exec.status === 'FAILED') {
@@ -408,12 +475,18 @@ export function PipelineCanvas({
             return
           }
         } catch { /* transitorio: reintenta */ }
-        if (attempts < MAX_ATTEMPTS) window.setTimeout(() => void poll(), 3000)
-        else { setFlowRunning(false); notify.warning('Tiempo de espera agotado consultando el estado.') }
+        if (attempts < MAX_ATTEMPTS) window.setTimeout(() => void poll(), POLL_INTERVAL_MS)
+        else {
+          setFlowRunning(false)
+          notify.info('El flujo sigue en curso', {
+            description: 'Lleva más de 60 min. El entrenamiento continúa en segundo plano; '
+              + 'revisa la consola de logs o MLflow para el resultado.',
+          })
+        }
       }
-      window.setTimeout(() => void poll(), 3000)
+      window.setTimeout(() => void poll(), POLL_INTERVAL_MS)
     })()
-  }, [token, workspace, pipelineId, nodes, setNodes, setStatusByKind, setActiveExecution])
+  }, [token, workspace, pipelineId, nodes, edges, setNodes, setStatusByKind, setActiveExecution, deployFlowModel])
 
   // "Iniciar flujo": valida y pide confirmación (acción crítica) antes de ejecutar.
   const runFlow = useCallback(() => {
@@ -467,32 +540,45 @@ export function PipelineCanvas({
       setFlowRunning(false)
       return
     }
-    if (m.includes('cargando dataset')) {
-      setStatusByKind(['ingest'], 'running')
+    // Secuencia real: ingesta → preprocesamiento → split → entrenamiento.
+    // Se evalúa del paso MÁS avanzado al más temprano; cada etapa marca 'success'
+    // las anteriores y 'running' la suya. El kickoff ("Job publicado … entrenamiento
+    // en curso") NO debe disparar el entrenamiento (solo arranca la ingesta).
+    if (m.startsWith('epoch') || m.includes('entrenando') || m.includes('val_accuracy')
+        || m.includes('registro') || m.includes('registrando')) {
+      setStatusByKind(['ingest', 'preprocess', 'split'], 'success')
+      setStatusByKind(['train'], 'running')
+    } else if (m.includes('split')) {
+      setStatusByKind(['ingest', 'preprocess'], 'success')
+      setStatusByKind(['split'], 'running')
+    } else if (m.includes('preprocesamiento')) {
+      setStatusByKind(['ingest'], 'success')
+      setStatusByKind(['preprocess'], 'running')
     } else if (m.includes('dataset listo')) {
       setStatusByKind(['ingest'], 'success')
       setStatusByKind(['preprocess'], 'running')
-    } else if (m.includes('preprocesamiento')) {
-      setStatusByKind(['ingest', 'preprocess'], 'success')
-      setStatusByKind(['split'], 'running')
-    } else if (m.includes('split')) {
-      setStatusByKind(['ingest', 'preprocess', 'split'], 'success')
-    } else if (m.includes('entrenamiento') || m.includes('entrenando') || m.startsWith('epoch')) {
-      setStatusByKind(['ingest', 'preprocess', 'split'], 'success')
-      setStatusByKind(['train'], 'running')
-    } else if (m.includes('registro')) {
-      setStatusByKind(['train'], 'running')
+    } else if (m.includes('cargando dataset') || m.includes('job publicado')) {
+      setStatusByKind(['ingest'], 'running')
     }
   }, [setStatusByKind, setNodes])
 
-  // Contexto para el Nodo de Despliegue (HU-028): modelos del workspace + handoff.
+  // Contexto para el Nodo de Despliegue: estado del entrenamiento (origen del modelo)
+  // + estado/endpoint EN VIVO del propio nodo de despliegue + disparador manual.
+  const deployTrainNode = nodes.find((n) => n.data.kind === 'train')
+  const deployNodeForCtx = nodes.find((n) => n.data.kind === 'deploy')
   const deployContext =
     token && workspace
       ? {
           token,
-          workspaceId: workspace.idWorkspace,
-          pipelineId: pipelineId ?? null,
-          projectName,
+          flowRunId: String(deployTrainNode?.data.config?.runId ?? ''),
+          flowModelVersion: String(deployTrainNode?.data.config?.modelVersion ?? ''),
+          flowMetrics: String(deployTrainNode?.data.config?.metrics ?? ''),
+          trainStatus: deployTrainNode?.data.status ?? 'idle',
+          deployStatus: deployNodeForCtx?.data.status ?? 'idle',
+          deployEndpoint: String(deployNodeForCtx?.data.config?.endpoint ?? ''),
+          onDeploy: (runId: string) => {
+            if (deployNodeForCtx) void deployFlowModel(runId, deployNodeForCtx.id)
+          },
           onAuthError: onAuthError ?? (() => false),
         }
       : undefined
@@ -840,6 +926,7 @@ export function PipelineCanvas({
           pipelineId={pipelineId}
           executionId={activeExecutionId}
           onLogEvent={onFlowLogEvent}
+          closeSignal={logCloseSignal}
         />
       )}
 
