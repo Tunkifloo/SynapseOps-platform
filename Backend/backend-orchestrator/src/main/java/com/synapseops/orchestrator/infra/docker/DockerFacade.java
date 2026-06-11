@@ -394,7 +394,6 @@ public class DockerFacade {
                     .exec()
                     .forEach(c -> {
                         try {
-                        try {
                             dockerClient.stopContainerCmd(c.getId()).withTimeout(10).exec();
                         } catch (Exception e) {
                             log.warn("No se pudo detener contenedor previo '{}' ({}): {}",
@@ -406,7 +405,6 @@ public class DockerFacade {
                         } catch (Exception e) {
                             log.warn("No se pudo eliminar contenedor previo {} ({}): {}",
                                     name, c.getId(), e.getMessage());
-                        }
                         }
                     });
         } catch (Exception e) {
