@@ -1,12 +1,12 @@
-import { AlertTriangle, CheckCircle2, type LucideIcon } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Database, type LucideIcon } from 'lucide-react'
 import { Handle, Position, type NodeProps } from 'reactflow'
 
 import { cn } from '@/lib/utils'
 import { Spinner } from '@/shared/components/ui/spinner'
+import { Badge } from '@/shared/components/ui/badge'
 import { NODE_KIND_MAP, type NodeKind } from '@/features/pipelines/nodeKinds'
 import type { NodeConfig } from '@/features/pipelines/nodeConfig'
 
-/** Estados visuales del nodo (HU-019). Se actualizan en vivo en HU-005/HU-023. */
 export type PipelineNodeStatus = 'idle' | 'running' | 'success' | 'error'
 
 export interface PipelineNodeData {
@@ -15,6 +15,7 @@ export interface PipelineNodeData {
   status?: PipelineNodeStatus
   error?: string
   config?: NodeConfig
+  datasetDescriptor?: string
 }
 
 const statusRing: Record<PipelineNodeStatus, string> = {
@@ -74,6 +75,14 @@ export function PipelineNode({ data, selected }: NodeProps<PipelineNodeData>) {
         <p className="truncate text-[11px] text-muted-foreground">{cfg?.description}</p>
       </div>
       <StatusIndicator status={status} error={data.error} />
+      {data.kind === 'ingest' && data.datasetDescriptor && (
+        <Badge variant="success" className="shrink-0 text-[10px] px-1.5 py-0" title={data.datasetDescriptor}>
+          <Database className="size-3 mr-1" />
+          {data.datasetDescriptor.length > 20
+            ? data.datasetDescriptor.slice(0, 20) + '…'
+            : data.datasetDescriptor}
+        </Badge>
+      )}
       <Handle type="source" position={Position.Right} className={handleClass} />
     </div>
   )

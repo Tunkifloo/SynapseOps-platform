@@ -146,9 +146,12 @@ public class DockerFacade {
      * TA-002 · Escanea y devuelve el primer puerto TCP libre del host a partir de
      * {@code startInclusive} (p. ej. 8001), evitando colisiones cuando varios
      * estudiantes despliegan model-services simultáneamente.
+     * Doble verificación: ServerSocket (OS-level) + Docker container port bindings.
      */
     public int findFreePort(int startInclusive) {
+        java.util.Set<Integer> dockerPorts = getDockerBoundPorts();
         for (int port = startInclusive; port < startInclusive + 1000; port++) {
+            if (dockerPorts.contains(port)) continue;
             try (ServerSocket socket = new ServerSocket(port)) {
                 socket.setReuseAddress(true);
                 return port;
@@ -158,6 +161,30 @@ public class DockerFacade {
         }
         throw new IllegalStateException(
                 "No se encontró puerto libre desde " + startInclusive);
+    }
+
+    /**
+    /**
+     * Consulta Docker daemon y recolecta todos los puertos host mapeados
+     * por contenedores activos (para evitar colisiones en findFreePort).
+     */
+    private java.util.Set<Integer> getDockerBoundPorts() {
+        java.util.Set<Integer> ports = new java.util.HashSet<>();
+        try {
+            dockerClient.listContainersCmd().exec().forEach(container -> {
+                if (container.getPorts() != null) {
+                    for (var p : container.getPorts()) {
+                        if (p.getPublicPort() != null && p.getPublicPort() > 0) {
+                            ports.add(p.getPublicPort());
+                        }
+                    }
+                }
+            });
+            log.debug("Docker bound ports: {}", ports);
+        } catch (Exception e) {
+            log.warn("getDockerBoundPorts falló: {}", e.getMessage());
+        }
+        return ports;
     }
 
     /**
@@ -178,25 +205,41 @@ public class DockerFacade {
         Ports portBindings = new Ports();
         portBindings.bind(exposed, Ports.Binding.bindPort(hostPort));
 
-        String containerId = dockerClient.createContainerCmd(imageId)
-                .withName(containerName)
-                .withEnv(envList)
-                .withExposedPorts(exposed)
-                // HU-009 · labels para que Prometheus (docker_sd) descubra y scrapee /metrics.
-                .withLabels(Map.of(
-                        "metrics", "true",
-                        "com.synapseops.service", "model-service"))
-                .withHostConfig(HostConfig.newHostConfig()
-                        .withNetworkMode("mlops-network")
-                        .withPortBindings(portBindings)
-                        // Volumen NOMBRADO (no bind de ruta) para compartir los artefactos vía DooD.
-                        .withBinds(Bind.parse(storageVolume + ":" + storageBasePath + ":ro")))
-                .exec()
-                .getId();
+        String containerId = createWithRetry(imageId, containerName, envList, exposed, portBindings);
 
         dockerClient.startContainerCmd(containerId).exec();
         log.info("model-service '{}' levantado en :{} → {}", containerName, hostPort, containerId);
         return containerId;
+    }
+
+    /**
+     * Intenta crear el contenedor. Si el nombre ya existe (409 Conflict — Docker Desktop
+     * en Windows puede tardar en liberar nombres), reintenta tras derribar una vez más.
+     */
+    private String createWithRetry(String imageId, String containerName,
+                                   List<String> envList, ExposedPort exposed, Ports portBindings) {
+        for (int attempt = 0; ; attempt++) {
+            try {
+                return dockerClient.createContainerCmd(imageId)
+                        .withName(containerName)
+                        .withEnv(envList)
+                        .withExposedPorts(exposed)
+                        .withLabels(Map.of(
+                                "metrics", "true",
+                                "com.synapseops.service", "model-service"))
+                        .withHostConfig(HostConfig.newHostConfig()
+                                .withNetworkMode("mlops-network")
+                                .withPortBindings(portBindings)
+                                .withBinds(Bind.parse(storageVolume + ":" + storageBasePath + ":ro")))
+                        .exec()
+                        .getId();
+            } catch (com.github.dockerjava.api.exception.ConflictException e) {
+                if (attempt >= 2) throw e;
+                log.warn("Conflicto de nombre '{}' — reintentando derribo previo (intento {})", containerName, attempt + 1);
+                removeContainerByName(containerName);
+                try { Thread.sleep(500); } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
+            }
+        }
     }
 
     /**
@@ -342,7 +385,7 @@ public class DockerFacade {
         return sb.toString();
     }
 
-    /** Elimina (best-effort) un contenedor existente por nombre (redepliegue/derribo). */
+    /** Elimina (stop + rm -f) un contenedor por nombre, con reintentos (redepliegue/derribo). */
     public void removeContainerByName(String name) {
         try {
             dockerClient.listContainersCmd()
@@ -351,10 +394,17 @@ public class DockerFacade {
                     .exec()
                     .forEach(c -> {
                         try {
+                            dockerClient.stopContainerCmd(c.getId()).withTimeout(10).exec();
+                        } catch (Exception e) {
+                            log.warn("No se pudo detener contenedor previo '{}' ({}): {}",
+                                    name, c.getId(), e.getMessage());
+                        }
+                        try {
                             dockerClient.removeContainerCmd(c.getId()).withForce(true).exec();
                             log.info("Contenedor previo '{}' eliminado para redepliegue.", name);
                         } catch (Exception e) {
-                            log.warn("No se pudo eliminar contenedor previo {}: {}", name, e.getMessage());
+                            log.warn("No se pudo eliminar contenedor previo {} ({}): {}",
+                                    name, c.getId(), e.getMessage());
                         }
                     });
         } catch (Exception e) {

@@ -38,7 +38,16 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(IllegalArgumentException.class)
     public ProblemDetail handleIllegalArgument(IllegalArgumentException ex,
-                                               ServerWebExchange exchange) {
+                                                ServerWebExchange exchange) {
+        if (ex.getMessage() != null && ex.getMessage().contains("supera el tamaño máximo")) {
+            ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.PAYLOAD_TOO_LARGE);
+            problem.setType(URI.create("/errors/payload-too-large"));
+            problem.setTitle("Archivo demasiado grande");
+            problem.setDetail(ex.getMessage());
+            problem.setProperty("timestamp", Instant.now());
+            problem.setProperty("path", exchange.getRequest().getPath().value());
+            return problem;
+        }
         ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.BAD_REQUEST);
         problem.setType(URI.create("/errors/business-rule"));
         problem.setTitle("Solicitud inválida");
