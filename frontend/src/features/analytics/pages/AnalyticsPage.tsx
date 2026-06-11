@@ -22,6 +22,7 @@ export function AnalyticsPage({ token, onAuthError }: AnalyticsPageProps) {
       onAuthError={onAuthError}
       title="Analítica de plataforma"
       subtitle="Telemetría global de TODOS los proyectos (estudio OE4)"
+      scope="global"
       loadLifecycle={getGlobalLifecycleMetrics}
       loadByModel={getGlobalByModelMetrics}
       downloadCsv={downloadGlobalLifecycleCsv}
