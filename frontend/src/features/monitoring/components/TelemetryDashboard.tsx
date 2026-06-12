@@ -3,9 +3,11 @@ import { Activity, Boxes, Download, Gauge, Info, RefreshCw, Rocket, Timer, Users
 
 import { Button } from '@/shared/components/ui/button'
 import { PageHeader } from '@/shared/components/PageHeader'
+import { DataTable, type DataColumn } from '@/shared/components/DataTable'
+import { EmptyState } from '@/shared/components/EmptyState'
 import { notify } from '@/shared/notify'
 import { cn } from '@/lib/utils'
-import type { ByModelView, LifecycleMetrics } from '../types'
+import type { ByModelView, LifecycleMetrics, LifecycleMetricRow } from '../types'
 
 interface TelemetryDashboardProps {
   token: string
@@ -104,6 +106,43 @@ export function TelemetryDashboard({
     </button>
   )
 
+  // Columnas de "Detalle por ejecución" (DataTable compartido).
+  const execColumns: DataColumn<LifecycleMetricRow>[] = [
+    { key: 'id', header: '#', render: (r) => <span className="font-mono text-muted-foreground">{r.executionId}</span> },
+    ...(isGlobal
+      ? [{ key: 'owner', header: 'Usuario', render: (r: LifecycleMetricRow) => <span className="text-muted-foreground">{r.ownerUsername}</span> }]
+      : []),
+    {
+      key: 'project', header: 'Proyecto · Modelo',
+      render: (r) => (
+        <div className="min-w-0">
+          <div className="truncate font-medium text-foreground">{r.workspaceName}</div>
+          <div className="truncate text-[11px] text-muted-foreground">{r.modelName ?? r.pipelineName}</div>
+        </div>
+      ),
+    },
+    { key: 'status', header: 'Estado', render: (r) => <span className={cn('font-medium', statusTone(r.status))}>{r.status}</span> },
+    { key: 'tre', header: 'T_re ⓘ', title: HELP.tRe, className: 'font-mono', render: (r) => secs(r.tRetrainSeconds) },
+    { key: 'ltd', header: 'LT_d ⓘ', title: HELP.ltD, className: 'font-mono', render: (r) => secs(r.leadTimeDeploySeconds) },
+    { key: 'cold', header: 'Cold start ⓘ', title: HELP.cold, className: 'font-mono', render: (r) => ms(r.coldStartMs) },
+    {
+      key: 'deploy', header: 'Despliegue', title: HELP.deploy,
+      render: (r) => (
+        <span className={r.deployStatus === 'SUCCESS' ? 'text-success' : r.deployStatus === 'FAILED' ? 'text-destructive' : 'text-muted-foreground'}>
+          {r.deployStatus ?? '—'}
+        </span>
+      ),
+    },
+    { key: 'nodes', header: 'Nodos ⓘ', title: HELP.effort, className: 'font-mono', render: (r) => r.interactionEffort ?? '—' },
+    {
+      key: 'quality', header: 'Calidad',
+      title: 'Señal de calidad del entrenamiento: overfitting y/o data drift detectados.',
+      render: (r) => (r.dataQuality
+        ? <span className={cn('rounded px-1.5 py-0.5 text-[11px] font-medium', r.dataQuality === 'OK' ? 'bg-success/10 text-success' : 'bg-warning/15 text-warning')}>{r.dataQuality}</span>
+        : <span className="text-muted-foreground">—</span>),
+    },
+  ]
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -166,57 +205,14 @@ export function TelemetryDashboard({
             <div className="border-b border-border px-4 py-2.5 text-sm font-semibold">Detalle por ejecución</div>
             {loading && !life ? (
               <p className="p-6 text-sm text-muted-foreground">Cargando indicadores…</p>
-            ) : !life?.rows.length ? (
-              <p className="p-6 text-sm text-muted-foreground">
-                Aún no hay ejecuciones. Corre un flujo en el Lienzo para empezar a medir el ciclo de vida.
-              </p>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                      <th className="px-4 py-2 font-medium">#</th>
-                      {isGlobal && <th className="px-4 py-2 font-medium">Usuario</th>}
-                      <th className="px-4 py-2 font-medium">Proyecto · Modelo</th>
-                      <th className="px-4 py-2 font-medium">Estado</th>
-                      <th className="px-4 py-2 font-medium" title={HELP.tRe}>T_re ⓘ</th>
-                      <th className="px-4 py-2 font-medium" title={HELP.ltD}>LT_d ⓘ</th>
-                      <th className="px-4 py-2 font-medium" title={HELP.cold}>Cold start ⓘ</th>
-                      <th className="px-4 py-2 font-medium" title={HELP.deploy}>Despliegue</th>
-                      <th className="px-4 py-2 font-medium" title={HELP.effort}>Nodos ⓘ</th>
-                      <th className="px-4 py-2 font-medium" title="Señal de calidad del entrenamiento: overfitting y/o data drift detectados.">Calidad</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {life.rows.map((r) => (
-                      <tr key={r.executionId} className="border-b border-border/50 last:border-0">
-                        <td className="px-4 py-2 font-mono text-muted-foreground">{r.executionId}</td>
-                        {isGlobal && <td className="px-4 py-2 text-muted-foreground">{r.ownerUsername}</td>}
-                        <td className="px-4 py-2">
-                          <div className="font-medium">{r.workspaceName}</div>
-                          <div className="text-[11px] text-muted-foreground">{r.modelName ?? r.pipelineName}</div>
-                        </td>
-                        <td className={cn('px-4 py-2 font-medium', statusTone(r.status))}>{r.status}</td>
-                        <td className="px-4 py-2 font-mono">{secs(r.tRetrainSeconds)}</td>
-                        <td className="px-4 py-2 font-mono">{secs(r.leadTimeDeploySeconds)}</td>
-                        <td className="px-4 py-2 font-mono">{ms(r.coldStartMs)}</td>
-                        <td className={cn('px-4 py-2', r.deployStatus === 'SUCCESS' ? 'text-success' : r.deployStatus === 'FAILED' ? 'text-destructive' : 'text-muted-foreground')}>
-                          {r.deployStatus ?? '—'}
-                        </td>
-                        <td className="px-4 py-2 font-mono">{r.interactionEffort ?? '—'}</td>
-                        <td className="px-4 py-2">
-                          {r.dataQuality
-                            ? <span className={cn('rounded px-1.5 py-0.5 text-[11px] font-medium',
-                                r.dataQuality === 'OK' ? 'bg-success/10 text-success' : 'bg-warning/15 text-warning')}>
-                                {r.dataQuality}
-                              </span>
-                            : <span className="text-muted-foreground">—</span>}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <DataTable
+                columns={execColumns}
+                rows={life?.rows ?? []}
+                rowKey={(r) => r.executionId}
+                minWidth={760}
+                empty={<EmptyState icon={Activity} title="Aún no hay ejecuciones" description="Corre un flujo en el Lienzo para empezar a medir el ciclo de vida." />}
+              />
             )}
           </div>
         </>

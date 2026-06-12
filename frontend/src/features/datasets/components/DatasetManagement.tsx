@@ -9,6 +9,8 @@ import { Spinner } from '@/shared/components/ui/spinner'
 import { Sheet, SheetBody, SheetContent, SheetHeader, SheetTitle } from '@/shared/components/ui/sheet'
 import { notify } from '@/shared/notify'
 import { ConfirmDialog } from '@/shared/components/ConfirmDialog'
+import { DataTable, type DataColumn } from '@/shared/components/DataTable'
+import { EmptyState } from '@/shared/components/EmptyState'
 import { API_BASE_URL } from '@/shared/api/env'
 import {
   deleteDataset,
@@ -205,6 +207,93 @@ export function DatasetManagement({ token }: DatasetManagementProps) {
   const budgetTotalMb = quotaMb * Math.max(storageTotal, 1)
   const usedPercent = budgetTotalMb > 0 ? Math.min(100, Math.round((usedTotalMb / budgetTotalMb) * 100)) : 0
 
+  // Columnas de la tabla de datasets (DataTable compartido).
+  const datasetColumns: DataColumn<WorkspaceSummary>[] = [
+    {
+      key: 'project', header: 'Proyecto', headerClassName: 'px-5', className: 'px-5',
+      render: (ws) => {
+        const dtype = ws.datasetPath ? datasetType(ws.datasetPath) : '—'
+        const DIcon = ws.datasetPath ? datasetIcon(dtype) : Database
+        return (
+          <div className="flex items-center gap-2.5">
+            <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary ring-1 ring-primary/15">
+              <DIcon className="size-4" />
+            </span>
+            <span className="truncate font-semibold text-foreground">{ws.name}</span>
+          </div>
+        )
+      },
+    },
+    { key: 'pipelines', header: 'Pipelines', render: (ws) => <Badge variant="info">{pipelineCounts[ws.idWorkspace] ?? '…'}</Badge> },
+    {
+      key: 'dataset', header: 'Dataset',
+      render: (ws) => (
+        <span className="truncate font-mono text-xs text-muted-foreground" title={ws.datasetPath ?? ''}>
+          {ws.datasetPath ? extractFilename(ws.datasetPath) : '—'}
+        </span>
+      ),
+    },
+    {
+      key: 'type', header: 'Tipo',
+      render: (ws) => {
+        const has = !!ws.datasetPath
+        return <Badge variant={has ? 'info' : 'secondary'}>{has ? datasetType(ws.datasetPath!) : '—'}</Badge>
+      },
+    },
+    {
+      key: 'usage', header: 'Uso',
+      render: (ws) => {
+        if (!ws.datasetPath) return <span className="text-xs text-muted-foreground">—</span>
+        const usedWsMb = toMb(usageByWs.get(ws.idWorkspace) ?? 0)
+        const wsPct = quotaMb > 0 ? Math.min(100, Math.round((usedWsMb / quotaMb) * 100)) : 0
+        return (
+          <div className="w-28" title={`${usedWsMb} MB de ${quotaMb} MB`}>
+            <div className="flex items-center justify-between text-[11px]">
+              <span className="font-semibold text-foreground">{usedWsMb} MB</span>
+              <span className="text-muted-foreground">{wsPct}%</span>
+            </div>
+            <div className="mt-1 h-1.5 w-full rounded-full bg-muted">
+              <div className={`h-full rounded-full ${wsPct >= 90 ? 'bg-destructive' : 'bg-primary'}`} style={{ width: `${wsPct}%` }} />
+            </div>
+          </div>
+        )
+      },
+    },
+    { key: 'status', header: 'Estado', render: (ws) => <Badge variant={ws.datasetPath ? 'success' : 'secondary'}>{ws.datasetPath ? 'Asignado' : 'Sin dataset'}</Badge> },
+    {
+      key: 'actions', header: 'Acciones', headerClassName: 'px-5 text-right', className: 'px-5 text-right',
+      render: (ws) => {
+        const hasDs = !!ws.datasetPath
+        return (
+          <div className="flex items-center justify-end gap-1">
+            {hasDs && (
+              <>
+                <Button
+                  variant="ghost" size="icon-sm" aria-label="Descargar dataset" title="Descargar"
+                  disabled={downloadingId === ws.idWorkspace} onClick={() => void handleDownload(ws)}
+                >
+                  {downloadingId === ws.idWorkspace ? <Spinner size="sm" /> : <Download className="size-3.5" />}
+                </Button>
+                <Button
+                  variant="ghost" size="icon-sm" aria-label="Eliminar dataset" title="Eliminar" disabled={isDeleting}
+                  onClick={() => setConfirm({
+                    title: 'Eliminar dataset',
+                    description: `Se eliminará el dataset de «${ws.name}» y sus artefactos intermedios. Esta acción no se puede deshacer.`,
+                    confirmLabel: 'Eliminar',
+                    onConfirm: () => handleDelete(ws),
+                  })}
+                >
+                  <Trash2 className="size-3.5 text-destructive" />
+                </Button>
+              </>
+            )}
+            <Button variant="outline" size="sm" onClick={() => openSheet(ws)}>{hasDs ? 'Reemplazar' : 'Asignar'}</Button>
+          </div>
+        )
+      },
+    },
+  ]
+
   return (
     <div className="space-y-5">
       {/* Storage summary */}
@@ -265,128 +354,19 @@ export function DatasetManagement({ token }: DatasetManagementProps) {
               <Spinner size="sm" /> Cargando datasets…
             </div>
           ) : workspaces.length === 0 ? (
-            <div className="flex min-h-48 flex-col items-center justify-center px-6 py-10 text-center">
-              <Database className="mb-3 size-9 text-muted-foreground/50" />
-              <p className="text-base font-semibold text-foreground">Sin proyectos</p>
-              <p className="mt-2 max-w-sm text-sm text-muted-foreground">
-                Crea un proyecto en Mis proyectos para asignarle un dataset.
-              </p>
-            </div>
+            <EmptyState
+              icon={Database}
+              title="Sin proyectos"
+              description="Crea un proyecto en Mis proyectos para asignarle un dataset."
+              className="min-h-48"
+            />
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[640px] text-sm">
-                <thead>
-                  <tr className="border-b border-border text-left text-[11px] font-semibold tracking-[0.1em] text-muted-foreground uppercase">
-                    <th className="px-5 py-3">Proyecto</th>
-                    <th className="px-3 py-3">Pipelines</th>
-                    <th className="px-3 py-3">Dataset</th>
-                    <th className="px-3 py-3">Tipo</th>
-                    <th className="px-3 py-3">Uso</th>
-                    <th className="px-3 py-3">Estado</th>
-                    <th className="px-5 py-3 text-right">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {[...withDataset, ...withoutDataset].map((ws) => {
-                    const hasDs = !!ws.datasetPath
-                    const fname = hasDs ? extractFilename(ws.datasetPath!) : '—'
-                    const dtype = hasDs ? datasetType(ws.datasetPath!) : '—'
-                    const DIcon = hasDs ? datasetIcon(dtype) : Database
-                    const usedWsMb = toMb(usageByWs.get(ws.idWorkspace) ?? 0)
-                    const wsPct = quotaMb > 0 ? Math.min(100, Math.round((usedWsMb / quotaMb) * 100)) : 0
-
-                    return (
-                      <tr
-                        key={ws.idWorkspace}
-                        className="border-b border-border last:border-0 transition-colors hover:bg-accent/40"
-                      >
-                        <td className="px-5 py-3">
-                          <div className="flex items-center gap-2.5">
-                            <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary ring-1 ring-primary/15">
-                              <DIcon className="size-4" />
-                            </div>
-                            <span className="truncate font-semibold text-foreground">{ws.name}</span>
-                          </div>
-                        </td>
-                        <td className="px-3 py-3">
-                          <Badge variant="info">{pipelineCounts[ws.idWorkspace] ?? '…'}</Badge>
-                        </td>
-                        <td className="px-3 py-3">
-                          <span className="truncate font-mono text-xs text-muted-foreground" title={ws.datasetPath ?? ''}>
-                            {fname}
-                          </span>
-                        </td>
-                        <td className="px-3 py-3">
-                          <Badge variant={hasDs ? 'info' : 'secondary'}>
-                            {dtype}
-                          </Badge>
-                        </td>
-                        <td className="px-3 py-3">
-                          {hasDs ? (
-                            <div className="w-28" title={`${usedWsMb} MB de ${quotaMb} MB`}>
-                              <div className="flex items-center justify-between text-[11px]">
-                                <span className="font-semibold text-foreground">{usedWsMb} MB</span>
-                                <span className="text-muted-foreground">{wsPct}%</span>
-                              </div>
-                              <div className="mt-1 h-1.5 w-full rounded-full bg-muted">
-                                <div
-                                  className={`h-full rounded-full ${wsPct >= 90 ? 'bg-destructive' : 'bg-primary'}`}
-                                  style={{ width: `${wsPct}%` }}
-                                />
-                              </div>
-                            </div>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">—</span>
-                          )}
-                        </td>
-                        <td className="px-3 py-3">
-                          <Badge variant={hasDs ? 'success' : 'secondary'}>
-                            {hasDs ? 'Asignado' : 'Sin dataset'}
-                          </Badge>
-                        </td>
-                        <td className="px-5 py-3 text-right">
-                          <div className="flex items-center justify-end gap-1">
-                            {hasDs && (
-                              <>
-                                <Button
-                                  variant="ghost" size="icon-sm"
-                                  aria-label="Descargar dataset"
-                                  title="Descargar"
-                                  disabled={downloadingId === ws.idWorkspace}
-                                  onClick={() => void handleDownload(ws)}
-                                >
-                                  {downloadingId === ws.idWorkspace
-                                    ? <Spinner size="sm" />
-                                    : <Download className="size-3.5" />}
-                                </Button>
-                                <Button
-                                  variant="ghost" size="icon-sm"
-                                  aria-label="Eliminar dataset"
-                                  title="Eliminar"
-                                  disabled={isDeleting}
-                                  onClick={() => setConfirm({
-                                    title: 'Eliminar dataset',
-                                    description: `Se eliminará el dataset de «${ws.name}» y sus `
-                                      + 'artefactos intermedios. Esta acción no se puede deshacer.',
-                                    confirmLabel: 'Eliminar',
-                                    onConfirm: () => handleDelete(ws),
-                                  })}
-                                >
-                                  <Trash2 className="size-3.5 text-destructive" />
-                                </Button>
-                              </>
-                            )}
-                            <Button variant="outline" size="sm" onClick={() => openSheet(ws)}>
-                              {hasDs ? 'Reemplazar' : 'Asignar'}
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
+            <DataTable
+              columns={datasetColumns}
+              rows={[...withDataset, ...withoutDataset]}
+              rowKey={(ws) => ws.idWorkspace}
+              minWidth={680}
+            />
           )}
         </CardContent>
       </Card>
