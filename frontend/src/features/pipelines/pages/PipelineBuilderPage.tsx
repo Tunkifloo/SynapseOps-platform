@@ -31,6 +31,9 @@ interface PipelineBuilderPageProps {
   onAuthError: (error: unknown) => boolean
 }
 
+// Pipeline activo recordado por workspace → al volver al lienzo se conserva el mismo.
+const pipeKey = (wsId: number) => `synapseops:builder-pipeline:${wsId}`
+
 /**
  * Lienzo low-code (HU-001) vinculado a un workspace (HU-002) y a un pipeline
  * (HU-005): el proyecto + pipeline dan contexto a los nodos (ingesta, entrenamiento).
@@ -52,7 +55,11 @@ export function PipelineBuilderPage({ token, onAuthError }: PipelineBuilderPageP
 
   const loadWorkspaces = useCallback(async () => {
     try {
+      // CARD_KEY es una señal de un SOLO uso ("abrir este proyecto en el lienzo" desde
+      // otro módulo). Se consume y se borra: si no, quedaría fija y pisaría siempre el
+      // último workspace que el usuario seleccionó dentro del lienzo (bug de contexto).
       const raw = localStorage.getItem(CARD_KEY)
+      if (raw) localStorage.removeItem(CARD_KEY)
       const preferredId = raw ? Number(raw) : undefined
       const data = await listMyWorkspaces(token)
       setWorkspaces(data)
@@ -76,7 +83,14 @@ export function PipelineBuilderPage({ token, onAuthError }: PipelineBuilderPageP
       try {
         const data = await listWorkspacePipelines(token, wsId)
         setPipelines(data)
-        setActivePipelineId(data[0]?.idPipeline ?? null)
+        // Restaura el último pipeline usado en este workspace (si sigue existiendo).
+        let preferred: number | null = null
+        try {
+          const raw = localStorage.getItem(pipeKey(wsId))
+          const id = raw ? Number(raw) : NaN
+          if (!Number.isNaN(id) && data.some((p) => p.idPipeline === id)) preferred = id
+        } catch { /* almacenamiento no disponible */ }
+        setActivePipelineId(preferred ?? data[0]?.idPipeline ?? null)
       } catch (err) {
         onAuthError(err)
       }
@@ -89,7 +103,13 @@ export function PipelineBuilderPage({ token, onAuthError }: PipelineBuilderPageP
   }, [loadWorkspaces])
 
   useEffect(() => {
-    if (activeWsId) void loadPipelines(activeWsId)
+    if (activeWsId) {
+      // Resetea el pipeline ANTES de cargar los del nuevo workspace: si no, el lienzo
+      // pediría (workspace nuevo, pipeline viejo) por un instante → 403 (el pipeline no
+      // pertenece a ese workspace). Con null, el lienzo no carga hasta tener el correcto.
+      setActivePipelineId(null)
+      void loadPipelines(activeWsId)
+    }
   }, [activeWsId, loadPipelines])
 
   const activeWorkspace = workspaces.find((w) => w.idWorkspace === activeWsId) ?? null
@@ -100,6 +120,13 @@ export function PipelineBuilderPage({ token, onAuthError }: PipelineBuilderPageP
       localStorage.setItem(LAST_KEY, activeWorkspace.name)
     }
   }, [activeWorkspace?.name, LAST_KEY])
+
+  // Recuerda el pipeline activo por workspace para restaurarlo al volver.
+  useEffect(() => {
+    if (activeWsId && activePipelineId) {
+      try { localStorage.setItem(pipeKey(activeWsId), String(activePipelineId)) } catch { /* noop */ }
+    }
+  }, [activeWsId, activePipelineId])
 
   const handleRenamePipeline = async () => {
     if (!activeWsId || !activePipelineId || !renameValue.trim()) { setRenaming(false); return }
