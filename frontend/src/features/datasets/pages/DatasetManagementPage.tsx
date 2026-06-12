@@ -1,3 +1,6 @@
+import { Database } from 'lucide-react'
+
+import { PageHeader } from '@/shared/components/PageHeader'
 import { DatasetManagement } from '@/features/datasets/components/DatasetManagement'
 
 interface DatasetManagementPageProps {
@@ -9,16 +12,11 @@ interface DatasetManagementPageProps {
 export function DatasetManagementPage({ token }: DatasetManagementPageProps) {
   return (
     <div className="w-full space-y-5">
-      <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="font-heading text-2xl font-bold tracking-tight text-foreground xl:text-3xl">
-            Gestión de Dataset
-          </h1>
-          <p className="mt-1.5 max-w-3xl text-sm text-muted-foreground">
-            Administra los datasets de tus proyectos: asigna, reemplaza, visualiza y elimina archivos. El límite por archivo lo define el servidor (ver tarjeta).
-          </p>
-        </div>
-      </section>
+      <PageHeader
+        icon={Database}
+        title="Gestión de Dataset"
+        subtitle="Asigna, reemplaza, visualiza y elimina los datasets de tus proyectos. El límite por archivo lo define el servidor."
+      />
       <DatasetManagement token={token} />
     </div>
   )

@@ -5,6 +5,9 @@ import { Badge } from '@/shared/components/ui/badge'
 import { Button } from '@/shared/components/ui/button'
 import { Spinner } from '@/shared/components/ui/spinner'
 import { ConfirmDialog } from '@/shared/components/ConfirmDialog'
+import { PageHeader } from '@/shared/components/PageHeader'
+import { KpiCard } from '@/shared/components/KpiCard'
+import { EmptyState } from '@/shared/components/EmptyState'
 import { isApiError } from '@/shared/api/client'
 import { notify } from '@/shared/notify'
 import { deployModel, listDeployments, undeployModel } from '../api'
@@ -91,26 +94,31 @@ export function DeploymentsPage({ token, onAuthError }: DeploymentsPageProps) {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold text-foreground">Despliegues</h1>
-          <p className="text-sm text-muted-foreground">
-            Gestiona tus model-services activos, su endpoint y el consumo de cupo.
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          {view && (
-            <Badge variant={atCap ? 'warning' : 'secondary'} className="gap-1.5">
-              <Server className="size-3.5" />
-              {view.active} / {view.max} en uso
-            </Badge>
-          )}
+      <PageHeader
+        icon={Rocket}
+        title="Despliegues"
+        subtitle="Gestiona tus model-services activos, su endpoint y el consumo de cupo."
+        badge={view && (
+          <Badge variant={atCap ? 'warning' : 'secondary'} className="gap-1.5">
+            <Server className="size-3.5" />
+            {view.active} / {view.max} en uso
+          </Badge>
+        )}
+        actions={
           <Button variant="outline" size="sm" onClick={() => void load()} disabled={loading}>
             <RefreshCw className={loading ? 'animate-spin' : ''} />
             Actualizar
           </Button>
+        }
+      />
+
+      {view && view.deployments.length > 0 && (
+        <div className="grid gap-3 sm:grid-cols-3">
+          <KpiCard title="En uso" value={`${view.active} / ${view.max}`} hint="model-services activos" icon={Server} accent="orange" />
+          <KpiCard title="Cupo disponible" value={Math.max(0, view.max - view.active)} hint="despliegues que puedes crear" icon={Boxes} accent="emerald" />
+          <KpiCard title="Modelos desplegados" value={view.deployments.length} hint="en este equipo" icon={Rocket} accent="sky" />
         </div>
-      </div>
+      )}
 
       {atCap && (
         <p className="rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning">
@@ -123,12 +131,12 @@ export function DeploymentsPage({ token, onAuthError }: DeploymentsPageProps) {
           <Spinner />
         </div>
       ) : !view || view.deployments.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-border bg-card/40 px-6 py-16 text-center">
-          <Boxes className="mx-auto mb-3 size-8 text-muted-foreground/40" />
-          <p className="mx-auto max-w-md text-sm text-muted-foreground">
-            Aún no has desplegado ningún modelo. Ve al lienzo, selecciona un modelo entrenado en el nodo de
-            Despliegue y pulsa “Desplegar”.
-          </p>
+        <div className="rounded-2xl border border-dashed border-border bg-card/40">
+          <EmptyState
+            icon={Boxes}
+            title="Sin despliegues activos"
+            description="Aún no has desplegado ningún modelo. Entrena uno en el lienzo y pulsa “Desplegar”, o despliega desde Mis modelos → detalles."
+          />
         </div>
       ) : (
         <div className="grid gap-3 lg:grid-cols-2">
