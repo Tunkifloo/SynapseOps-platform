@@ -23,6 +23,9 @@ env:
   NODE_VERSION: "20"
   PYTHON_VERSION: "3.11"
   REGISTRY: ghcr.io
+  # Requerida por el frontend (src/shared/api/env.ts) en tests y build de CI.
+  # En el contenedor de prod se inyecta como build-arg; aquí, como env del runner.
+  VITE_API_BASE_URL: "/api/v1"
 
 # Permisos mínimos a nivel workflow; cada job amplía solo lo que necesita.
 permissions:
@@ -129,7 +132,6 @@ jobs:
     permissions:
       contents: read
       packages: write          # publicar en GHCR
-      security-events: write   # subir el SARIF de Trivy a Security
     strategy:
       fail-fast: false
       matrix:
@@ -192,23 +194,18 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}
 
-      # Escaneo de vulnerabilidades de la imagen recién publicada (por digest → exacto).
+      # Escaneo de vulnerabilidades de la imagen publicada (por digest → exacto).
+      # Se usa el binario Trivy vía su imagen oficial (NO el GitHub Action
+      # aquasecurity/trivy-action, retirado por GHSA-69fq-xp46-6x23 — compromiso
+      # transitorio de la cadena de suministro del Action). Informa, no bloquea.
       - name: "Escanear imagen (Trivy)"
-        uses: aquasecurity/trivy-action@0.28.0
-        with:
-          image-ref: "${{ env.REGISTRY }}/${{ steps.vars.outputs.owner }}/${{ matrix.name }}@${{ steps.build.outputs.digest }}"
-          format: sarif
-          output: "trivy-${{ matrix.name }}.sarif"
-          severity: "CRITICAL,HIGH"
-          ignore-unfixed: true
-          exit-code: "0"   # informa, no bloquea el pipeline académico
-
-      - name: "Subir resultados de Trivy a Security"
-        if: ${{ !cancelled() }}
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: "trivy-${{ matrix.name }}.sarif"
-          category: "trivy-${{ matrix.name }}"
+        continue-on-error: true
+        run: |
+          docker run --rm \
+            -v "${HOME}/.docker/config.json:/root/.docker/config.json:ro" \
+            aquasec/trivy:0.58.1 image \
+            --severity CRITICAL,HIGH --ignore-unfixed --exit-code 0 \
+            "${{ env.REGISTRY }}/${{ steps.vars.outputs.owner }}/${{ matrix.name }}@${{ steps.build.outputs.digest }}"
 
       - name: "Resumen del despliegue"
         if: ${{ success() }}
