@@ -48,4 +48,27 @@ public interface PipelineExecutionRepository extends JpaRepository<PipelineExecu
             ORDER BY e.idExecution DESC
             """)
     List<PipelineExecution> findDeploymentsByUsername(@Param("username") String username);
+
+    /** TEL-02 · Todas las ejecuciones del usuario (con detalles) para los indicadores de ciclo de vida. */
+    @Query("""
+            SELECT e FROM PipelineExecution e
+            JOIN FETCH e.pipeline p
+            JOIN FETCH p.workspace w
+            JOIN FETCH w.user u
+            LEFT JOIN FETCH e.artifact
+            WHERE u.username = :username
+            ORDER BY e.idExecution DESC
+            """)
+    List<PipelineExecution> findAllByUsernameWithDetails(@Param("username") String username);
+
+    /** Analítica global (ADMIN): TODAS las ejecuciones con detalles, para la muestra OE4 (30-31). */
+    @Query("""
+            SELECT e FROM PipelineExecution e
+            JOIN FETCH e.pipeline p
+            JOIN FETCH p.workspace w
+            JOIN FETCH w.user u
+            LEFT JOIN FETCH e.artifact
+            ORDER BY e.idExecution DESC
+            """)
+    List<PipelineExecution> findAllWithDetails();
 }

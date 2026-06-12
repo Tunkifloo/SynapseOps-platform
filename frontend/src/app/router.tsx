@@ -28,6 +28,8 @@ const DatasetManagementPage = lazy(() =>
   import('@/features/datasets/pages/DatasetManagementPage').then((m) => ({ default: m.DatasetManagementPage }))
 )
 const DeploymentsPage = lazy(() => import('@/features/deployments/pages/DeploymentsPage').then((m) => ({ default: m.DeploymentsPage })))
+const MonitoringPage = lazy(() => import('@/features/monitoring/pages/MonitoringPage').then((m) => ({ default: m.MonitoringPage })))
+const AnalyticsPage = lazy(() => import('@/features/analytics/pages/AnalyticsPage').then((m) => ({ default: m.AnalyticsPage })))
 
 function PageFallback() {
   return (
@@ -69,7 +71,7 @@ interface PageProps {
 }
 
 interface ShellPageProps {
-  section: 'dashboard' | 'workspaces' | 'builder' | 'models' | 'datasets' | 'deployments' | 'admin' | 'mlflow' | 'profile'
+  section: 'dashboard' | 'workspaces' | 'builder' | 'models' | 'datasets' | 'deployments' | 'monitoring' | 'analytics' | 'admin' | 'mlflow' | 'profile'
   renderPage: (props: PageProps) => ReactNode
 }
 
@@ -146,6 +148,20 @@ export function AppRouter() {
         />
 
         <Route
+          path="/analytics"
+          element={
+            <RoleRoute isAuthenticated={isAuthenticated} role="ADMIN" currentRole={role}>
+              <ShellPage
+                section="analytics"
+                renderPage={({ token, onAuthError }) => (
+                  <AnalyticsPage token={token} onAuthError={onAuthError} />
+                )}
+              />
+            </RoleRoute>
+          }
+        />
+
+        <Route
           path="/mlflow"
           element={
             <RoleRoute isAuthenticated={isAuthenticated} role="ADMIN" currentRole={role}>
@@ -195,6 +211,20 @@ export function AppRouter() {
                 section="deployments"
                 renderPage={({ token, onAuthError }) => (
                   <DeploymentsPage token={token} onAuthError={onAuthError} />
+                )}
+              />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/monitoring"
+          element={
+            <ProtectedRoute isAuthenticated={isAuthenticated}>
+              <ShellPage
+                section="monitoring"
+                renderPage={({ token, onAuthError }) => (
+                  <MonitoringPage token={token} onAuthError={onAuthError} />
                 )}
               />
             </ProtectedRoute>

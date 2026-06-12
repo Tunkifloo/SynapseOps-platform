@@ -4,31 +4,40 @@ run-name: "${{ github.actor }} → ${{ github.ref_name }} @ ${{ github.sha }}"
 
 # CI en develop y main; CD (build + push a GHCR) solo en main y en tags de release v*.
 # Los tests de integración (Testcontainers) NO corren aquí: requieren el daemon
-# Docker local (WSL2 + dockerd) y se ejecutan vía `make test-it` / Gitea local.
+# Docker local (WSL2 + dockerd) y se ejecutan vía `make test-it` / Gitea local (ADR-008:
+# Gitea es el CI principal; GitHub Actions complementa — no reemplaza ese acuerdo).
 on:
   push:
     branches: [ main, develop ]
     tags: [ 'v*' ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, develop ]
+
+# Evita corridas redundantes: una nueva subida al mismo ref cancela la anterior en vuelo.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   JAVA_VERSION: "21"
   NODE_VERSION: "20"
   PYTHON_VERSION: "3.11"
   REGISTRY: ghcr.io
+  # Requerida por el frontend (src/shared/api/env.ts) en tests y build de CI.
+  # En el contenedor de prod se inyecta como build-arg; aquí, como env del runner.
+  VITE_API_BASE_URL: "/api/v1"
 
-# Necesario para que GITHUB_TOKEN pueda publicar imágenes en GHCR (Packages).
+# Permisos mínimos a nivel workflow; cada job amplía solo lo que necesita.
 permissions:
   contents: read
-  packages: write
 
 jobs:
 
-  # ── JOB 1: Lint + Tests Unitarios (backend + frontend) ─────────────────────
+  # ── JOB 1: Lint + Tests Unitarios + Build (backend + frontend) ─────────────
   unit-validation:
-    name: "Lint + Unit Tests (backend + frontend)"
+    name: "Lint · Unit Tests · Build (backend + frontend)"
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - name: "Checkout del código"
         uses: actions/checkout@v4
@@ -44,11 +53,13 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
 
       # Runners Linux = filesystem case-sensitive. La carpeta en el remoto es
       # 'frontend' (minúscula); usar 'Frontend' rompe el checkout/build.
       - name: "Instalar dependencias frontend"
-        run: cd frontend && npm ci --prefer-offline
+        run: cd frontend && npm ci --prefer-offline --no-audit
 
       - name: "Asegurar permiso de ejecución de mvnw"
         run: chmod +x Backend/backend-orchestrator/mvnw
@@ -62,10 +73,25 @@ jobs:
       - name: "Tests frontend (Vitest + RTL)"
         run: cd frontend && npm run test
 
-  # ── JOB 2: Tests ml-engine (pytest · ingesta, sin TensorFlow) ──────────────
+      # Compila tipos + bundle: atrapa errores de TypeScript antes del merge a main.
+      - name: "Build frontend (tsc + vite)"
+        run: cd frontend && npm run build
+
+      # Reportes de test del backend disponibles para inspección (también si falla).
+      - name: "Subir reportes de test (backend)"
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-surefire-reports
+          path: Backend/backend-orchestrator/target/surefire-reports/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # ── JOB 2: Tests ml-engine (pytest · ingesta/drift, sin TensorFlow) ────────
   ml-engine-tests:
     name: "ML Engine Unit Tests"
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: "Checkout del código"
         uses: actions/checkout@v4
@@ -74,19 +100,38 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
 
       - name: "Instalar dependencias de test (ligeras)"
         run: pip install --quiet pytest numpy Pillow pydantic pydantic-settings
 
-      - name: "pytest (ingesta de datasets)"
+      - name: "pytest (ingesta de datasets + drift)"
         run: cd Backend/ml-engine && python -m pytest tests/ -q
 
-  # ── JOB 3: Build & Push de imágenes → GHCR (solo main + tags v*) ───────────
+  # ── JOB 3: Dependency Review (solo en PRs) ─────────────────────────────────
+  dependency-review:
+    name: "Dependency Review (PR)"
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'pull_request' }}
+    timeout-minutes: 10
+    steps:
+      - name: "Checkout del código"
+        uses: actions/checkout@v4
+      - name: "Revisar dependencias nuevas/vulnerables"
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+
+  # ── JOB 4: Build & Push de imágenes → GHCR (solo main + tags v*) ───────────
   build-and-push:
     name: "Build & Push → GHCR (${{ matrix.name }})"
     runs-on: ubuntu-latest
     needs: [ unit-validation, ml-engine-tests ]
     if: ${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') }}
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write          # publicar en GHCR
     strategy:
       fail-fast: false
       matrix:
@@ -133,6 +178,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: "Build & Push (${{ matrix.name }})"
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: ${{ matrix.context }}
@@ -141,6 +187,36 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: ${{ matrix.build-args }}
+          # Cadena de suministro: atestación de procedencia + SBOM por imagen.
+          provenance: true
+          sbom: true
           # Cache de capas GHA para acelerar (clave para ml-engine: TF+PyTorch).
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+
+      # Escaneo de vulnerabilidades de la imagen publicada (por digest → exacto).
+      # Se usa el binario Trivy vía su imagen oficial (NO el GitHub Action
+      # aquasecurity/trivy-action, retirado por GHSA-69fq-xp46-6x23 — compromiso
+      # transitorio de la cadena de suministro del Action). Informa, no bloquea.
+      - name: "Escanear imagen (Trivy)"
+        continue-on-error: true
+        run: |
+          docker run --rm \
+            -v "${HOME}/.docker/config.json:/root/.docker/config.json:ro" \
+            aquasec/trivy:0.58.1 image \
+            --severity CRITICAL,HIGH --ignore-unfixed --exit-code 0 \
+            "${{ env.REGISTRY }}/${{ steps.vars.outputs.owner }}/${{ matrix.name }}@${{ steps.build.outputs.digest }}"
+
+      - name: "Resumen del despliegue"
+        if: ${{ success() }}
+        run: |
+          {
+            echo "### 🚀 Imagen publicada — ${{ matrix.name }}"
+            echo ""
+            echo "**Digest:** \`${{ steps.build.outputs.digest }}\`"
+            echo ""
+            echo "**Tags:**"
+            echo '```'
+            echo "${{ steps.meta.outputs.tags }}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

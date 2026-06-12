@@ -1,23 +1,18 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Boxes, Copy, FlaskConical, RefreshCw, Rocket, Server, Trash2, Upload, Zap } from 'lucide-react'
+import { Boxes, Copy, FlaskConical, RefreshCw, Rocket, Server, Trash2, Zap } from 'lucide-react'
 
 import { Badge } from '@/shared/components/ui/badge'
 import { Button } from '@/shared/components/ui/button'
 import { Spinner } from '@/shared/components/ui/spinner'
 import { ConfirmDialog } from '@/shared/components/ConfirmDialog'
+import { PageHeader } from '@/shared/components/PageHeader'
+import { KpiCard } from '@/shared/components/KpiCard'
+import { EmptyState } from '@/shared/components/EmptyState'
 import { isApiError } from '@/shared/api/client'
 import { notify } from '@/shared/notify'
-import { deployModel, listDeployments, predictWithImage, undeployModel } from '../api'
-import type { DeploymentItem, DeploymentsView, PredictResult } from '../types'
-
-/** Lee un File como base64 puro (sin el prefijo data-URL). */
-const fileToBase64 = (file: File) =>
-  new Promise<string>((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(String(reader.result).split(',', 2)[1] ?? '')
-    reader.onerror = () => reject(new Error('No se pudo leer el archivo'))
-    reader.readAsDataURL(file)
-  })
+import { deployModel, listDeployments, undeployModel } from '../api'
+import type { DeploymentItem, DeploymentsView } from '../types'
+import { PredictModal } from '../components/PredictModal'
 
 interface DeploymentsPageProps {
   token: string
@@ -99,26 +94,31 @@ export function DeploymentsPage({ token, onAuthError }: DeploymentsPageProps) {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold text-foreground">Despliegues</h1>
-          <p className="text-sm text-muted-foreground">
-            Gestiona tus model-services activos, su endpoint y el consumo de cupo.
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          {view && (
-            <Badge variant={atCap ? 'warning' : 'secondary'} className="gap-1.5">
-              <Server className="size-3.5" />
-              {view.active} / {view.max} en uso
-            </Badge>
-          )}
+      <PageHeader
+        icon={Rocket}
+        title="Despliegues"
+        subtitle="Gestiona tus model-services activos, su endpoint y el consumo de cupo."
+        badge={view && (
+          <Badge variant={atCap ? 'warning' : 'secondary'} className="gap-1.5">
+            <Server className="size-3.5" />
+            {view.active} / {view.max} en uso
+          </Badge>
+        )}
+        actions={
           <Button variant="outline" size="sm" onClick={() => void load()} disabled={loading}>
             <RefreshCw className={loading ? 'animate-spin' : ''} />
             Actualizar
           </Button>
+        }
+      />
+
+      {view && view.deployments.length > 0 && (
+        <div className="grid gap-3 sm:grid-cols-3">
+          <KpiCard title="En uso" value={`${view.active} / ${view.max}`} hint="model-services activos" icon={Server} accent="orange" />
+          <KpiCard title="Cupo disponible" value={Math.max(0, view.max - view.active)} hint="despliegues que puedes crear" icon={Boxes} accent="emerald" />
+          <KpiCard title="Modelos desplegados" value={view.deployments.length} hint="en este equipo" icon={Rocket} accent="sky" />
         </div>
-      </div>
+      )}
 
       {atCap && (
         <p className="rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning">
@@ -131,12 +131,12 @@ export function DeploymentsPage({ token, onAuthError }: DeploymentsPageProps) {
           <Spinner />
         </div>
       ) : !view || view.deployments.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-border bg-card/40 px-6 py-16 text-center">
-          <Boxes className="mx-auto mb-3 size-8 text-muted-foreground/40" />
-          <p className="mx-auto max-w-md text-sm text-muted-foreground">
-            Aún no has desplegado ningún modelo. Ve al lienzo, selecciona un modelo entrenado en el nodo de
-            Despliegue y pulsa “Desplegar”.
-          </p>
+        <div className="rounded-2xl border border-dashed border-border bg-card/40">
+          <EmptyState
+            icon={Boxes}
+            title="Sin despliegues activos"
+            description="Aún no has desplegado ningún modelo. Entrena uno en el lienzo y pulsa “Desplegar”, o despliega desde Mis modelos → detalles."
+          />
         </div>
       ) : (
         <div className="grid gap-3 lg:grid-cols-2">
@@ -185,6 +185,7 @@ interface DeploymentCardProps {
 }
 
 function DeploymentCard({ token, item, busy, onCopy, onRedeploy, onKill }: DeploymentCardProps) {
+  const [predictOpen, setPredictOpen] = useState(false)
   return (
     <div className="space-y-3 rounded-2xl border border-border bg-card/60 p-4">
       <div className="flex items-start justify-between gap-2">
@@ -240,83 +241,21 @@ function DeploymentCard({ token, item, busy, onCopy, onRedeploy, onKill }: Deplo
         </Button>
       </div>
 
-      {item.running && <DeploymentTester token={token} executionId={item.executionId} />}
-    </div>
-  )
-}
-
-/** Probador inline del /predict (sube una imagen y muestra la predicción). */
-function DeploymentTester({ token, executionId }: { token: string; executionId: number }) {
-  const [open, setOpen] = useState(false)
-  const [busy, setBusy] = useState(false)
-  const [result, setResult] = useState<PredictResult | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [fileName, setFileName] = useState<string | null>(null)
-
-  const onFile = async (file: File) => {
-    setFileName(file.name)
-    setError(null)
-    setResult(null)
-    setBusy(true)
-    try {
-      const base64 = await fileToBase64(file)
-      setResult(await predictWithImage(token, executionId, base64))
-    } catch (err) {
-      setError(isApiError(err) ? err.message : err instanceof Error ? err.message : 'Error al predecir')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  if (!open) {
-    return (
-      <Button variant="outline" size="sm" className="w-full" onClick={() => setOpen(true)}>
-        <FlaskConical />
-        Probar /predict
-      </Button>
-    )
-  }
-
-  return (
-    <div className="space-y-2 rounded-lg border border-border bg-background/50 p-2.5">
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold text-foreground">Probar /predict</span>
-        <button
-          type="button"
-          onClick={() => setOpen(false)}
-          className="text-xs text-muted-foreground transition-colors hover:text-foreground"
-        >
-          Cerrar
-        </button>
-      </div>
-      <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-border px-2.5 py-2 text-xs text-muted-foreground transition-colors hover:bg-accent/40">
-        <Upload className="size-3.5 shrink-0" />
-        <span className="truncate">{fileName ?? 'Elige una imagen…'}</span>
-        <input
-          type="file"
-          accept="image/*"
-          className="hidden"
-          onChange={(e) => {
-            const f = e.target.files?.[0]
-            if (f) void onFile(f)
-          }}
-        />
-      </label>
-      {busy && (
-        <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <Spinner size="sm" /> Infiriendo…
-        </p>
-      )}
-      {error && <p className="text-xs text-destructive">{error}</p>}
-      {result && (
-        <div className="rounded-lg bg-card/60 px-2.5 py-2 text-xs">
-          <p className="text-foreground">
-            Predicción: <span className="font-mono">{result.class_name ?? `clase ${result.prediction}`}</span>
-          </p>
-          <p className="text-muted-foreground">
-            Confianza: <span className="font-mono text-foreground">{(result.confidence * 100).toFixed(1)}%</span>
-          </p>
-        </div>
+      {item.running && (
+        <>
+          <Button variant="outline" size="sm" className="w-full" onClick={() => setPredictOpen(true)}>
+            <FlaskConical />
+            Probar /predict
+          </Button>
+          <PredictModal
+            token={token}
+            executionId={item.executionId}
+            containerName={item.containerName ?? 'model-service'}
+            modelVersion={item.modelVersion}
+            open={predictOpen}
+            onOpenChange={setPredictOpen}
+          />
+        </>
       )}
     </div>
   )

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from 'react'
-import { CheckCircle, Database, GitBranch, Link, Trash2, Upload, Eye, FileArchive } from 'lucide-react'
+import { CheckCircle, Database, GitBranch, Link, Trash2, Upload, Eye, Download, FileArchive, HardDrive } from 'lucide-react'
 
 import { Button } from '@/shared/components/ui/button'
 import { Input } from '@/shared/components/ui/input'
@@ -8,13 +8,18 @@ import { Card, CardContent } from '@/shared/components/ui/card'
 import { Spinner } from '@/shared/components/ui/spinner'
 import { Sheet, SheetBody, SheetContent, SheetHeader, SheetTitle } from '@/shared/components/ui/sheet'
 import { notify } from '@/shared/notify'
+import { ConfirmDialog } from '@/shared/components/ConfirmDialog'
+import { DataTable, type DataColumn } from '@/shared/components/DataTable'
+import { EmptyState } from '@/shared/components/EmptyState'
 import { API_BASE_URL } from '@/shared/api/env'
 import {
   deleteDataset,
+  getStorageUsage,
   listMyWorkspaces,
   listWorkspacePipelines,
   uploadDataset,
   uploadDatasetFromUrl,
+  type StorageUsage,
 } from '@/features/workspaces/api'
 import { extractFilename, type WorkspaceSummary } from '@/features/workspaces/types'
 
@@ -55,6 +60,15 @@ export function DatasetManagement({ token }: DatasetManagementProps) {
   const [replaceKeras, setReplaceKeras] = useState('mnist')
   const [isReplacing, setIsReplacing] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [maxMb, setMaxMb] = useState(500)
+  const [usage, setUsage] = useState<StorageUsage | null>(null)
+  const [downloadingId, setDownloadingId] = useState<number | null>(null)
+  const [confirm, setConfirm] = useState<{
+    title: string
+    description: string
+    confirmLabel: string
+    onConfirm: () => void | Promise<void>
+  } | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -71,6 +85,13 @@ export function DatasetManagement({ token }: DatasetManagementProps) {
         })
       )
       setPipelineCounts(counts)
+      // Uso de disco real + límites (fuente única del backend). Se refresca con cada
+      // load() → tras subir/eliminar dataset el espacio mostrado queda al día.
+      try {
+        const u = await getStorageUsage(token)
+        setUsage(u)
+        setMaxMb(u.maxFileSizeMb)
+      } catch { /* mantiene los defaults seguros */ }
     } catch { /* handled by interceptor */ }
     finally { setLoading(false) }
   }, [token])
@@ -92,24 +113,41 @@ export function DatasetManagement({ token }: DatasetManagementProps) {
     } finally { setIsDeleting(false) }
   }
 
-  const handleReplace = async (e: FormEvent) => {
-    e.preventDefault()
-    if (!selectedWs) return
+  const doReplace = async (ws: WorkspaceSummary) => {
     setIsReplacing(true)
     try {
       if (replaceMode === 'file' && replaceFile) {
-        await uploadDataset(token, selectedWs.idWorkspace, replaceFile)
+        await uploadDataset(token, ws.idWorkspace, replaceFile)
       } else if (replaceMode === 'url' && replaceUrl.trim()) {
-        await uploadDatasetFromUrl(token, selectedWs.idWorkspace, replaceUrl.trim())
+        await uploadDatasetFromUrl(token, ws.idWorkspace, replaceUrl.trim())
       } else if (replaceMode === 'keras') {
-        await uploadDatasetFromUrl(token, selectedWs.idWorkspace, `__keras__${replaceKeras}`)
+        await uploadDatasetFromUrl(token, ws.idWorkspace, `__keras__${replaceKeras}`)
       }
-      notify.success('Dataset actualizado', { description: `Workspace: ${selectedWs.name}` })
+      notify.success('Dataset actualizado', { description: `Workspace: ${ws.name}` })
       setSelectedWs(null)
       await load()
     } catch {
       notify.error('Error al reemplazar')
     } finally { setIsReplacing(false) }
+  }
+
+  const handleReplace = (e: FormEvent) => {
+    e.preventDefault()
+    if (!selectedWs) return
+    const ws = selectedWs
+    // Reemplazar un dataset existente es destructivo (borra el anterior + sus artefactos
+    // intermedios) → confirmación. Asignar por primera vez no la requiere.
+    if (ws.datasetPath) {
+      setConfirm({
+        title: 'Reemplazar dataset',
+        description: `Se reemplazará el dataset de «${ws.name}». El dataset anterior y sus `
+          + 'artefactos intermedios (extracted) se eliminarán. Esta acción no se puede deshacer.',
+        confirmLabel: 'Reemplazar',
+        onConfirm: () => doReplace(ws),
+      })
+    } else {
+      void doReplace(ws)
+    }
   }
 
   const openSheet = (ws: WorkspaceSummary) => {
@@ -124,11 +162,137 @@ export function DatasetManagement({ token }: DatasetManagementProps) {
     setReplaceFile(e.target.files?.[0] ?? null)
   }
 
+  // Descarga real del dataset (antes el ícono "ver" abría una pestaña). Spinner por fila
+  // + toasts de progreso/resultado (UX).
+  const handleDownload = async (ws: WorkspaceSummary) => {
+    if (!ws.datasetPath) return
+    const filename = extractFilename(ws.datasetPath)
+    setDownloadingId(ws.idWorkspace)
+    notify.info('Descargando dataset…', { description: filename })
+    try {
+      const res = await fetch(
+        `${API_BASE_URL}/workspaces/${ws.idWorkspace}/dataset/${filename}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      )
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+      notify.success('Descarga lista', { description: filename })
+    } catch {
+      notify.error('No se pudo descargar el dataset')
+    } finally {
+      setDownloadingId(null)
+    }
+  }
+
   const storageUsed = withDataset.length
   const storageTotal = workspaces.length
-  const maxMb = Number(import.meta.env.VITE_STORAGE_MAX_FILE_SIZE_MB) || 500
-  const storagePercent = storageTotal > 0 ? Math.round((storageUsed / storageTotal) * 100) : 0
   const totalPipelines = Object.values(pipelineCounts).reduce((a, b) => a + b, 0)
+
+  // Uso de disco real (UX de almacenamiento): cuánto ocupa cada proyecto vs su cuota.
+  const quotaMb = usage?.maxWorkspaceMb ?? 2000
+  const toMb = (bytes: number) => Math.round(bytes / (1024 * 1024))
+  const usageByWs = useMemo(
+    () => new Map((usage?.workspaces ?? []).map((w) => [w.workspaceId, w.usedBytes])),
+    [usage],
+  )
+  const usedTotalMb = usage ? toMb(usage.totalUsedBytes) : 0
+  const budgetTotalMb = quotaMb * Math.max(storageTotal, 1)
+  const usedPercent = budgetTotalMb > 0 ? Math.min(100, Math.round((usedTotalMb / budgetTotalMb) * 100)) : 0
+
+  // Columnas de la tabla de datasets (DataTable compartido).
+  const datasetColumns: DataColumn<WorkspaceSummary>[] = [
+    {
+      key: 'project', header: 'Proyecto', headerClassName: 'px-5', className: 'px-5',
+      render: (ws) => {
+        const dtype = ws.datasetPath ? datasetType(ws.datasetPath) : '—'
+        const DIcon = ws.datasetPath ? datasetIcon(dtype) : Database
+        return (
+          <div className="flex items-center gap-2.5">
+            <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary ring-1 ring-primary/15">
+              <DIcon className="size-4" />
+            </span>
+            <span className="truncate font-semibold text-foreground">{ws.name}</span>
+          </div>
+        )
+      },
+    },
+    { key: 'pipelines', header: 'Pipelines', render: (ws) => <Badge variant="info">{pipelineCounts[ws.idWorkspace] ?? '…'}</Badge> },
+    {
+      key: 'dataset', header: 'Dataset',
+      render: (ws) => (
+        <span className="truncate font-mono text-xs text-muted-foreground" title={ws.datasetPath ?? ''}>
+          {ws.datasetPath ? extractFilename(ws.datasetPath) : '—'}
+        </span>
+      ),
+    },
+    {
+      key: 'type', header: 'Tipo',
+      render: (ws) => {
+        const has = !!ws.datasetPath
+        return <Badge variant={has ? 'info' : 'secondary'}>{has ? datasetType(ws.datasetPath!) : '—'}</Badge>
+      },
+    },
+    {
+      key: 'usage', header: 'Uso',
+      render: (ws) => {
+        if (!ws.datasetPath) return <span className="text-xs text-muted-foreground">—</span>
+        const usedWsMb = toMb(usageByWs.get(ws.idWorkspace) ?? 0)
+        const wsPct = quotaMb > 0 ? Math.min(100, Math.round((usedWsMb / quotaMb) * 100)) : 0
+        return (
+          <div className="w-28" title={`${usedWsMb} MB de ${quotaMb} MB`}>
+            <div className="flex items-center justify-between text-[11px]">
+              <span className="font-semibold text-foreground">{usedWsMb} MB</span>
+              <span className="text-muted-foreground">{wsPct}%</span>
+            </div>
+            <div className="mt-1 h-1.5 w-full rounded-full bg-muted">
+              <div className={`h-full rounded-full ${wsPct >= 90 ? 'bg-destructive' : 'bg-primary'}`} style={{ width: `${wsPct}%` }} />
+            </div>
+          </div>
+        )
+      },
+    },
+    { key: 'status', header: 'Estado', render: (ws) => <Badge variant={ws.datasetPath ? 'success' : 'secondary'}>{ws.datasetPath ? 'Asignado' : 'Sin dataset'}</Badge> },
+    {
+      key: 'actions', header: 'Acciones', headerClassName: 'px-5 text-right', className: 'px-5 text-right',
+      render: (ws) => {
+        const hasDs = !!ws.datasetPath
+        return (
+          <div className="flex items-center justify-end gap-1">
+            {hasDs && (
+              <>
+                <Button
+                  variant="ghost" size="icon-sm" aria-label="Descargar dataset" title="Descargar"
+                  disabled={downloadingId === ws.idWorkspace} onClick={() => void handleDownload(ws)}
+                >
+                  {downloadingId === ws.idWorkspace ? <Spinner size="sm" /> : <Download className="size-3.5" />}
+                </Button>
+                <Button
+                  variant="ghost" size="icon-sm" aria-label="Eliminar dataset" title="Eliminar" disabled={isDeleting}
+                  onClick={() => setConfirm({
+                    title: 'Eliminar dataset',
+                    description: `Se eliminará el dataset de «${ws.name}» y sus artefactos intermedios. Esta acción no se puede deshacer.`,
+                    confirmLabel: 'Eliminar',
+                    onConfirm: () => handleDelete(ws),
+                  })}
+                >
+                  <Trash2 className="size-3.5 text-destructive" />
+                </Button>
+              </>
+            )}
+            <Button variant="outline" size="sm" onClick={() => openSheet(ws)}>{hasDs ? 'Reemplazar' : 'Asignar'}</Button>
+          </div>
+        )
+      },
+    },
+  ]
 
   return (
     <div className="space-y-5">
@@ -158,19 +322,26 @@ export function DatasetManagement({ token }: DatasetManagementProps) {
             <div>
               <p className="text-xs text-muted-foreground">Límite por archivo</p>
               <p className="text-xl font-bold">{maxMb} MB</p>
+              <p className="text-[11px] text-muted-foreground">Cuota {quotaMb} MB / proyecto</p>
             </div>
           </CardContent>
         </Card>
         <Card size="sm">
           <CardContent className="py-4">
-            <p className="text-xs text-muted-foreground">Ocupación</p>
+            <div className="flex items-center gap-2">
+              <HardDrive className="size-4 text-primary" />
+              <p className="text-xs text-muted-foreground">Espacio usado</p>
+            </div>
+            <p className="mt-0.5 text-lg font-bold">
+              {usedTotalMb} <span className="text-xs font-medium text-muted-foreground">/ {budgetTotalMb} MB</span>
+            </p>
             <div className="mt-1.5 h-2 w-full rounded-full bg-muted">
               <div
-                className="h-full rounded-full bg-primary transition-all"
-                style={{ width: `${storagePercent}%` }}
+                className={`h-full rounded-full transition-all ${usedPercent >= 90 ? 'bg-destructive' : 'bg-primary'}`}
+                style={{ width: `${usedPercent}%` }}
               />
             </div>
-            <p className="mt-1 text-xs text-muted-foreground">{storagePercent}% asignados</p>
+            <p className="mt-1 text-[11px] text-muted-foreground">{usedPercent}% de tu cuota total</p>
           </CardContent>
         </Card>
       </div>
@@ -183,106 +354,19 @@ export function DatasetManagement({ token }: DatasetManagementProps) {
               <Spinner size="sm" /> Cargando datasets…
             </div>
           ) : workspaces.length === 0 ? (
-            <div className="flex min-h-48 flex-col items-center justify-center px-6 py-10 text-center">
-              <Database className="mb-3 size-9 text-muted-foreground/50" />
-              <p className="text-base font-semibold text-foreground">Sin proyectos</p>
-              <p className="mt-2 max-w-sm text-sm text-muted-foreground">
-                Crea un proyecto en Mis proyectos para asignarle un dataset.
-              </p>
-            </div>
+            <EmptyState
+              icon={Database}
+              title="Sin proyectos"
+              description="Crea un proyecto en Mis proyectos para asignarle un dataset."
+              className="min-h-48"
+            />
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[640px] text-sm">
-                <thead>
-                  <tr className="border-b border-border text-left text-[11px] font-semibold tracking-[0.1em] text-muted-foreground uppercase">
-                    <th className="px-5 py-3">Proyecto</th>
-                    <th className="px-3 py-3">Pipelines</th>
-                    <th className="px-3 py-3">Dataset</th>
-                    <th className="px-3 py-3">Tipo</th>
-                    <th className="px-3 py-3">Estado</th>
-                    <th className="px-5 py-3 text-right">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {[...withDataset, ...withoutDataset].map((ws) => {
-                    const hasDs = !!ws.datasetPath
-                    const fname = hasDs ? extractFilename(ws.datasetPath!) : '—'
-                    const dtype = hasDs ? datasetType(ws.datasetPath!) : '—'
-                    const DIcon = hasDs ? datasetIcon(dtype) : Database
-
-                    return (
-                      <tr
-                        key={ws.idWorkspace}
-                        className="border-b border-border last:border-0 transition-colors hover:bg-accent/40"
-                      >
-                        <td className="px-5 py-3">
-                          <div className="flex items-center gap-2.5">
-                            <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary ring-1 ring-primary/15">
-                              <DIcon className="size-4" />
-                            </div>
-                            <span className="truncate font-semibold text-foreground">{ws.name}</span>
-                          </div>
-                        </td>
-                        <td className="px-3 py-3">
-                          <Badge variant="info">{pipelineCounts[ws.idWorkspace] ?? '…'}</Badge>
-                        </td>
-                        <td className="px-3 py-3">
-                          <span className="truncate font-mono text-xs text-muted-foreground" title={ws.datasetPath ?? ''}>
-                            {fname}
-                          </span>
-                        </td>
-                        <td className="px-3 py-3">
-                          <Badge variant={hasDs ? 'info' : 'secondary'}>
-                            {dtype}
-                          </Badge>
-                        </td>
-                        <td className="px-3 py-3">
-                          <Badge variant={hasDs ? 'success' : 'secondary'}>
-                            {hasDs ? 'Asignado' : 'Sin dataset'}
-                          </Badge>
-                        </td>
-                        <td className="px-5 py-3 text-right">
-                          <div className="flex items-center justify-end gap-1">
-                            {hasDs && (
-                              <>
-                                <Button
-                                  variant="ghost" size="icon-sm"
-                                  aria-label="Ver dataset"
-                                  title="Ver"
-                                  onClick={async () => {
-                                    const filename = extractFilename(ws.datasetPath!)
-                                    const url = `${API_BASE_URL}/workspaces/${ws.idWorkspace}/dataset/${filename}`
-                                    try {
-                                      const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
-                                      const blob = await r.blob()
-                                      window.open(URL.createObjectURL(blob), '_blank')
-                                    } catch { window.open(url, '_blank') }
-                                  }}
-                                >
-                                  <Eye className="size-3.5" />
-                                </Button>
-                                <Button
-                                  variant="ghost" size="icon-sm"
-                                  aria-label="Eliminar dataset"
-                                  title="Eliminar"
-                                  disabled={isDeleting}
-                                  onClick={() => void handleDelete(ws)}
-                                >
-                                  <Trash2 className="size-3.5 text-destructive" />
-                                </Button>
-                              </>
-                            )}
-                            <Button variant="outline" size="sm" onClick={() => openSheet(ws)}>
-                              {hasDs ? 'Reemplazar' : 'Asignar'}
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
+            <DataTable
+              columns={datasetColumns}
+              rows={[...withDataset, ...withoutDataset]}
+              rowKey={(ws) => ws.idWorkspace}
+              minWidth={680}
+            />
           )}
         </CardContent>
       </Card>
@@ -311,7 +395,7 @@ export function DatasetManagement({ token }: DatasetManagementProps) {
               </div>
             )}
 
-            <form onSubmit={(e) => void handleReplace(e)} className="space-y-4">
+            <form onSubmit={handleReplace} className="space-y-4">
               <div className="flex gap-1 rounded-xl bg-white/[0.03] p-1">
                 {([
                   { key: 'file' as ReplaceMode, label: 'Archivo', icon: Upload },
@@ -392,6 +476,16 @@ export function DatasetManagement({ token }: DatasetManagementProps) {
           </SheetBody>
         </SheetContent>
       </Sheet>
+
+      <ConfirmDialog
+        open={!!confirm}
+        onOpenChange={(open) => { if (!open) setConfirm(null) }}
+        title={confirm?.title ?? ''}
+        description={confirm?.description ?? ''}
+        confirmLabel={confirm?.confirmLabel}
+        tone="destructive"
+        onConfirm={async () => { await confirm?.onConfirm() }}
+      />
     </div>
   )
 }

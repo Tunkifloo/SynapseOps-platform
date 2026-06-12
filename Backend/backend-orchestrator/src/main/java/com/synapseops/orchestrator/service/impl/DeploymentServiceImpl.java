@@ -182,6 +182,10 @@ public class DeploymentServiceImpl implements DeploymentService {
             execution.setDeployContainerName(containerName);
             execution.setColdStartMs(coldStartMs);
             execution.setDeployStatus(healthy ? "SUCCESS" : "FAILED");   // TA-004/TEL-02
+            // TEL-01 · t_despliegue_disponible: el model-service quedó healthy y servible.
+            if (healthy) {
+                execution.setDeployAvailableAt(java.time.LocalDateTime.now());
+            }
             executionRepository.save(execution);
 
             if (!healthy) {
@@ -272,8 +276,11 @@ public class DeploymentServiceImpl implements DeploymentService {
             if (name != null && !name.isBlank()) {
                 dockerFacade.removeContainerByName(name);
             }
-            execution.setDeployStatus("STOPPED");
-            executionRepository.save(execution);
+            // NO se sobrescribe deploy_status: es el RESULTADO HISTÓRICO del despliegue
+            // (SUCCESS/FAILED) que mide la "Tasa de Despliegues Exitosos" (OE4/TEL-02).
+            // Derribar el contenedor no invalida que el despliegue fue exitoso; el estado
+            // vivo (encendido/detenido) se calcula aparte vía `running` en listDeployments.
+            // (Antes se ponía "STOPPED" aquí → la telemetría veía 0% tras derribar.)
         }).subscribeOn(Schedulers.boundedElastic()).then();
     }
 
