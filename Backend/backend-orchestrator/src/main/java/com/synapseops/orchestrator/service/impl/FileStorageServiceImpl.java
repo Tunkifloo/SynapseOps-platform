@@ -2,6 +2,7 @@ package com.synapseops.orchestrator.service.impl;
 
 import com.synapseops.orchestrator.config.StorageProperties;
 import com.synapseops.orchestrator.service.FileStorageService;
+import com.synapseops.orchestrator.service.StorageMaintenanceService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.codec.multipart.FilePart;
@@ -20,10 +21,12 @@ import java.nio.file.Paths;
 public class FileStorageServiceImpl implements FileStorageService {
 
     private final StorageProperties storageProperties;
+    private final StorageMaintenanceService storageMaintenance;
 
     @Override
     public Mono<String> store(FilePart file, Long userId, Long workspaceId) {
         return validateFile(file)
+                .flatMap(validFile -> enforceWorkspaceQuota(validFile, userId, workspaceId))
                 .flatMap(validFile -> {
                     Path targetDir  = resolveDir(userId, workspaceId);
                     Path targetFile = targetDir.resolve(
@@ -84,17 +87,19 @@ public class FileStorageServiceImpl implements FileStorageService {
 
     private Mono<FilePart> validateFile(FilePart file) {
         String filename = file.filename().toLowerCase();
-        boolean validType = filename.endsWith(".png")
-                || filename.endsWith(".jpg")
-                || filename.endsWith(".jpeg")
-                || filename.endsWith(".zip");
+        boolean validType = storageProperties.getAllowedExtensions().stream()
+                .anyMatch(ext -> filename.endsWith("." + ext.toLowerCase()));
 
         if (!validType) {
             return Mono.error(new IllegalArgumentException(
-                    "Solo se aceptan datasets de imágenes (.png, .jpg, .jpeg) o archivos comprimidos (.zip)."));
+                    "Solo se aceptan datasets con extensión: "
+                            + String.join(", ", storageProperties.getAllowedExtensions()) + "."));
         }
 
-        long maxBytes = storageProperties.getMaxFileSizeMb() * 1024 * 1024;
+        // Pre-chequeo rápido por header (UX: 413 inmediato). El tope REAL lo impone
+        // WebFlux en streaming vía spring.webflux.multipart.max-disk-usage-per-part,
+        // así que un header ausente/falso no evade el límite.
+        long maxBytes = storageProperties.getMaxFileSizeMb() * 1024L * 1024L;
         long contentLength = file.headers().getContentLength();
 
         if (contentLength > 0 && contentLength > maxBytes) {
@@ -104,6 +109,25 @@ public class FileStorageServiceImpl implements FileStorageService {
         }
 
         return Mono.just(file);
+    }
+
+    /** Rechaza la subida si el workspace superaría su cuota de disco. */
+    private Mono<FilePart> enforceWorkspaceQuota(FilePart file, Long userId, Long workspaceId) {
+        return Mono.fromCallable(() ->
+                        storageMaintenance.workspaceUsageBytes(userId, workspaceId))
+                .subscribeOn(Schedulers.boundedElastic())
+                .flatMap(usedBytes -> {
+                    long incoming = Math.max(0L, file.headers().getContentLength());
+                    long maxBytes = storageProperties.getMaxWorkspaceMb() * 1024L * 1024L;
+                    if (usedBytes + incoming > maxBytes) {
+                        return Mono.<FilePart>error(new IllegalArgumentException(String.format(
+                                "El workspace superaría su cuota de %d MB (uso actual: %d MB). "
+                                        + "Elimina datasets o artefactos antiguos antes de subir.",
+                                storageProperties.getMaxWorkspaceMb(),
+                                usedBytes / (1024L * 1024L))));
+                    }
+                    return Mono.just(file);
+                });
     }
 
     public Mono<Boolean> hasImagesInZip(FilePart file) {
