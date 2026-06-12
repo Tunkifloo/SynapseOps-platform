@@ -224,7 +224,11 @@ export function NodeConfigPanel({
           {KIND_HELP[data.kind]}
         </p>
 
-        {fields.length > 0 && fields.map(renderField)}
+        {/* Ingesta: si el proyecto YA tiene dataset, el origen no se reconfigura aquí
+            (se gestiona en el módulo de Datasets). Se ocultan los campos de origen. */}
+        {fields.length > 0
+          && !(data.kind === 'ingest' && ingest?.datasetPath)
+          && fields.map(renderField)}
 
         {data.kind === 'deploy' && deploy && (
           <DeployActions

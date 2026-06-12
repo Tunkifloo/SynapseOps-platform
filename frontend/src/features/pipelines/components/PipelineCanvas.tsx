@@ -141,12 +141,14 @@ export function PipelineCanvas({
   const baselineRef = useRef<string>('')          // snapshot del último estado guardado/cargado
   const { screenToFlowPosition, setViewport, fitView } = useReactFlow()
 
-  // Claves de persistencia local por pipeline (items 3 y 4).
-  const draftKey = pipelineId ? `synapseops:canvas-draft:${workspace?.idWorkspace}:${pipelineId}` : null
-  const execKey  = pipelineId ? `synapseops:active-exec:${workspace?.idWorkspace}:${pipelineId}` : null
-  // Estados de nodos (checks verdes) y viewport: persisten al navegar de módulo y volver.
-  const statusKey   = pipelineId ? `synapseops:canvas-status:${workspace?.idWorkspace}:${pipelineId}` : null
-  const viewportKey = pipelineId ? `synapseops:canvas-viewport:${workspace?.idWorkspace}:${pipelineId}` : null
+  // Claves de persistencia local por (workspace, pipeline). Requieren AMBOS ids: con un
+  // workspace `undefined` la clave colisionaría entre proyectos distintos.
+  const wsId = workspace?.idWorkspace
+  const keyOk = wsId != null && pipelineId != null
+  const draftKey    = keyOk ? `synapseops:canvas-draft:${wsId}:${pipelineId}` : null
+  const execKey     = keyOk ? `synapseops:active-exec:${wsId}:${pipelineId}` : null
+  const statusKey   = keyOk ? `synapseops:canvas-status:${wsId}:${pipelineId}` : null
+  const viewportKey = keyOk ? `synapseops:canvas-viewport:${wsId}:${pipelineId}` : null
 
   // Persiste la ejecución activa para reanudar la consola al volver (item 4-frontend).
   const setActiveExecution = useCallback((id: number | null) => {
