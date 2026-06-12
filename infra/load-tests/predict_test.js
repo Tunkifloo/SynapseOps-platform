@@ -13,8 +13,9 @@
 //     -e TARGET=http://modelo_1:8000/predict -e MODE=load \
 //     grafana/k6 run --summary-export=/s/summary.json /s/predict_test.js
 import http from 'k6/http'
-import { check } from 'k6'
+import { check, sleep } from 'k6'
 import { Trend, Rate } from 'k6/metrics'
+import { b64encode } from 'k6/encoding'
 
 const TARGET = __ENV.TARGET
 if (!TARGET) {
@@ -22,11 +23,9 @@ if (!TARGET) {
 }
 const MODE = __ENV.MODE || 'load'
 
-// PNG 64x64 embebido (el model-service lo redimensiona; sirve para medir latencia).
-const IMAGE_B64 = __ENV.IMAGE_B64 ||
-  'iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAgElEQVR4nNXOQREAIAzAsFLVyEEOshCxB9co' +
-  'yNrnUiZxEidxEidxEidxEidxEidxEidxEidxEidxEidxEidxEidxEidxEidxEidxEidxEidxEidxEidxEidx' +
-  'EidxEidxEidxEidxEidxEidxEidxEidxEidxEidxEufvwNQDuioCYPNUMFMAAAAASUVORK5CYII='
+// Imagen de prueba: se lee un PNG real del disco y se codifica en base64 (robusto;
+// el model-service la redimensiona, sirve para medir latencia). Override con IMAGE_B64.
+const IMAGE_B64 = __ENV.IMAGE_B64 || b64encode(open('/s/test_image.png', 'b'))
 
 const latency = new Trend('predict_latency', true)
 const errorRate = new Rate('error_rate')
@@ -68,6 +67,10 @@ export default function () {
     'P95 objetivo (<2000ms)': (r) => r.timings.duration < 2000,
     'respuesta con body': (r) => r.body && r.body.length > 0,
   })
+  // Think time: modela usuarios reales (no un martillo a máxima RPS). 50 VUs con think
+  // time ≈ 50–100 req/s, la carga concurrente real del RNF. THINK=0 → prueba de saturación.
+  const think = __ENV.THINK !== undefined ? parseFloat(__ENV.THINK) : 0.5
+  if (think > 0) sleep(think)
 }
 
 // Escribe el resumen a JSON (camino fiable; `--summary-export` está deprecado) y un

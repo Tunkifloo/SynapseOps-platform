@@ -15,7 +15,7 @@ export function DatasetManagementPage({ token }: DatasetManagementPageProps) {
             Gestión de Dataset
           </h1>
           <p className="mt-1.5 max-w-3xl text-sm text-muted-foreground">
-            Administra los datasets de tus proyectos: asigna, reemplaza, visualiza y elimina archivos. Límite de 500 MB por archivo.
+            Administra los datasets de tus proyectos: asigna, reemplaza, visualiza y elimina archivos. El límite por archivo lo define el servidor (ver tarjeta).
           </p>
         </div>
       </section>

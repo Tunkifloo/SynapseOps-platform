@@ -4,6 +4,7 @@ import com.synapseops.orchestrator.config.StorageProperties;
 import com.synapseops.orchestrator.infra.exception.ResourceNotFoundException;
 import com.synapseops.orchestrator.infra.repository.WorkspaceRepository;
 import com.synapseops.orchestrator.service.FileStorageService;
+import com.synapseops.orchestrator.service.StorageMaintenanceService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -36,9 +37,12 @@ public class DatasetController {
     private final FileStorageService  fileStorageService;
     private final WorkspaceRepository workspaceRepository;
     private final StorageProperties   storageProperties;
+    private final StorageMaintenanceService storageMaintenance;
 
     @Operation(summary = "Subir dataset",
-            description = "Acepta .csv, .png, .jpg — máx 500 MB")
+            description = "Acepta imágenes (.png/.jpg/.jpeg) o .zip con imágenes. El tamaño "
+                    + "máximo por archivo y la cuota del workspace los define el backend "
+                    + "(ver GET /api/v1/storage/limits).")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Dataset almacenado, retorna path"),
             @ApiResponse(responseCode = "400", description = "Formato o tamaño inválido"),
@@ -71,8 +75,13 @@ public class DatasetController {
                                         if (workspace.getDatasetPath() != null) {
                                             String oldFilename = Paths.get(workspace.getDatasetPath())
                                                     .getFileName().toString();
+                                            // Al reemplazar el dataset, el material extraído del
+                                            // anterior queda obsoleto → se purga (no toca models).
                                             deletePrevious = fileStorageService
-                                                    .delete(oldFilename, userId, workspaceId);
+                                                    .delete(oldFilename, userId, workspaceId)
+                                                    .then(Mono.fromRunnable(() ->
+                                                            storageMaintenance.purgeIntermediate(workspaceId))
+                                                            .subscribeOn(Schedulers.boundedElastic()).then());
                                         }
                                         return deletePrevious
                                                 .then(fileStorageService.store(file, userId, workspaceId))
@@ -113,6 +122,8 @@ public class DatasetController {
                                     .then(Mono.fromRunnable(() -> {
                                         workspace.setDatasetPath(null);
                                         workspaceRepository.save(workspace);
+                                        // Sin dataset, los artefactos intermedios ya no aplican.
+                                        storageMaintenance.purgeIntermediate(workspaceId);
                                     }).subscribeOn(Schedulers.boundedElastic()));
                         })
         ).thenReturn(ResponseEntity.<Void>noContent().build());
@@ -202,7 +213,10 @@ public class DatasetController {
                                                             workspace.getDatasetPath())
                                                     .getFileName().toString();
                                             deletePrevious = fileStorageService
-                                                    .delete(oldName, userId, workspaceId);
+                                                    .delete(oldName, userId, workspaceId)
+                                                    .then(Mono.fromRunnable(() ->
+                                                            storageMaintenance.purgeIntermediate(workspaceId))
+                                                            .subscribeOn(Schedulers.boundedElastic()).then());
                                         }
 
                                         return deletePrevious
