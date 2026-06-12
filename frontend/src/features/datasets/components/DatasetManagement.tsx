@@ -8,6 +8,7 @@ import { Card, CardContent } from '@/shared/components/ui/card'
 import { Spinner } from '@/shared/components/ui/spinner'
 import { Sheet, SheetBody, SheetContent, SheetHeader, SheetTitle } from '@/shared/components/ui/sheet'
 import { notify } from '@/shared/notify'
+import { ConfirmDialog } from '@/shared/components/ConfirmDialog'
 import { API_BASE_URL } from '@/shared/api/env'
 import {
   deleteDataset,
@@ -60,6 +61,12 @@ export function DatasetManagement({ token }: DatasetManagementProps) {
   const [maxMb, setMaxMb] = useState(500)
   const [usage, setUsage] = useState<StorageUsage | null>(null)
   const [downloadingId, setDownloadingId] = useState<number | null>(null)
+  const [confirm, setConfirm] = useState<{
+    title: string
+    description: string
+    confirmLabel: string
+    onConfirm: () => void | Promise<void>
+  } | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -104,24 +111,41 @@ export function DatasetManagement({ token }: DatasetManagementProps) {
     } finally { setIsDeleting(false) }
   }
 
-  const handleReplace = async (e: FormEvent) => {
-    e.preventDefault()
-    if (!selectedWs) return
+  const doReplace = async (ws: WorkspaceSummary) => {
     setIsReplacing(true)
     try {
       if (replaceMode === 'file' && replaceFile) {
-        await uploadDataset(token, selectedWs.idWorkspace, replaceFile)
+        await uploadDataset(token, ws.idWorkspace, replaceFile)
       } else if (replaceMode === 'url' && replaceUrl.trim()) {
-        await uploadDatasetFromUrl(token, selectedWs.idWorkspace, replaceUrl.trim())
+        await uploadDatasetFromUrl(token, ws.idWorkspace, replaceUrl.trim())
       } else if (replaceMode === 'keras') {
-        await uploadDatasetFromUrl(token, selectedWs.idWorkspace, `__keras__${replaceKeras}`)
+        await uploadDatasetFromUrl(token, ws.idWorkspace, `__keras__${replaceKeras}`)
       }
-      notify.success('Dataset actualizado', { description: `Workspace: ${selectedWs.name}` })
+      notify.success('Dataset actualizado', { description: `Workspace: ${ws.name}` })
       setSelectedWs(null)
       await load()
     } catch {
       notify.error('Error al reemplazar')
     } finally { setIsReplacing(false) }
+  }
+
+  const handleReplace = (e: FormEvent) => {
+    e.preventDefault()
+    if (!selectedWs) return
+    const ws = selectedWs
+    // Reemplazar un dataset existente es destructivo (borra el anterior + sus artefactos
+    // intermedios) → confirmación. Asignar por primera vez no la requiere.
+    if (ws.datasetPath) {
+      setConfirm({
+        title: 'Reemplazar dataset',
+        description: `Se reemplazará el dataset de «${ws.name}». El dataset anterior y sus `
+          + 'artefactos intermedios (extracted) se eliminarán. Esta acción no se puede deshacer.',
+        confirmLabel: 'Reemplazar',
+        onConfirm: () => doReplace(ws),
+      })
+    } else {
+      void doReplace(ws)
+    }
   }
 
   const openSheet = (ws: WorkspaceSummary) => {
@@ -340,7 +364,13 @@ export function DatasetManagement({ token }: DatasetManagementProps) {
                                   aria-label="Eliminar dataset"
                                   title="Eliminar"
                                   disabled={isDeleting}
-                                  onClick={() => void handleDelete(ws)}
+                                  onClick={() => setConfirm({
+                                    title: 'Eliminar dataset',
+                                    description: `Se eliminará el dataset de «${ws.name}» y sus `
+                                      + 'artefactos intermedios. Esta acción no se puede deshacer.',
+                                    confirmLabel: 'Eliminar',
+                                    onConfirm: () => handleDelete(ws),
+                                  })}
                                 >
                                   <Trash2 className="size-3.5 text-destructive" />
                                 </Button>
@@ -385,7 +415,7 @@ export function DatasetManagement({ token }: DatasetManagementProps) {
               </div>
             )}
 
-            <form onSubmit={(e) => void handleReplace(e)} className="space-y-4">
+            <form onSubmit={handleReplace} className="space-y-4">
               <div className="flex gap-1 rounded-xl bg-white/[0.03] p-1">
                 {([
                   { key: 'file' as ReplaceMode, label: 'Archivo', icon: Upload },
@@ -466,6 +496,16 @@ export function DatasetManagement({ token }: DatasetManagementProps) {
           </SheetBody>
         </SheetContent>
       </Sheet>
+
+      <ConfirmDialog
+        open={!!confirm}
+        onOpenChange={(open) => { if (!open) setConfirm(null) }}
+        title={confirm?.title ?? ''}
+        description={confirm?.description ?? ''}
+        confirmLabel={confirm?.confirmLabel}
+        tone="destructive"
+        onConfirm={async () => { await confirm?.onConfirm() }}
+      />
     </div>
   )
 }

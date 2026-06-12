@@ -186,7 +186,17 @@ export function PipelineBuilderPage({ token, onAuthError }: PipelineBuilderPageP
 
         {!loading && workspaces.length > 0 && (
           <div className="flex flex-wrap items-center gap-2">
-            <Select value={activeWsId ? String(activeWsId) : ''} onValueChange={(v) => setActiveWsId(Number(v))}>
+            <Select
+              value={activeWsId ? String(activeWsId) : ''}
+              onValueChange={(v) => {
+                // Limpia pipeline+lista en el MISMO batch que el workspace: evita que el
+                // lienzo se monte con (workspace nuevo, pipeline viejo) → 403, y que se
+                // arrastre el contexto del proyecto anterior.
+                setActiveWsId(Number(v))
+                setActivePipelineId(null)
+                setPipelines([])
+              }}
+            >
               <SelectTrigger className="w-48" aria-label="Proyecto">
                 <SelectValue placeholder="Proyecto" />
               </SelectTrigger>
@@ -288,6 +298,24 @@ export function PipelineBuilderPage({ token, onAuthError }: PipelineBuilderPageP
               <FolderPlus />
               Crear proyecto
             </Button>
+          </div>
+        ) : activePipelineId == null ? (
+          // El lienzo SIEMPRE se vincula a un pipeline. Sin uno, no se edita (evita que
+          // el trabajo quede huérfano o se filtre a otro pipeline al crearlo).
+          <div className="flex h-full flex-col items-center justify-center gap-3 rounded-2xl border border-border bg-card/30 text-center">
+            <p className="font-heading text-base font-semibold text-foreground">
+              {pipelines.length === 0 ? 'Crea un pipeline para empezar' : 'Selecciona un pipeline'}
+            </p>
+            <p className="max-w-sm text-sm text-muted-foreground">
+              El lienzo se vincula a un pipeline del proyecto
+              {activeWorkspace?.name ? ` «${activeWorkspace.name}»` : ''}. Crea uno para diseñar y guardar tu flujo.
+            </p>
+            {pipelines.length === 0 && (
+              <Button variant="cta" loading={creating} onClick={() => void handleCreatePipeline()}>
+                <Plus />
+                Crear pipeline
+              </Button>
+            )}
           </div>
         ) : (
           <ReactFlowProvider>
