@@ -15,6 +15,7 @@ import numpy as np
 from app.config import settings
 from app.infra.mlflow_client import MLflowFacade
 from app.kafka.producer import LogProducer
+from app.pipeline import drift
 from app.pipeline.training.ingestion import load_dataset
 from app.pipeline.training.base import HyperParams, TrainingResult
 from app.pipeline.training.metrics import (
@@ -285,6 +286,9 @@ class PipelineExecutor:
             self._emit(job.execution_id,
                        "Evaluación: " + " · ".join(f"{k}={v:.4f}" for k, v in advanced.items()))
 
+        # ── Data drift (calidad del split + re-entrenamiento) ─────────────────
+        drift_summary = self._compute_drift(job, bundle, output_dir)
+
         # ── Nodo Registro: registrar artefacto en MLflow ──────────────────────
         self._emit(job.execution_id, "Registro: registrando modelo en el Model Registry de MLflow…")
         mlflow.log_artifact(result.artifact_path, artifact_path="model")
@@ -322,11 +326,18 @@ class PipelineExecutor:
                 "val_loss":       (result.history.get("val_loss") or [None])[-1],
                 "test_accuracy":  result.test_accuracy,
                 "test_loss":      result.test_loss,
+                # Métrica HONESTA principal: test ciego si existe; si no, validación.
+                "primary_accuracy": result.test_accuracy
+                    if result.test_accuracy is not None
+                    else (result.history.get("val_accuracy") or [None])[-1],
+                "primary_split": "test" if result.test_accuracy is not None else "val",
                 **advanced,
             },
             # Detección de overfitting: gap > 15% entre train y validation accuracy
             "overfit_warning": _compute_overfit_warning(result, bundle),
             "confusion_matrix": confusion,
+            # Data drift (calidad del split + cambio del dataset vs corrida anterior).
+            "drift": drift_summary,
         }
 
     def _select_strategy(self, framework: str) -> object:
@@ -340,3 +351,74 @@ class PipelineExecutor:
                 job.workspace_id / "models" / job.execution_id)
         path.mkdir(parents=True, exist_ok=True)
         return str(path)
+
+    # ── Data drift ────────────────────────────────────────────────────────────
+    def _compute_drift(self, job: PipelineJob, bundle, output_dir: str) -> "dict | None":
+        """Drift de calidad del split (train vs val) y de re-entrenamiento (dataset
+        actual vs anterior del mismo proyecto). Nunca interrumpe el entrenamiento."""
+        try:
+            train_feats = drift.extract_features(bundle.X_train)
+            val_feats = drift.extract_features(bundle.X_val)
+            summary: dict = {}
+
+            # 1) Calidad del split: ¿la validación distribuye como el train?
+            split = drift.compute_drift(train_feats, val_feats)
+            if split is not None:
+                summary["split"] = split
+                self._log_drift_metrics("split", split)
+                self._safe_log_artifact(
+                    drift.evidently_report(train_feats, val_feats, output_dir, "split"))
+
+            # 2) Re-entrenamiento: dataset de esta corrida vs el de la anterior.
+            ref_path = str(Path(settings.storage_base_path) / job.workspace_id /
+                           "drift" / f"pipeline_{job.pipeline_id}_reference.json")
+            prev = drift.load_reference(ref_path)
+            if prev is not None and prev.size:
+                retrain = drift.compute_drift(prev, train_feats)
+                if retrain is not None:
+                    summary["retraining"] = retrain
+                    self._log_drift_metrics("retrain", retrain)
+                    self._safe_log_artifact(
+                        drift.evidently_report(prev, train_feats, output_dir, "retraining"))
+
+            # Actualiza la referencia del proyecto + guarda la huella del modelo
+            # (para el drift de inferencia del model-service — fase posterior).
+            drift.save_reference(bundle.X_train, ref_path)
+            model_ref = str(Path(output_dir) / "train_reference.json")
+            drift.save_reference(bundle.X_train, model_ref)
+            self._safe_log_artifact(model_ref)
+
+            self._emit_drift(job, summary)
+            return summary or None
+        except Exception as e:  # noqa: BLE001 — el drift es complementario
+            log.warning("Drift: no se pudo calcular (%s)", e)
+            return None
+
+    def _log_drift_metrics(self, tag: str, summary: dict) -> None:
+        try:
+            self._mlflow.log_metric(f"drift_{tag}_max_psi", float(summary["max_psi"]))
+            self._mlflow.log_metric(f"drift_{tag}_share", float(summary["share_drifted"]))
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _safe_log_artifact(self, path: "str | None") -> None:
+        if not path:
+            return
+        try:
+            mlflow.log_artifact(path, artifact_path="drift")
+        except Exception as e:  # noqa: BLE001
+            log.debug("No se pudo loguear el artefacto de drift: %s", e)
+
+    def _emit_drift(self, job: PipelineJob, summary: dict) -> None:
+        s, r = summary.get("split"), summary.get("retraining")
+        if s and s["drifted"]:
+            self._emit(job.execution_id,
+                       f"Drift ⚠ La validación difiere del train (severidad {s['severity']}, "
+                       f"PSI máx {s['max_psi']}). Revisa el balance/calidad del dataset.", "WARN")
+        if r and r["drifted"]:
+            self._emit(job.execution_id,
+                       f"Drift ⚠ Tu dataset cambió respecto al último entrenamiento "
+                       f"(severidad {r['severity']}, PSI máx {r['max_psi']}).", "WARN")
+        if (s or r) and not (s and s["drifted"]) and not (r and r["drifted"]):
+            self._emit(job.execution_id,
+                       "Drift: sin deriva relevante en los datos (distribuciones estables).")

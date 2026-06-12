@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from 'react'
-import { CheckCircle, Database, GitBranch, Link, Trash2, Upload, Eye, FileArchive } from 'lucide-react'
+import { CheckCircle, Database, GitBranch, Link, Trash2, Upload, Eye, Download, FileArchive, HardDrive } from 'lucide-react'
 
 import { Button } from '@/shared/components/ui/button'
 import { Input } from '@/shared/components/ui/input'
@@ -11,11 +11,12 @@ import { notify } from '@/shared/notify'
 import { API_BASE_URL } from '@/shared/api/env'
 import {
   deleteDataset,
-  getStorageLimits,
+  getStorageUsage,
   listMyWorkspaces,
   listWorkspacePipelines,
   uploadDataset,
   uploadDatasetFromUrl,
+  type StorageUsage,
 } from '@/features/workspaces/api'
 import { extractFilename, type WorkspaceSummary } from '@/features/workspaces/types'
 
@@ -57,6 +58,8 @@ export function DatasetManagement({ token }: DatasetManagementProps) {
   const [isReplacing, setIsReplacing] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [maxMb, setMaxMb] = useState(500)
+  const [usage, setUsage] = useState<StorageUsage | null>(null)
+  const [downloadingId, setDownloadingId] = useState<number | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -73,20 +76,18 @@ export function DatasetManagement({ token }: DatasetManagementProps) {
         })
       )
       setPipelineCounts(counts)
+      // Uso de disco real + límites (fuente única del backend). Se refresca con cada
+      // load() → tras subir/eliminar dataset el espacio mostrado queda al día.
+      try {
+        const u = await getStorageUsage(token)
+        setUsage(u)
+        setMaxMb(u.maxFileSizeMb)
+      } catch { /* mantiene los defaults seguros */ }
     } catch { /* handled by interceptor */ }
     finally { setLoading(false) }
   }, [token])
 
   useEffect(() => { void load() }, [load])
-
-  // Límite efectivo del backend (fuente única). Si falla, queda el default seguro de 500.
-  useEffect(() => {
-    let active = true
-    getStorageLimits(token)
-      .then((limits) => { if (active) setMaxMb(limits.maxFileSizeMb) })
-      .catch(() => { /* mantiene el default */ })
-    return () => { active = false }
-  }, [token])
 
   const withDataset = useMemo(() => workspaces.filter((w) => !!w.datasetPath), [workspaces])
   const withoutDataset = useMemo(() => workspaces.filter((w) => !w.datasetPath), [workspaces])
@@ -135,10 +136,50 @@ export function DatasetManagement({ token }: DatasetManagementProps) {
     setReplaceFile(e.target.files?.[0] ?? null)
   }
 
+  // Descarga real del dataset (antes el ícono "ver" abría una pestaña). Spinner por fila
+  // + toasts de progreso/resultado (UX).
+  const handleDownload = async (ws: WorkspaceSummary) => {
+    if (!ws.datasetPath) return
+    const filename = extractFilename(ws.datasetPath)
+    setDownloadingId(ws.idWorkspace)
+    notify.info('Descargando dataset…', { description: filename })
+    try {
+      const res = await fetch(
+        `${API_BASE_URL}/workspaces/${ws.idWorkspace}/dataset/${filename}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      )
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+      notify.success('Descarga lista', { description: filename })
+    } catch {
+      notify.error('No se pudo descargar el dataset')
+    } finally {
+      setDownloadingId(null)
+    }
+  }
+
   const storageUsed = withDataset.length
   const storageTotal = workspaces.length
-  const storagePercent = storageTotal > 0 ? Math.round((storageUsed / storageTotal) * 100) : 0
   const totalPipelines = Object.values(pipelineCounts).reduce((a, b) => a + b, 0)
+
+  // Uso de disco real (UX de almacenamiento): cuánto ocupa cada proyecto vs su cuota.
+  const quotaMb = usage?.maxWorkspaceMb ?? 2000
+  const toMb = (bytes: number) => Math.round(bytes / (1024 * 1024))
+  const usageByWs = useMemo(
+    () => new Map((usage?.workspaces ?? []).map((w) => [w.workspaceId, w.usedBytes])),
+    [usage],
+  )
+  const usedTotalMb = usage ? toMb(usage.totalUsedBytes) : 0
+  const budgetTotalMb = quotaMb * Math.max(storageTotal, 1)
+  const usedPercent = budgetTotalMb > 0 ? Math.min(100, Math.round((usedTotalMb / budgetTotalMb) * 100)) : 0
 
   return (
     <div className="space-y-5">
@@ -168,19 +209,26 @@ export function DatasetManagement({ token }: DatasetManagementProps) {
             <div>
               <p className="text-xs text-muted-foreground">Límite por archivo</p>
               <p className="text-xl font-bold">{maxMb} MB</p>
+              <p className="text-[11px] text-muted-foreground">Cuota {quotaMb} MB / proyecto</p>
             </div>
           </CardContent>
         </Card>
         <Card size="sm">
           <CardContent className="py-4">
-            <p className="text-xs text-muted-foreground">Ocupación</p>
+            <div className="flex items-center gap-2">
+              <HardDrive className="size-4 text-primary" />
+              <p className="text-xs text-muted-foreground">Espacio usado</p>
+            </div>
+            <p className="mt-0.5 text-lg font-bold">
+              {usedTotalMb} <span className="text-xs font-medium text-muted-foreground">/ {budgetTotalMb} MB</span>
+            </p>
             <div className="mt-1.5 h-2 w-full rounded-full bg-muted">
               <div
-                className="h-full rounded-full bg-primary transition-all"
-                style={{ width: `${storagePercent}%` }}
+                className={`h-full rounded-full transition-all ${usedPercent >= 90 ? 'bg-destructive' : 'bg-primary'}`}
+                style={{ width: `${usedPercent}%` }}
               />
             </div>
-            <p className="mt-1 text-xs text-muted-foreground">{storagePercent}% asignados</p>
+            <p className="mt-1 text-[11px] text-muted-foreground">{usedPercent}% de tu cuota total</p>
           </CardContent>
         </Card>
       </div>
@@ -209,6 +257,7 @@ export function DatasetManagement({ token }: DatasetManagementProps) {
                     <th className="px-3 py-3">Pipelines</th>
                     <th className="px-3 py-3">Dataset</th>
                     <th className="px-3 py-3">Tipo</th>
+                    <th className="px-3 py-3">Uso</th>
                     <th className="px-3 py-3">Estado</th>
                     <th className="px-5 py-3 text-right">Acciones</th>
                   </tr>
@@ -219,6 +268,8 @@ export function DatasetManagement({ token }: DatasetManagementProps) {
                     const fname = hasDs ? extractFilename(ws.datasetPath!) : '—'
                     const dtype = hasDs ? datasetType(ws.datasetPath!) : '—'
                     const DIcon = hasDs ? datasetIcon(dtype) : Database
+                    const usedWsMb = toMb(usageByWs.get(ws.idWorkspace) ?? 0)
+                    const wsPct = quotaMb > 0 ? Math.min(100, Math.round((usedWsMb / quotaMb) * 100)) : 0
 
                     return (
                       <tr
@@ -247,6 +298,24 @@ export function DatasetManagement({ token }: DatasetManagementProps) {
                           </Badge>
                         </td>
                         <td className="px-3 py-3">
+                          {hasDs ? (
+                            <div className="w-28" title={`${usedWsMb} MB de ${quotaMb} MB`}>
+                              <div className="flex items-center justify-between text-[11px]">
+                                <span className="font-semibold text-foreground">{usedWsMb} MB</span>
+                                <span className="text-muted-foreground">{wsPct}%</span>
+                              </div>
+                              <div className="mt-1 h-1.5 w-full rounded-full bg-muted">
+                                <div
+                                  className={`h-full rounded-full ${wsPct >= 90 ? 'bg-destructive' : 'bg-primary'}`}
+                                  style={{ width: `${wsPct}%` }}
+                                />
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-3">
                           <Badge variant={hasDs ? 'success' : 'secondary'}>
                             {hasDs ? 'Asignado' : 'Sin dataset'}
                           </Badge>
@@ -257,19 +326,14 @@ export function DatasetManagement({ token }: DatasetManagementProps) {
                               <>
                                 <Button
                                   variant="ghost" size="icon-sm"
-                                  aria-label="Ver dataset"
-                                  title="Ver"
-                                  onClick={async () => {
-                                    const filename = extractFilename(ws.datasetPath!)
-                                    const url = `${API_BASE_URL}/workspaces/${ws.idWorkspace}/dataset/${filename}`
-                                    try {
-                                      const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
-                                      const blob = await r.blob()
-                                      window.open(URL.createObjectURL(blob), '_blank')
-                                    } catch { window.open(url, '_blank') }
-                                  }}
+                                  aria-label="Descargar dataset"
+                                  title="Descargar"
+                                  disabled={downloadingId === ws.idWorkspace}
+                                  onClick={() => void handleDownload(ws)}
                                 >
-                                  <Eye className="size-3.5" />
+                                  {downloadingId === ws.idWorkspace
+                                    ? <Spinner size="sm" />
+                                    : <Download className="size-3.5" />}
                                 </Button>
                                 <Button
                                   variant="ghost" size="icon-sm"

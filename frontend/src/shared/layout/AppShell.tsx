@@ -507,6 +507,10 @@ function NotificationsBell({ token, role }: { token: string; role?: Role }) {
   const [unread, setUnread] = useState(0)
   const [health, setHealth] = useState<'up' | 'down' | 'unknown'>('unknown')
   const idRef = useRef(0)
+  // Hitos ya notificados (clave = ejecución::nivel::mensaje). PERSISTE entre suscripciones
+  // SSE: al cambiar de workspace en el lienzo y volver se re-suscribe y el backend reenvía
+  // el historial (replay); sin esto, los mismos hitos se re-notificarían como "no leídos".
+  const seenRef = useRef<Set<string>>(new Set())
   // El healthcheck (MLflow) es de alcance ADMIN; para colaboradores se omite.
   const canCheckHealth = role === 'ADMIN'
 
@@ -553,10 +557,10 @@ function NotificationsBell({ token, role }: { token: string; role?: Role }) {
 
   useEffect(() => {
     if (!activeExec || !token) return
-    const seen = new Set<string>()
+    const execId = activeExec.executionId
     const url =
       `${API_BASE_URL}/workspaces/${activeExec.workspaceId}/pipelines/${activeExec.pipelineId}` +
-      `/executions/${activeExec.executionId}/logs?token=${encodeURIComponent(token)}`
+      `/executions/${execId}/logs?token=${encodeURIComponent(token)}`
     const source = new EventSource(url)
     source.addEventListener('log', (event: Event) => {
       try {
@@ -572,9 +576,11 @@ function NotificationsBell({ token, role }: { token: string; role?: Role }) {
           m.includes('desplegado y healthy') ||
           !!d.terminal
         if (!milestone) return
-        const key = `${d.level}::${d.message}`
-        if (seen.has(key)) return   // dedup del replay / reconexión
-        seen.add(key)
+        // Clave por EJECUCIÓN: persiste entre suscripciones → el replay al volver al
+        // lienzo no re-notifica hitos ya vistos de esa misma ejecución.
+        const key = `${execId}::${d.level}::${d.message}`
+        if (seenRef.current.has(key)) return
+        seenRef.current.add(key)
         addNotif(d.level, d.message, !!d.terminal)
       } catch { /* evento no parseable: ignorar */ }
     })
