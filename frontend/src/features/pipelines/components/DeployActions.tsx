@@ -1,135 +1,63 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Box, Info, Rocket, Server } from 'lucide-react'
+import { useMemo } from 'react'
+import { CheckCircle2, Copy, Info, Loader2, Rocket, XCircle } from 'lucide-react'
 
 import { Button } from '@/shared/components/ui/button'
-import { Label } from '@/shared/components/ui/label'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/shared/components/ui/select'
-import { Spinner } from '@/shared/components/ui/spinner'
 import { notify } from '@/shared/notify'
-import {
-  getWorkspaceModelVersions,
-  listWorkspaceModels,
-  type MlflowModelVersion,
-  type WorkspaceModel,
-} from '@/features/mlflow/api'
 import { consumeDeployHandoff } from '@/features/pipelines/deployHandoff'
-import type { NodeConfig } from '@/features/pipelines/nodeConfig'
+import type { PipelineNodeStatus } from './PipelineNode'
 
 interface DeployActionsProps {
-  token: string
-  workspaceId: number
-  pipelineId: number | null
-  projectName: string
-  config: NodeConfig
-  onConfigChange: (patch: NodeConfig) => void
-  onAuthError: (error: unknown) => boolean
+  /** runId del modelo entrenado en ESTE flujo (lo fija el nodo de entrenamiento al completar). */
+  flowRunId: string
+  /** Versión del modelo entrenado en este flujo (informativo). */
+  flowModelVersion: string
+  /** Métricas del entrenamiento (JSON) para mostrar el accuracy del artefacto. */
+  flowMetrics: string
+  /** Estado del nodo de entrenamiento; gobierna cuándo hay un modelo listo. */
+  trainStatus: PipelineNodeStatus
+  /** Estado EN VIVO del propio nodo de despliegue (running/success/error). */
+  deployStatus: PipelineNodeStatus
+  /** Endpoint del model-service una vez desplegado (vacío si no). */
+  deployEndpoint: string
+  /** Dispara el despliegue (handoff de "Mis modelos" o reintento). Actualiza el nodo. */
+  onDeploy: (runId: string) => void
 }
 
-function slug(value: string): string {
-  return (value || '')
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '') || 'model'
-}
-
-/** Puerto sugerido (preview de TA-002). La asignación real ocurre en el despliegue (Sprint 3). */
-function suggestedPort(pipelineId: number | null): number {
-  return 9000 + ((pipelineId ?? 0) % 1000)
+/** Accuracy legible desde el JSON de métricas del entrenamiento (val > final > accuracy). */
+function parseAccuracy(metrics: string): string | null {
+  if (!metrics) return null
+  try {
+    const m = JSON.parse(metrics) as Record<string, number>
+    const v = m.val_accuracy ?? m.final_accuracy ?? m.accuracy
+    return typeof v === 'number' ? `${(v * 100).toFixed(1)}%` : null
+  } catch {
+    return null
+  }
 }
 
 /**
- * Panel del Nodo de Despliegue (HU-028, parte no-despliegue):
- * selector de versión de modelo (Model Registry del workspace), puerto asignado
- * automáticamente (preview TA-002) y nombre del contenedor a generar. El disparo
- * real del model-service (HU-007 / HU-008) se habilita en el Sprint 3.
+ * Panel del Nodo de Despliegue. El despliegue es AUTOMÁTICO al terminar el flujo, así
+ * que esta tarjeta es sobre todo de estado EN VIVO: muestra el artefacto generado y el
+ * progreso (entrenando → desplegando → activo / error), con el endpoint resultante. El
+ * botón manual solo aparece cuando hace falta: handoff desde "Mis modelos" o reintento.
  */
 export function DeployActions({
-  token,
-  workspaceId,
-  pipelineId,
-  projectName,
-  config,
-  onConfigChange,
-  onAuthError,
+  flowRunId, flowModelVersion, flowMetrics, trainStatus, deployStatus, deployEndpoint, onDeploy,
 }: DeployActionsProps) {
-  const [models, setModels] = useState<WorkspaceModel[]>([])
-  const [versions, setVersions] = useState<MlflowModelVersion[]>([])
-  const [loadingModels, setLoadingModels] = useState(true)
-  const [loadingVersions, setLoadingVersions] = useState(false)
+  // Handoff desde "Mis modelos" (se consume una sola vez al montar el panel).
+  const handoff = useMemo(() => consumeDeployHandoff(), [])
 
-  const selectedModel = String(config.modelName ?? '')
-  const selectedVersion = String(config.modelVersion ?? '')
-  const port = useMemo(() => suggestedPort(pipelineId), [pipelineId])
+  const runId = handoff?.runId || flowRunId
+  const modelLabel = handoff
+    ? `${handoff.modelName} · v${handoff.version}`
+    : flowModelVersion ? `v${flowModelVersion}` : ''
+  const accuracy = parseAccuracy(flowMetrics)
+  const hasModel = !!runId
 
-  const buildContainerName = (model: string, version: string) =>
-    model && version ? `model-svc-${slug(projectName)}-${slug(model)}-v${version}` : ''
-
-  const containerName = String(config.containerName ?? buildContainerName(selectedModel, selectedVersion))
-
-  /* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
-  // Carga los modelos del workspace y consume el handoff "Desplegar" (HU-027).
-  useEffect(() => {
-    let active = true
-    setLoadingModels(true)
-    listWorkspaceModels(token, workspaceId)
-      .then((mods) => {
-        if (!active) return
-        setModels(mods)
-        const handoff = consumeDeployHandoff()
-        if (handoff && mods.some((m) => m.name === handoff.modelName)) {
-          onConfigChange({
-            modelName: handoff.modelName,
-            modelVersion: handoff.version,
-            runId: handoff.runId,
-            port: suggestedPort(pipelineId),
-            containerName: buildContainerName(handoff.modelName, handoff.version),
-          })
-          notify.info('Modelo precargado desde el Registry', {
-            description: `${handoff.modelName} · v${handoff.version}`,
-          })
-        }
-      })
-      .catch((err) => { if (!onAuthError(err)) setModels([]) })
-      .finally(() => { if (active) setLoadingModels(false) })
-    return () => { active = false }
-  }, [token, workspaceId])
-
-  // Versiones del modelo seleccionado.
-  useEffect(() => {
-    if (!selectedModel) { setVersions([]); return }
-    let active = true
-    setLoadingVersions(true)
-    getWorkspaceModelVersions(token, workspaceId, selectedModel)
-      .then((v) => { if (active) setVersions(v) })
-      .catch((err) => { if (!onAuthError(err)) setVersions([]) })
-      .finally(() => { if (active) setLoadingVersions(false) })
-    return () => { active = false }
-  }, [token, workspaceId, selectedModel])
-  /* eslint-enable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
-
-  const handleModel = (value: string) => {
-    onConfigChange({ modelName: value, modelVersion: '', runId: '', containerName: '' })
+  const copyEndpoint = () => {
+    void navigator.clipboard?.writeText(`${deployEndpoint}/predict`)
+    notify.success('Endpoint copiado')
   }
-
-  const handleVersion = (value: string) => {
-    const match = versions.find((v) => v.version === value)
-    onConfigChange({
-      modelVersion: value,
-      runId: match?.runId ?? '',
-      port,
-      containerName: buildContainerName(selectedModel, value),
-    })
-  }
-
-  const ready = !!selectedModel && !!selectedVersion
 
   return (
     <div className="space-y-3 rounded-xl border border-border bg-card/40 p-3">
@@ -137,72 +65,86 @@ export function DeployActions({
         Despliegue del modelo
       </p>
 
-      {loadingModels ? (
-        <p className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Spinner size="sm" /> Cargando modelos del proyecto…
-        </p>
-      ) : models.length === 0 ? (
-        <p className="text-xs text-warning">
-          Aún no hay modelos registrados en este proyecto. Entrena un pipeline para generar artefactos.
-        </p>
-      ) : (
-        <>
-          <div className="space-y-1.5">
-            <Label htmlFor="deploy-model">Modelo</Label>
-            <Select value={selectedModel} onValueChange={handleModel}>
-              <SelectTrigger id="deploy-model">
-                <SelectValue placeholder="Selecciona un modelo" />
-              </SelectTrigger>
-              <SelectContent>
-                {models.map((m) => (
-                  <SelectItem key={m.name} value={m.name}>{m.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+      {/* Artefacto generado por el flujo (visible en cuanto hay modelo). */}
+      {hasModel && (
+        <div className="space-y-1 rounded-lg border border-border bg-background/40 px-3 py-2 text-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground">Artefacto</span>
+            <span className="font-medium text-foreground">{modelLabel || '—'}</span>
           </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="deploy-version">Versión</Label>
-            <Select value={selectedVersion} onValueChange={handleVersion} disabled={!selectedModel || loadingVersions}>
-              <SelectTrigger id="deploy-version">
-                <SelectValue placeholder={loadingVersions ? 'Cargando…' : 'Selecciona una versión'} />
-              </SelectTrigger>
-              <SelectContent>
-                {versions.map((v) => (
-                  <SelectItem key={v.version} value={v.version}>
-                    v{v.version}{v.stage && v.stage !== 'None' ? ` · ${v.stage}` : ''}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </>
-      )}
-
-      {ready && (
-        <div className="space-y-2 rounded-lg border border-border bg-background/40 p-3 text-xs">
-          <div className="flex items-center gap-2 text-muted-foreground">
-            <Server className="size-3.5" />
-            Puerto asignado: <span className="font-mono text-foreground">{port}</span>
-            <span className="text-[10px] text-muted-foreground/70">(auto · TA-002)</span>
-          </div>
-          <div className="flex items-center gap-2 text-muted-foreground">
-            <Box className="size-3.5" />
-            Contenedor: <span className="truncate font-mono text-foreground" title={containerName}>{containerName}</span>
+          {accuracy && (
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Accuracy</span>
+              <span className="font-mono text-success">{accuracy}</span>
+            </div>
+          )}
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground">Run</span>
+            <span className="font-mono text-foreground/70">{runId.slice(0, 12)}…</span>
           </div>
         </div>
       )}
 
-      <Button variant="cta" size="sm" className="w-full" disabled title="Disponible en el Sprint 3">
-        <Rocket />
-        Desplegar
-      </Button>
-      <p className="flex items-start gap-1.5 text-[11px] leading-relaxed text-muted-foreground">
-        <Info className="mt-0.5 size-3 shrink-0" />
-        El despliegue del <span className="font-mono">model-service</span> y el endpoint{' '}
-        <span className="font-mono">/predict</span> se habilitan en el Sprint 3 (HU-007 / HU-008).
-        Aquí dejas seleccionado el modelo, puerto y contenedor; se guardan con el lienzo.
-      </p>
+      {/* Estado EN VIVO del despliegue. */}
+      {deployStatus === 'running' ? (
+        <p className="flex items-start gap-1.5 text-xs leading-relaxed text-info">
+          <Loader2 className="mt-0.5 size-3.5 shrink-0 animate-spin" />
+          Desplegando el model-service… build de la imagen, puede tardar varios minutos.
+          Sigue el detalle en la consola de logs.
+        </p>
+      ) : deployStatus === 'success' ? (
+        <div className="space-y-2">
+          <p className="flex items-start gap-1.5 text-xs leading-relaxed text-success">
+            <CheckCircle2 className="mt-0.5 size-3.5 shrink-0" />
+            model-service <span className="font-semibold">activo</span>. Endpoint listo para inferencias.
+          </p>
+          {deployEndpoint && (
+            <button
+              type="button"
+              onClick={copyEndpoint}
+              className="flex w-full items-center gap-2 rounded-lg border border-border bg-background/60 px-2.5 py-1.5 text-left font-mono text-[11px] text-foreground/90 transition-colors hover:bg-accent/40"
+              title="Copiar endpoint"
+            >
+              <Copy className="size-3 shrink-0 text-primary" />
+              <span className="truncate">{deployEndpoint}/predict</span>
+            </button>
+          )}
+          <p className="text-[11px] leading-relaxed text-muted-foreground">
+            Pruébalo enviando una imagen desde el módulo <span className="font-medium">“Despliegues”</span>.
+          </p>
+        </div>
+      ) : deployStatus === 'error' ? (
+        <div className="space-y-2">
+          <p className="flex items-start gap-1.5 text-xs leading-relaxed text-destructive">
+            <XCircle className="mt-0.5 size-3.5 shrink-0" />
+            El despliegue falló. Revisa la consola de logs (el contenedor se detuvo).
+          </p>
+          <Button variant="outline" size="sm" className="w-full" onClick={() => onDeploy(runId)} disabled={!hasModel}>
+            <Rocket /> Reintentar despliegue
+          </Button>
+        </div>
+      ) : (
+        // idle: explica la automatización; botón manual solo en handoff o si ya hay modelo.
+        <div className="space-y-2">
+          <p className="flex items-start gap-1.5 text-xs leading-relaxed text-muted-foreground">
+            <Info className="mt-0.5 size-3 shrink-0" />
+            {handoff
+              ? `Modelo seleccionado desde "Mis modelos": ${modelLabel}. Pulsa Desplegar.`
+              : trainStatus === 'running'
+                ? 'Entrenando el modelo… el despliegue arrancará automáticamente al terminar.'
+                : trainStatus === 'error'
+                  ? 'El entrenamiento falló: no hay modelo para desplegar.'
+                  : hasModel
+                    ? 'Modelo listo. El despliegue es automático al terminar el flujo; si no arrancó, púlsalo.'
+                    : 'El despliegue es automático: se ejecuta al terminar el entrenamiento. Conecta este nodo a Entrenamiento e inicia el flujo.'}
+          </p>
+          {(handoff || hasModel) && (
+            <Button variant="cta" size="sm" className="w-full" onClick={() => onDeploy(runId)} disabled={!hasModel}>
+              <Rocket /> Desplegar
+            </Button>
+          )}
+        </div>
+      )}
     </div>
   )
 }

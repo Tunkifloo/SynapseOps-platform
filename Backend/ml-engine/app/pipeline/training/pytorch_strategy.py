@@ -148,20 +148,30 @@ class PyTorchStrategy(TrainingStrategy):
             test_true = np.asarray(y_test)
             log.info("Evaluación en test — loss=%.4f acc=%.4f", test_loss, test_accuracy)
 
+        # ── Serialización como TorchScript (TA-007 · Sprint 3) ────────────────
+        # El model-service carga el artefacto con torch.jit.load, que NO requiere
+        # el código fuente de la clase CNN. Por eso se guarda TorchScript
+        # autocontenido en lugar de un state_dict (que exigiría redefinir la clase
+        # al cargar). Se intenta script() y, ante construcciones no soportadas, se
+        # cae a trace() con un tensor de ejemplo NCHW del input_shape entrenado.
         artifact_path = str(Path(output_dir) / "model.pt")
-        torch.save({
-            "state_dict":  model.state_dict(),
-            "input_shape": hyperparams.input_shape,
-            "num_classes": hyperparams.num_classes,
-        }, artifact_path)
-        log.info("Modelo PyTorch guardado: %s", artifact_path)
+        h, w, c = hyperparams.input_shape
+        scripted = model.to("cpu").eval()
+        try:
+            ts_model = torch.jit.script(scripted)
+        except Exception as exc:  # noqa: BLE001 — fallback robusto
+            log.warning("torch.jit.script falló (%s); usando torch.jit.trace.", exc)
+            example = torch.zeros((1, c, h, w), dtype=torch.float32)
+            ts_model = torch.jit.trace(scripted, example)
+        ts_model.save(artifact_path)
+        log.info("Modelo PyTorch (TorchScript) guardado: %s", artifact_path)
 
         return TrainingResult(
             framework="pytorch",
             history=history,
             artifact_path=artifact_path,
-            final_accuracy=history["accuracy"][-1],
-            final_loss=history["loss"][-1],
+            final_accuracy=history.get("val_accuracy", history.get("accuracy", [0]))[-1],
+            final_loss=history.get("val_loss", history.get("loss", [0]))[-1],
             test_accuracy=test_accuracy,
             test_loss=test_loss,
             val_true=np.asarray(y_val), val_pred=val_pred, val_proba=val_proba,

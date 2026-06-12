@@ -2,6 +2,7 @@ package com.synapseops.orchestrator.infra.kafka;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.synapseops.orchestrator.domain.entity.*;
 import com.synapseops.orchestrator.infra.repository.*;
 import com.synapseops.orchestrator.infra.sse.ExecutionEventBus;
@@ -9,6 +10,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDateTime;
 
 @Slf4j
 @Service
@@ -55,9 +58,18 @@ public class PipelineResultProcessor {
                 String modelVersion    = result.path("model_version").asText();
                 String artifactPath    = result.path("artifact_path").asText("");
                 String hyperparamsJson = result.path("hyperparameters").toString();
-                String metricsJson     = result.path("metrics").toString();
+                // El overfit_warning y el drift vienen en la RAÍZ del resultado (no dentro
+                // de "metrics"); se fusionan en el blob de métricas (única fuente que el
+                // frontend ya consume) para mostrarlos en el lienzo y en Monitoreo.
+                String metricsJson     = mergeQualitySignals(result);
 
                 execution.complete(runId);
+                // TEL-01 · Process Tracker: timestamps del ciclo. Los del ml-engine
+                // (ingesta/entrenamiento) vienen en el resultado; la aprobación del
+                // modelo es AHORA (se registra en el Model Registry de MLflow).
+                execution.setIngestionStartedAt(parseTs(result.path("t_inicio_ingesta").asText(null)));
+                execution.setTrainingFinishedAt(parseTs(result.path("t_fin_entrenamiento").asText(null)));
+                execution.setModelApprovedAt(LocalDateTime.now());
                 executionRepository.save(execution);
                 log.info("Ejecución COMPLETADA — id={} runId={}", executionId, runId);
 
@@ -82,10 +94,15 @@ public class PipelineResultProcessor {
                 pipelineRepository.save(pipeline);
                 log.info("Pipeline COMPLETADO — executionId={}", executionId);
 
+                // NO terminal: el entrenamiento es una FASE del ciclo, no su fin. Si el
+                // lienzo tiene un nodo Despliegue conectado, el auto-despliegue continúa
+                // publicando logs en este mismo stream SSE. Marcar terminal aquí cerraría
+                // la consola antes de mostrar el despliegue. El evento terminal real lo
+                // emite el despliegue (éxito/fallo) en DeploymentServiceImpl.
                 executionEventBus.publish(executionId, "INFO",
                         "Entrenamiento COMPLETADO — runId=" + runId
                                 + (modelVersion.isBlank() ? "" : " · versión " + modelVersion),
-                        true);
+                        false);
 
             } else {
                 execution.fail();
@@ -103,6 +120,40 @@ public class PipelineResultProcessor {
         } catch (Exception e) {
             log.error("Error procesando resultado Kafka: {}", e.getMessage(), e);
             throw new RuntimeException("Error en PipelineResultProcessor", e);
+        }
+    }
+
+    /**
+     * Fusiona las señales de calidad de raíz (overfit_warning, drift) dentro del blob
+     * "metrics" que persiste el MLArtifact y consume el frontend. Tolerante: si "metrics"
+     * no es objeto, parte de uno vacío.
+     */
+    private String mergeQualitySignals(JsonNode result) {
+        JsonNode metricsNode = result.path("metrics");
+        ObjectNode merged = metricsNode.isObject()
+                ? ((ObjectNode) metricsNode).deepCopy()
+                : objectMapper.createObjectNode();
+        JsonNode overfit = result.path("overfit_warning");
+        if (overfit != null && !overfit.isMissingNode() && !overfit.isNull()) {
+            merged.set("overfit_warning", overfit);
+        }
+        JsonNode drift = result.path("drift");
+        if (drift != null && !drift.isMissingNode() && !drift.isNull()) {
+            merged.set("drift", drift);
+        }
+        return merged.toString();
+    }
+
+    /** Parseo tolerante de un timestamp ISO-8601 local del ml-engine (null si falta/ inválido). */
+    private LocalDateTime parseTs(String iso) {
+        if (iso == null || iso.isBlank()) {
+            return null;
+        }
+        try {
+            return LocalDateTime.parse(iso);
+        } catch (Exception e) {
+            log.warn("Timestamp de ciclo inválido '{}': {}", iso, e.getMessage());
+            return null;
         }
     }
 }

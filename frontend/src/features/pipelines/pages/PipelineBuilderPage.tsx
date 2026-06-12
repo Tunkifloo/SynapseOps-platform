@@ -31,6 +31,9 @@ interface PipelineBuilderPageProps {
   onAuthError: (error: unknown) => boolean
 }
 
+// Pipeline activo recordado por workspace → al volver al lienzo se conserva el mismo.
+const pipeKey = (wsId: number) => `synapseops:builder-pipeline:${wsId}`
+
 /**
  * Lienzo low-code (HU-001) vinculado a un workspace (HU-002) y a un pipeline
  * (HU-005): el proyecto + pipeline dan contexto a los nodos (ingesta, entrenamiento).
@@ -47,12 +50,27 @@ export function PipelineBuilderPage({ token, onAuthError }: PipelineBuilderPageP
   const [savingRename, setSavingRename] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const navigate = useNavigate()
+  const CARD_KEY = 'synapseops:builder-ws-id'
+  const LAST_KEY = 'synapseops:last-builder-ws'
 
   const loadWorkspaces = useCallback(async () => {
     try {
+      // CARD_KEY es una señal de un SOLO uso ("abrir este proyecto en el lienzo" desde
+      // otro módulo). Se consume y se borra: si no, quedaría fija y pisaría siempre el
+      // último workspace que el usuario seleccionó dentro del lienzo (bug de contexto).
+      const raw = localStorage.getItem(CARD_KEY)
+      if (raw) localStorage.removeItem(CARD_KEY)
+      const preferredId = raw ? Number(raw) : undefined
       const data = await listMyWorkspaces(token)
       setWorkspaces(data)
-      setActiveWsId((prev) => prev ?? data[0]?.idWorkspace ?? null)
+      let target = preferredId
+        ? data.find((w) => w.idWorkspace === preferredId)
+        : undefined
+      if (!target) {
+        const lastName = localStorage.getItem(LAST_KEY)
+        target = lastName ? data.find((w) => w.name === lastName) : undefined
+      }
+      setActiveWsId((prev) => target?.idWorkspace ?? prev ?? data[0]?.idWorkspace ?? null)
     } catch (err) {
       onAuthError(err)
     } finally {
@@ -65,7 +83,14 @@ export function PipelineBuilderPage({ token, onAuthError }: PipelineBuilderPageP
       try {
         const data = await listWorkspacePipelines(token, wsId)
         setPipelines(data)
-        setActivePipelineId(data[0]?.idPipeline ?? null)
+        // Restaura el último pipeline usado en este workspace (si sigue existiendo).
+        let preferred: number | null = null
+        try {
+          const raw = localStorage.getItem(pipeKey(wsId))
+          const id = raw ? Number(raw) : NaN
+          if (!Number.isNaN(id) && data.some((p) => p.idPipeline === id)) preferred = id
+        } catch { /* almacenamiento no disponible */ }
+        setActivePipelineId(preferred ?? data[0]?.idPipeline ?? null)
       } catch (err) {
         onAuthError(err)
       }
@@ -78,11 +103,30 @@ export function PipelineBuilderPage({ token, onAuthError }: PipelineBuilderPageP
   }, [loadWorkspaces])
 
   useEffect(() => {
-    if (activeWsId) void loadPipelines(activeWsId)
+    if (activeWsId) {
+      // Resetea el pipeline ANTES de cargar los del nuevo workspace: si no, el lienzo
+      // pediría (workspace nuevo, pipeline viejo) por un instante → 403 (el pipeline no
+      // pertenece a ese workspace). Con null, el lienzo no carga hasta tener el correcto.
+      setActivePipelineId(null)
+      void loadPipelines(activeWsId)
+    }
   }, [activeWsId, loadPipelines])
 
   const activeWorkspace = workspaces.find((w) => w.idWorkspace === activeWsId) ?? null
   const activePipeline = pipelines.find((p) => p.idPipeline === activePipelineId) ?? null
+
+  useEffect(() => {
+    if (activeWorkspace?.name) {
+      localStorage.setItem(LAST_KEY, activeWorkspace.name)
+    }
+  }, [activeWorkspace?.name, LAST_KEY])
+
+  // Recuerda el pipeline activo por workspace para restaurarlo al volver.
+  useEffect(() => {
+    if (activeWsId && activePipelineId) {
+      try { localStorage.setItem(pipeKey(activeWsId), String(activePipelineId)) } catch { /* noop */ }
+    }
+  }, [activeWsId, activePipelineId])
 
   const handleRenamePipeline = async () => {
     if (!activeWsId || !activePipelineId || !renameValue.trim()) { setRenaming(false); return }
@@ -142,7 +186,17 @@ export function PipelineBuilderPage({ token, onAuthError }: PipelineBuilderPageP
 
         {!loading && workspaces.length > 0 && (
           <div className="flex flex-wrap items-center gap-2">
-            <Select value={activeWsId ? String(activeWsId) : ''} onValueChange={(v) => setActiveWsId(Number(v))}>
+            <Select
+              value={activeWsId ? String(activeWsId) : ''}
+              onValueChange={(v) => {
+                // Limpia pipeline+lista en el MISMO batch que el workspace: evita que el
+                // lienzo se monte con (workspace nuevo, pipeline viejo) → 403, y que se
+                // arrastre el contexto del proyecto anterior.
+                setActiveWsId(Number(v))
+                setActivePipelineId(null)
+                setPipelines([])
+              }}
+            >
               <SelectTrigger className="w-48" aria-label="Proyecto">
                 <SelectValue placeholder="Proyecto" />
               </SelectTrigger>
@@ -244,6 +298,24 @@ export function PipelineBuilderPage({ token, onAuthError }: PipelineBuilderPageP
               <FolderPlus />
               Crear proyecto
             </Button>
+          </div>
+        ) : activePipelineId == null ? (
+          // El lienzo SIEMPRE se vincula a un pipeline. Sin uno, no se edita (evita que
+          // el trabajo quede huérfano o se filtre a otro pipeline al crearlo).
+          <div className="flex h-full flex-col items-center justify-center gap-3 rounded-2xl border border-border bg-card/30 text-center">
+            <p className="font-heading text-base font-semibold text-foreground">
+              {pipelines.length === 0 ? 'Crea un pipeline para empezar' : 'Selecciona un pipeline'}
+            </p>
+            <p className="max-w-sm text-sm text-muted-foreground">
+              El lienzo se vincula a un pipeline del proyecto
+              {activeWorkspace?.name ? ` «${activeWorkspace.name}»` : ''}. Crea uno para diseñar y guardar tu flujo.
+            </p>
+            {pipelines.length === 0 && (
+              <Button variant="cta" loading={creating} onClick={() => void handleCreatePipeline()}>
+                <Plus />
+                Crear pipeline
+              </Button>
+            )}
           </div>
         ) : (
           <ReactFlowProvider>

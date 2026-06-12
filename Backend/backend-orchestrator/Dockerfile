@@ -1,17 +1,20 @@
+# syntax=docker/dockerfile:1
 FROM maven:3.9.6-eclipse-temurin-21-alpine AS builder
 
 WORKDIR /build
 
 # Primero solo el pom.xml → Docker cachea las dependencias
-# Si no cambia el pom, esta capa no se reconstruye en futuros builds
+# Si no cambia el pom, esta capa no se reconstruye en futuros builds.
+# Cache mount de BuildKit sobre /root/.m2: el repositorio local de Maven persiste
+# entre builds → no se re-descargan las dependencias de Spring aunque cambie el pom.
 COPY pom.xml .
-RUN mvn dependency:go-offline -q
+RUN --mount=type=cache,target=/root/.m2 mvn dependency:go-offline -q
 
 # Luego el código fuente
 COPY src ./src
 
 # Compilar sin tests (los tests corren en el pipeline CI, no aquí)
-RUN mvn package -DskipTests -q
+RUN --mount=type=cache,target=/root/.m2 mvn package -DskipTests -q
 
 # ── Stage 2: Runtime ──────────────────────────────────────────────────────────
 FROM eclipse-temurin:21-jre-alpine

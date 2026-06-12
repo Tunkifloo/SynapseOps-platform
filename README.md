@@ -4,18 +4,19 @@
 
 # SynapseOps
 
-**Low-Code MLOps Platform for Academic Environments**
+**Plataforma MLOps Low-Code basada en contenedores**
+
+*Del dataset al endpoint de inferencia — sin tocar infraestructura, desde el navegador.*
 
 [![Spring Boot](https://img.shields.io/badge/Spring_Boot-4.0.6-6DB33F?style=flat-square&logo=springboot&logoColor=white)](https://spring.io/projects/spring-boot)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
-[![React](https://img.shields.io/badge/React-18-61DAFB?style=flat-square&logo=react&logoColor=black)](https://react.dev)
-[![Kafka](https://img.shields.io/badge/Apache_Kafka-3.7-231F20?style=flat-square&logo=apachekafka&logoColor=white)](https://kafka.apache.org)
+[![FastAPI](https://img.shields.io/badge/FastAPI-Python_3.11-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
+[![React](https://img.shields.io/badge/React-18_+_TS-61DAFB?style=flat-square&logo=react&logoColor=black)](https://react.dev)
+[![Kafka](https://img.shields.io/badge/Apache_Kafka-3.7_KRaft-231F20?style=flat-square&logo=apachekafka&logoColor=white)](https://kafka.apache.org)
 [![MLflow](https://img.shields.io/badge/MLflow-2.21.3-0194E2?style=flat-square&logo=mlflow&logoColor=white)](https://mlflow.org)
-[![Docker](https://img.shields.io/badge/Docker_Compose-9_services-2496ED?style=flat-square&logo=docker&logoColor=white)](https://docs.docker.com/compose)
+[![Prometheus](https://img.shields.io/badge/Prometheus_+_Grafana-Observability-E6522C?style=flat-square&logo=prometheus&logoColor=white)](https://prometheus.io)
+[![Docker](https://img.shields.io/badge/Docker_Compose-9_servicios-2496ED?style=flat-square&logo=docker&logoColor=white)](https://docs.docker.com/compose)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-17-4169E1?style=flat-square&logo=postgresql&logoColor=white)](https://www.postgresql.org)
 [![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)](LICENSE)
-
-*Diseñado para UPAO — Ingeniería de Computación y Sistemas*
 
 </div>
 
@@ -23,49 +24,59 @@
 
 ## ¿Qué es SynapseOps?
 
-SynapseOps es una plataforma web **low-code basada en contenedores** que elimina la barrera operativa entre la investigación y la producción de modelos de deep learning en contextos académicos universitarios. Los estudiantes sin experiencia en infraestructura pueden ejecutar pipelines de entrenamiento, versionar modelos y monitorear métricas en tiempo real — todo desde un navegador, con un único comando de despliegue.
+SynapseOps es una **plataforma web low-code basada en contenedores** que cubre el **ciclo de vida MLOps completo** — ingesta de datos → preprocesamiento → entrenamiento → versionado → **despliegue dinámico** → **inferencia** → **monitoreo y detección de deriva** — desde un navegador y con un único comando de arranque.
 
-> **Gap que resuelve:** Kubeflow requiere Kubernetes (3+ nodos), MLflow standalone no tiene orquestación, Airflow asume infraestructura cloud. SynapseOps opera en un equipo con 8 GB RAM mediante `docker compose up -d`.
+El objetivo: que cualquier persona pueda entrenar, versionar, **desplegar** y **monitorear** modelos de visión por computador **sin escribir infraestructura** ni conocer Docker, Kafka o Kubernetes.
+
+> **El gap que resuelve:** Kubeflow exige un clúster Kubernetes; MLflow por sí solo no orquesta ni despliega; Airflow asume infraestructura cloud. SynapseOps corre **todo el ciclo MLOps** en un equipo con **8 GB de RAM** mediante `docker compose up -d`.
+
+---
+
+## ✨ Características
+
+- 🎨 **Lienzo low-code (drag & drop):** arma el pipeline conectando nodos *Ingesta → Preprocesamiento → Split → Entrenamiento → Despliegue* y ejecútalo con un clic.
+- 🧠 **CNN adaptativa (TensorFlow o PyTorch):** una sola red que se adapta al `input_shape` y al nº de clases del dataset — sin definir capas a mano.
+- 🚀 **Despliegue dinámico de inferencia:** al terminar el flujo, SynapseOps **genera, construye y levanta un `model-service`** (FastAPI) con endpoint `/predict`, puerto dinámico y health-check automático.
+- 📊 **Telemetría de ciclo de vida (Process Tracker):** tiempo de re-entrenamiento, lead time de despliegue, cold start, tasa de éxito y esfuerzo de interacción — por proyecto y por modelo.
+- 🛡️ **Calidad y Data Drift:** detección de overfitting + **deriva de datos** (Evidently AI + PSI) entre splits, entre corridas de re-entrenamiento y en **inferencia**.
+- 📈 **Observabilidad completa:** cAdvisor → Prometheus → Grafana, con métricas de inferencia (latencia P95, throughput) del model-service.
+- 🔐 **Multiusuario con RBAC:** roles ADMIN / COLLABORATOR, JWT, gestión de usuarios y analítica global de plataforma.
+- 🧩 **Un comando:** `docker compose up -d` levanta 9 servicios; el model-service se crea bajo demanda.
 
 ---
 
 ## Arquitectura del Sistema
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         Student Browser                                 │
-│                    React 18 · React Flow · Tailwind                    │
-└─────────────────────────┬──────────────────┬───────────────────────────┘
-                    REST  │                  │  WebSocket
-                          ▼                  ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                    backend-orchestrator :8080                           │
-│         Spring Boot 4 / WebFlux · JWT/RBAC · Kafka Producer            │
-│                    Docker Engine Client (DooD)                          │
-└──────┬────────────────────────┬────────────────────────┬───────────────┘
-       │                        │                        │
-       ▼                        ▼                        ▼
-┌─────────────┐    ┌────────────────────┐    ┌──────────────────────┐
-│ postgres-db │    │   kafka-broker     │    │   mlflow-server      │
-│  PostgreSQL │    │  KRaft · :9092     │    │   SQLite · :5000     │
-│  17 · :5432 │    │  (sin ZooKeeper)   │    │   Model Registry     │
-└─────────────┘    └────────┬───────────┘    └──────────────────────┘
-                            │  job / result
-                            ▼
-              ┌─────────────────────────────┐
-              │        ml-engine :8000      │
-              │  FastAPI · Python 3.11      │
-              │  TensorFlow / PyTorch       │
-              │  Kafka Consumer + MLflow    │
-              └─────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────┐
+│                         Navegador del usuario                              │
+│        React 18 · TypeScript · React Flow · Tailwind · shadcn/ui          │
+└──────────────────────────────┬──────────────────────┬─────────────────────┘
+                          REST  │                      │  SSE (logs en vivo)
+                                ▼                      ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│                       backend-orchestrator :8080                           │
+│     Spring Boot 4 / WebFlux · JWT/RBAC · Kafka Producer · Flyway           │
+│            Docker Engine Client (DooD)  →  crea model-services             │
+└──────┬───────────────┬──────────────────┬──────────────────┬──────────────┘
+       ▼               ▼                  ▼                  ▼
+┌────────────┐  ┌──────────────┐  ┌───────────────┐  ┌─────────────────────┐
+│ postgres-db│  │ kafka-broker │  │ mlflow-server │  │  model-service*     │
+│ PostgreSQL │  │ KRaft :9092  │  │  :5000        │  │  FastAPI · :800x     │
+│ 17 · :5432 │  │ (sin ZK)     │  │ Model Registry│  │  /predict /metrics   │
+└────────────┘  └──────┬───────┘  └───────────────┘  │  (creado en runtime) │
+                       │ job / result / logs          └─────────────────────┘
+                       ▼
+            ┌──────────────────────────┐      ┌──────────────────────────────┐
+            │       ml-engine :8000    │      │   Stack de Observabilidad     │
+            │  FastAPI · Python 3.11   │      │  cAdvisor :8081 → Prometheus  │
+            │  TensorFlow / PyTorch    │      │  :9090 → Grafana :3001        │
+            │  Kafka Consumer + MLflow │      │  (+ métricas del model-service)│
+            │  Evidently (data drift)  │      └──────────────────────────────┘
+            └──────────────────────────┘
 
-┌──────────────────────────────────────────────────────────┐
-│                  Observability Stack                     │
-│  cAdvisor → Prometheus :9090 → Grafana :3001            │
-└──────────────────────────────────────────────────────────┘
-
-                  model-service* :8500
-              (FastAPI · despliegue dinámico)
+   * El model-service NO está en docker-compose: el orquestador genera su
+     Dockerfile/compose, construye la imagen y lo levanta vía DooD al desplegar.
 ```
 
 ---
@@ -74,74 +85,157 @@ SynapseOps es una plataforma web **low-code basada en contenedores** que elimina
 
 | Capa | Tecnología | Versión | Rol |
 |------|-----------|---------|-----|
-| **Frontend** | React + React Flow | 18.x | Canvas drag & drop + SPA |
-| **Orquestador** | Spring Boot WebFlux | 4.0.6 | API reactiva, JWT, Kafka producer |
-| **ML Engine** | FastAPI + Python | 3.11 | Entrenamiento TF/PyTorch, Kafka consumer |
-| **Mensajería** | Apache Kafka KRaft | 3.7.0 | Desacoplamiento async sin ZooKeeper |
+| **Frontend** | React + TypeScript + React Flow | 18 | Lienzo drag & drop + SPA + dashboards |
+| **UI** | Tailwind CSS + shadcn/ui + Zustand | 4 | Diseño + estado global |
+| **Orquestador** | Spring Boot WebFlux | 4.0.6 | API reactiva, JWT, Kafka, DooD, telemetría |
+| **ML Engine** | FastAPI + Python | 3.11 | Entrenamiento TF/PyTorch, ingesta, drift |
+| **Model Service** | FastAPI (plantilla generada) | — | Inferencia `/predict` + `/metrics` (dinámico) |
+| **Mensajería** | Apache Kafka (KRaft) | 3.7.0 | Async sin ZooKeeper |
 | **Tracking** | MLflow | 2.21.3 | Experiment tracking + Model Registry |
-| **Base de Datos** | PostgreSQL | 17 | Persistencia de workspaces, pipelines, ejecuciones |
-| **Migraciones** | Flyway | 10.x | Versionado de esquema V1–V4 |
-| **Observabilidad** | Prometheus + Grafana | 2.51 / 10.4 | Métricas de contenedores y JVM |
-| **Infra** | Docker Compose | 3.x | Single-node, 9 servicios, 8 GB RAM mínimo |
+| **Drift** | Evidently AI + PSI | — | Detección de deriva de datos |
+| **Base de Datos** | PostgreSQL | 17 | Workspaces, pipelines, ejecuciones, telemetría |
+| **Migraciones** | Flyway | V1–V11 | Versionado de esquema reproducible |
+| **Observabilidad** | cAdvisor + Prometheus + Grafana | 2.51 / 10.4 | Métricas de contenedores e inferencia |
+| **Pruebas de carga** | K6 (Grafana Labs) | — | Validación de RNF de latencia/concurrencia |
+| **Infra** | Docker Compose | v2 | Single-node · 9 servicios · 8 GB RAM mín. |
+| **CI/CD** | GitHub Actions + Gitea | — | Lint/test/build, push a GHCR, SBOM, Trivy |
 
 ---
 
-## Flujo Principal MLOps
+## Módulos de la plataforma
+
+| Módulo | Para quién | Qué hace |
+|--------|-----------|----------|
+| **Resumen** | Todos | Dashboard de bienvenida: onboarding "Primeros pasos", accesos rápidos, KPIs de inventario + **salud** (tasa de éxito, T_re, despliegues activos, calidad de datos) y estado operativo. |
+| **Espacios de trabajo** | Todos | CRUD de proyectos + historial de ejecuciones. |
+| **Lienzo** | Todos | Constructor visual del pipeline y ejecución del flujo. |
+| **Gestión de Dataset** | Todos | Asignar/reemplazar/eliminar/descargar datasets, con **uso de disco real** por proyecto y cuota. |
+| **Mis modelos** | Todos | Registro de modelos del usuario (versiones, métricas, stage, desplegar). |
+| **Despliegues** | Todos | model-services activos, endpoint, cupo, **probador de `/predict`** (modal con previsualización). |
+| **Monitoreo** | Todos | Telemetría del ciclo de vida + señal de **calidad/drift** por ejecución. |
+| **Usuarios** | ADMIN | Alta y activación/desactivación de usuarios. |
+| **Registro de modelos** | ADMIN | Consola global de MLflow (gobierno). |
+| **Analítica** | ADMIN | Telemetría **global** de toda la plataforma (vista general + por modelo). |
+
+---
+
+## Ciclo de vida MLOps (end-to-end)
 
 ```
- Estudiante                 Backend              Kafka         ML Engine          MLflow
-     │                         │                   │               │                 │
-     │  POST /workspaces        │                   │               │                 │
-     │─────────────────────────▶│                   │               │                 │
-     │  POST /dataset/url       │                   │               │                 │
-     │  { kerasDataset: mnist } │                   │               │                 │
-     │─────────────────────────▶│                   │               │                 │
-     │  POST /pipelines         │                   │               │                 │
-     │─────────────────────────▶│                   │               │                 │
-     │  POST /execute           │                   │               │                 │
-     │─────────────────────────▶│                   │               │                 │
-     │  { status: RUNNING }     │  publish job      │               │                 │
-     │◀─────────────────────────│──────────────────▶│               │                 │
-     │                          │                   │  consume job  │                 │
-     │                          │                   │──────────────▶│                 │
-     │                          │                   │               │  train CNN      │
-     │                          │                   │               │  accuracy=0.91  │
-     │                          │                   │               │─────────────────▶
-     │                          │                   │               │  register model │
-     │                          │                   │               │  v6 registered  │
-     │                          │                   │  publish result               │
-     │                          │                   │◀──────────────│                 │
-     │                          │  consume result   │               │                 │
-     │                          │◀──────────────────│               │                 │
-     │  GET /executions         │  status=COMPLETED │               │                 │
-     │─────────────────────────▶│  mlflowRunId ✓    │               │                 │
-     │  { COMPLETED, v6, 0.91 } │  artifact ✓       │               │                 │
-     │◀─────────────────────────│  metrics ✓        │               │                 │
+ Usuario              Backend            Kafka        ml-engine          MLflow / Docker
+   │  Crear proyecto + dataset │            │              │                    │
+   │──────────────────────────▶│            │              │                    │
+   │  Armar pipeline (Lienzo)  │            │              │                    │
+   │  "Iniciar flujo"          │  job ─────▶│──── consume ▶│  ingesta →         │
+   │──────────────────────────▶│            │              │  preproc → split → │
+   │   logs SSE en vivo ◀───────┼──── logs ──┼──────────────│  entrenar (CNN) →  │
+   │                           │            │              │  métricas + drift →│
+   │                           │  result ◀──│◀──── publish │  registrar modelo ▶│ MLflow v_n
+   │  (auto) Desplegar ────────▶│  build + DooD → levanta model-service :800x → /health ✓
+   │  Probar /predict ─────────▶│  proxy ────────────────────────────────────▶ model-service
+   │  Monitoreo / Analítica ◀───┤  T_re · LT_d · cold start · calidad/drift
 ```
+
+Si el flujo **no** lleva nodo de Despliegue, termina en el entrenamiento (válido: el modelo queda registrado y se puede desplegar luego desde *Mis modelos*).
+
+---
+
+## ML Engine y CNN adaptativa
+
+El `ml-engine` consume trabajos de Kafka y los ejecuta con **Template Method + Strategy**:
+
+```
+PipelineExecutor.execute(job)                ← Template Method (pasos fijos)
+  1. Ingesta     → carga + normalización + split 3-vías (train/val/test)
+  2. Preprocess  → normalización {minmax|zscore|rescale} + (augmentation en train)
+  3. Split       → train / val / test (explícito o auto por % Train)
+  4. Entrenar    → TensorFlowStrategy | PyTorchStrategy        ← Strategy (factory)
+  5. Métricas    → sklearn (precision/recall/f1/roc-auc) + matriz de confusión
+  6. Drift       → Evidently + PSI (split-quality y re-entrenamiento)
+  7. Registrar   → MLflow (params, métricas, artefacto, versión, reportes de drift)
+       ├── Eventos por fase/época → Kafka logs → SSE (consola en vivo)
+       └── Resultado final        → Kafka results → orquestador (BD + telemetría)
+```
+
+**La CNN adaptativa** se dimensiona sola al `input_shape` detectado (2–3 bloques conv según resolución, cabezal `GAP → Dense(128) → Dropout → softmax`, 1 ó 3 canales, `num_classes` autodetectado). Opciones configurables por nodo: optimizador (`adam/adamw/sgd/rmsprop`), BatchNorm, Early Stopping (con restauración de mejores pesos), Data Augmentation, normalización, tamaño de imagen y % de train.
+
+### Métricas honestas (test ciego)
+
+Para datasets sin split de test explícito, el ml-engine reserva un **test ciego** (split 3-vías estratificado). La métrica **principal** se reporta sobre el **test** (datos no vistos ni usados en early-stopping) — no sobre validación — para evitar métricas optimistas.
+
+---
+
+## Calidad de datos y Data Drift
+
+SynapseOps vigila la **calidad del entrenamiento** y la **deriva de datos** y la muestra al usuario:
+
+| Señal | Qué detecta | Dónde se muestra |
+|-------|-------------|------------------|
+| **Overfitting** | Gap entre accuracy de train y validación (umbrales 8% / 15%) | Banner en el nodo Entrenamiento + columna *Calidad* en Monitoreo |
+| **Drift de split** | La validación distribuye distinto del train (split sesgado) | Nodo Entrenamiento + Monitoreo |
+| **Drift de re-entrenamiento** | El dataset cambió respecto a la corrida anterior del mismo proyecto | Nodo Entrenamiento + Monitoreo |
+| **Drift de inferencia** | Las imágenes que llegan a `/predict` difieren del entrenamiento | Prometheus (`inference_drift_psi`) + endpoint `/drift` del model-service |
+
+La señal numérica usa **PSI** (Population Stability Index) sobre features compactas (media/σ por canal, brillo, contraste) — robusta e interpretable — y se complementa con un **reporte Evidently** guardado como artefacto del run en MLflow.
+
+---
+
+## Despliegue dinámico de inferencia
+
+Al desplegar (automático al terminar el flujo, o manual desde *Mis modelos* / *Despliegues*), el orquestador:
+
+1. Descarga/valida el artefacto del modelo desde MLflow / `/storage`.
+2. **Genera** el `Dockerfile` y `docker-compose.yml` del model-service (SnakeYAML) y los valida.
+3. **Construye** la imagen y **levanta** el contenedor `modelo_{workspaceId}` con **puerto dinámico** vía DooD.
+4. Ejecuta un **health-check** con reintentos y mide el **cold start** (ms).
+5. Expone `/predict` (acepta imagen base64 o multipart), `/health` y `/metrics`.
+
+Cupo configurable de despliegues concurrentes (default 3, alineado con el presupuesto de 8 GB). El módulo **Despliegues** incluye un **probador de inferencia** (modal con drag-and-drop, previsualización y soporte de múltiples imágenes).
+
+---
+
+## Telemetría y Observabilidad
+
+- **Process Tracker (backend):** marca de tiempo de cada fase del ciclo y cálculo de **T_re** (tiempo de re-entrenamiento), **LT_d** (lead time de despliegue), **cold start**, **tasa de completitud**, **tasa de despliegues exitosos** y **esfuerzo de interacción**. Endpoints `/telemetry/*` (usuario) y `/analytics/*` (global, ADMIN), con export CSV.
+- **Stack Prometheus/Grafana:** cAdvisor recolecta métricas de contenedores; Prometheus las scrapea (incluye `/actuator/prometheus` del backend y `/metrics` del ml-engine y de cada model-service vía Docker SD); Grafana provisiona el dashboard *MLOps Platform Overview* (CPU, RAM, latencia P95 de inferencia, contenedores, throughput).
+
+> En **Docker Desktop / WSL2**, los paneles por-contenedor de cAdvisor pueden mostrar "No data" (limitación de cgroups del entorno); funcionan en un host Linux. Los paneles de inferencia (P95, throughput) sí se pueblan en cualquier entorno.
+
+---
+
+## Datasets soportados
+
+| Tipo | Método | Detalle |
+|------|--------|---------|
+| **Built-in (Keras)** | `keras://mnist`, `keras://fashion_mnist` | Cargados como numpy (sin TensorFlow). 28×28×1, 10 clases. |
+| **URL** | `{ "url": "https://…/data.zip" }` | `.zip` público. **Blindado:** valida content-type, sigue redirecciones, detecta páginas HTML/login (Kaggle), tope de tamaño y anti *zip-slip*. |
+| **Subida ZIP / imagen** | `multipart/form-data` | `.zip` con imágenes o `.png/.jpg/.jpeg` sueltas. |
+
+**Autodetección de layout** (datasets propios): splits explícitos (`train/val[/test]` con alias), **carpetas-clase planas** (auto-split 3-vías), **solo `train/`** y estructuras con carpetas hermanas (ignora `annotations/`, docs, metadata). Guardrails de memoria (8 GB): ≤ 50 clases, ≤ 50 000 imágenes (submuestreo estratificado), ≥ 2 clases. **Cuota de disco por workspace** configurable.
 
 ---
 
 ## Prerrequisitos
 
 - **Docker Desktop** ≥ 4.x con Docker Compose v2
-- **RAM** mínima: 8 GB (recomendado: 16 GB para entrenamiento)
-- **CPU**: 4 núcleos mínimo
-- **Almacenamiento**: 10 GB libres para imágenes y volúmenes
+- **RAM** ≥ 8 GB (16 GB recomendado para entrenar)
+- **CPU** ≥ 4 núcleos · **Disco** ≥ 10 GB libres
+- (Opcional) GPU NVIDIA + NVIDIA Container Toolkit para entrenamiento acelerado
 
 ---
 
 ## Instalación y Despliegue
 
-### 1. Clonar el repositorio
+### 1. Clonar
 
 ```bash
 git clone https://github.com/Tunkifloo/SynapseOps-platform.git
 cd SynapseOps
 ```
 
-### 2. Configurar variables de entorno
+### 2. Variables de entorno
 
-Crea un archivo `.env` en la raíz del proyecto:
+Crea un `.env` en la raíz del proyecto (lo lee `docker compose`):
 
 ```dotenv
 # ── PostgreSQL ─────────────────────────────────────────────
@@ -165,113 +259,88 @@ KAFKA_CLUSTER_ID=synapseops-cluster-01
 GRAFANA_PASSWORD=grafana_password
 
 # ── Storage ────────────────────────────────────────────────
-STORAGE_MAX_FILE_SIZE_MB=500
+STORAGE_MAX_FILE_SIZE_MB=1000      # tamaño máx. por archivo
+STORAGE_MAX_WORKSPACE_MB=2000      # cuota de disco por proyecto
 
 # ── Perfil ─────────────────────────────────────────────────
 SPRING_PROFILES_ACTIVE=prod
 ```
 
-### 3. Levantar el stack completo
+### 3. Levantar el stack
 
 ```bash
-# Construir imágenes y levantar los 9 servicios
-docker compose up -d --build
-
-# Verificar que todos los servicios están healthy
-docker compose ps
+docker compose up -d --build      # construye y levanta los 9 servicios
+docker compose ps                 # verifica que estén healthy
 ```
 
-### 3.1. Despliegue CPU vs GPU (NVIDIA)
+### 3.1. CPU vs GPU (NVIDIA)
 
-El `ml-engine` entrena en **CPU por defecto** y detecta GPU automáticamente
-(`tf.config` / `torch.cuda`); si no hay GPU, hace *fallback* a CPU sin cambios.
+El `ml-engine` detecta GPU automáticamente (`tf.config` / `torch.cuda`) y hace *fallback* a CPU.
 
-**CPU (laboratorio estándar, default):**
 ```bash
+# CPU (laboratorio estándar, default)
 docker compose up -d --build
-# Imagen ml-engine ~5-7 GB (usa tensorflow-cpu; NO arrastra librerías CUDA).
-```
 
-**GPU (PC/labs con NVIDIA RTX):**
-```bash
-# Requisitos del host: driver NVIDIA + NVIDIA Container Toolkit.
-#   - Linux: instalar nvidia-container-toolkit y reiniciar Docker.
-#   - Windows: Docker Desktop con backend WSL2 + driver NVIDIA reciente
-#     (la GPU se expone a los contenedores vía WSL2; sin pasos extra de toolkit).
-
-# Construye la imagen GPU (TensorFlow[and-cuda] + PyTorch CUDA cu121) y levanta:
+# GPU (host con driver NVIDIA + Container Toolkit; en Windows, Docker Desktop + WSL2)
 docker compose -f docker-compose.yml -f docker-compose.gpu.yml build ml-engine
 docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
-
-# Verifica en logs que usa la GPU:
-docker compose logs ml-engine | grep -E "TF GPU|CUDA:"   # vs "Usando CPU"
 ```
 
-> El override `docker-compose.gpu.yml` cambia el build-arg `REQUIREMENTS` a
-> `requirements-gpu.txt` y reserva la GPU (`deploy.resources` + vars NVIDIA).
-> ⚠️ La imagen GPU es grande (~varios GB extra por CUDA): asegura disco libre.
+> El override GPU usa `requirements-gpu.txt` (TensorFlow[and-cuda] + PyTorch CUDA) y reserva la GPU. ⚠️ La imagen GPU es grande — asegura disco libre.
 
-### 4. Verificar el despliegue
+### 4. Verificar y acceder
 
 ```bash
-# Backend health check
-curl http://localhost:8080/actuator/health
-
-# ML Engine health check  
-curl http://localhost:8000/health
-
-# MLflow UI
-open http://localhost:5000
+curl http://localhost:8080/actuator/health   # backend
+curl http://localhost:8000/health            # ml-engine
 ```
+
+| Servicio | URL | Credenciales |
+|----------|-----|--------------|
+| **Frontend** | http://localhost:3000 | `superadmin` / tu `ADMIN_PASSWORD` |
+| **Swagger (API)** | http://localhost:8080/swagger-ui.html | — |
+| **MLflow** | http://localhost:5000 | — |
+| **Grafana** | http://localhost:3001 | `admin` / tu `GRAFANA_PASSWORD` |
+| **Prometheus** | http://localhost:9090 | — |
 
 ---
 
 ## Servicios y Puertos
 
-| Servicio | Puerto | URL | Descripción |
-|---------|--------|-----|-------------|
-| `frontend-app` | 3000 | http://localhost:3000 | Interfaz React |
-| `backend-orchestrator` | 8080 | http://localhost:8080/api/v1 | API REST + Swagger |
-| `ml-engine` | 8000 | http://localhost:8000 | FastAPI ML |
-| `mlflow-server` | 5000 | http://localhost:5000 | MLflow UI |
-| `grafana-dashboard` | 3001 | http://localhost:3001 | Dashboards |
-| `prometheus-tsdb` | 9090 | http://localhost:9090 | Métricas |
-| `postgres-db` | 5432 | — | Base de datos |
-| `kafka-broker` | 9092/9094 | — | Mensajería |
-| `cadvisor` | 8081 | http://localhost:8081 | Container metrics |
+| Servicio | Puerto | Descripción |
+|----------|--------|-------------|
+| `frontend-app` | 3000 | Interfaz React (nginx + proxy `/api/v1`) |
+| `backend-orchestrator` | 8080 | API REST reactiva + Swagger + telemetría |
+| `ml-engine` | 8000 | FastAPI: entrenamiento, ingesta, drift |
+| `mlflow-server` | 5000 | Tracking + Model Registry |
+| `grafana-dashboard` | 3001 | Dashboards de observabilidad |
+| `prometheus-tsdb` | 9090 | Métricas (TSDB) |
+| `cadvisor` | 8081 | Métricas de contenedores |
+| `postgres-db` | 5432 | Base de datos |
+| `kafka-broker` | 9092 / 9094 | Mensajería (KRaft) |
+| `modelo_{ws}` | 8001+ | model-service de inferencia (creado en runtime) |
 
 ---
 
-## Comandos Útiles
+## Validación de Rendimiento (RNF)
 
-```bash
-# Ver logs en tiempo real del backend
-docker compose logs -f backend-orchestrator
+Pruebas de carga con **K6** (decisión ADR-006) sobre `/predict` del model-service:
 
-# Ver logs del ciclo de entrenamiento
-docker compose logs -f ml-engine
+| Requisito | Métrica | Umbral | Resultado |
+|-----------|---------|--------|-----------|
+| **RN-002** | Latencia P95 de `/predict` (50 VUs) | < 2.0 s | **29 ms** ✅ |
+| **RN-002** | Tasa de error | < 1 % | **0 %** ✅ |
+| **RN-001** | RAM total del stack bajo carga | ≤ 6 GB | **4.76 GB** ✅ |
+| **RN-001** | CPU total del stack bajo carga | ≤ 4 núcleos | ~4 (marginal) ⚠️ |
 
-# Detener todos los servicios
-docker compose down
+Harness reproducible en `infra/load-tests/` (script K6, parser de resultados, muestreo de recursos).
 
-# Detener y eliminar volúmenes (reset completo)
-docker compose down -v
+---
 
-# Rebuild de un servicio específico
-docker compose build --no-cache backend-orchestrator
-docker compose up -d backend-orchestrator
+## CI/CD
 
-# Entrar a la consola de PostgreSQL
-docker exec -it postgres-db psql -U postgres -d orchestrator
-
-# Ver consumer groups de Kafka
-docker exec kafka-broker /opt/kafka/bin/kafka-consumer-groups.sh \
-  --bootstrap-server localhost:9092 --list
-
-# Consultar tópicos
-docker exec kafka-broker /opt/kafka/bin/kafka-topics.sh \
-  --bootstrap-server localhost:9092 --list
-```
+- **GitHub Actions** (`.github/workflows/ci-cd.yml`): lint + tests unitarios (backend JUnit, frontend Vitest, ml-engine pytest) + **build del frontend**; en `main`/tags `v*` construye y publica 3 imágenes a **GHCR** con **SBOM + provenance**, **escaneo Trivy** (→ GitHub Security) y `dependency-review` en PRs. Concurrencia, cachés (Maven/npm/pip) y permisos mínimos.
+- **Gitea (local)** ejecuta el pipeline principal con los tests de integración (Testcontainers: PostgreSQL + Kafka).
 
 ---
 
@@ -280,68 +349,44 @@ docker exec kafka-broker /opt/kafka/bin/kafka-topics.sh \
 ```
 SynapseOps/
 ├── Backend/
-│   ├── backend-orchestrator/          # Spring Boot 4 / WebFlux
-│   │   ├── src/main/java/com/synapseops/orchestrator/
-│   │   │   ├── config/               # Security, Kafka, CORS
-│   │   │   ├── controller/           # REST endpoints
-│   │   │   ├── domain/               # Entidades JPA + Repos
-│   │   │   ├── infra/                # Kafka, MLflow, Docker facades
-│   │   │   └── service/              # Lógica de negocio
-│   │   ├── src/main/resources/
-│   │   │   ├── application.yaml
-│   │   │   ├── application-dev.yaml
-│   │   │   ├── application-prod.yaml
-│   │   │   └── db/migration/         # Flyway V1–V4
+│   ├── backend-orchestrator/        # Spring Boot 4 / WebFlux
+│   │   ├── src/main/java/.../{config,controller,domain,infra,service,mapper}
+│   │   ├── src/main/resources/db/migration/   # Flyway V1–V11
 │   │   └── Dockerfile
-│   │
-│   └── ml-engine/                     # FastAPI + Python 3.11
-│       ├── app/
-│       │   ├── kafka/                # Consumer + Producer
-│       │   ├── pipeline/             # Executor, Training strategies
-│       │   │   ├── training/
-│       │   │   │   ├── tensorflow_strategy.py
-│       │   │   │   └── pytorch_strategy.py
-│       │   │   └── executor.py
-│       │   └── infra/
-│       │       └── mlflow_client.py
-│       ├── main.py
-│       └── Dockerfile
-│
-├── Frontend/                          # React 18 + TypeScript
-│   ├── src/
-│   │   ├── app/router/               # React Router + guards
-│   │   ├── features/                 # Workspaces, Executions, MLflow, Auth
-│   │   ├── modules/                  # Pages por dominio
-│   │   ├── shared/api/               # HTTP client + env
-│   │   └── store/                    # Zustand global state
-│   ├── nginx.conf                    # Proxy inverso → backend
-│   └── Dockerfile                    # Multi-stage: Node build + nginx
-│
+│   ├── ml-engine/                   # FastAPI + Python 3.11
+│   │   ├── app/{kafka,pipeline,infra,api}/
+│   │   │   └── pipeline/{executor.py, drift.py, training/}
+│   │   └── Dockerfile
+│   └── model-service/               # Plantilla del servicio de inferencia (TA-007)
+│       └── server.py                # /predict · /health · /metrics · /drift
+├── frontend/                        # React 18 + TypeScript + Vite
+│   └── src/{features,shared,store,app}/
 ├── infra/
-│   ├── prometheus/prometheus.yml     # Scrape config
-│   └── grafana/
-│       ├── provisioning/             # Datasources
-│       └── dashboards/               # JSON dashboards
-│
-├── docker-compose.yml                # Stack completo (9 servicios)
-└── .env                              # Variables de entorno (no commitear)
+│   ├── prometheus/prometheus.yml
+│   ├── grafana/{provisioning,dashboards}/
+│   └── load-tests/                  # K6 + parsers + muestreo de recursos
+├── .github/workflows/ci-cd.yml
+├── docker-compose.yml               # 9 servicios
+├── docker-compose.gpu.yml           # override GPU del ml-engine
+└── .env                             # variables (no commitear)
 ```
 
 ---
 
 ## Architectural Decision Records (ADRs)
 
-| ADR | Decisión | Justificación clave |
-|-----|---------|---------------------|
-| [ADR-001](docs/ADR001.pdf) | React + React Flow para el canvas | Drag & Drop nativo, nodos custom con estado visual en tiempo real |
-| [ADR-002](docs/ADR002.pdf) | SSE para logs en tiempo real | Unidireccional, compatible con WebFlux sin overhead de WebSocket bidireccional |
-| [ADR-003](docs/ADR003.pdf) | Prometheus + Grafana | Standard de facto para métricas de contenedores, integración nativa con Spring Actuator |
-| [ADR-004](docs/ADR004.pdf) | Docker-outside-of-Docker (DooD) | Spring Boot controla el Docker Engine del host para despliegue dinámico de model-services |
-| [ADR-005](docs/ADR005.pdf) | Patrones SOLID (Strategy, Builder, Observer, Facade) | `TensorFlowStrategy` / `PyTorchStrategy` intercambiables sin modificar el executor |
-| [ADR-007](docs/ADR007.pdf) | MLflow como fuente única de verdad | API REST nativa permite a Spring Boot obtener `artifact_uri` programáticamente |
-| [ADR-008](docs/ADR008.pdf) | Kafka KRaft (sin ZooKeeper) | Elimina dependencia de ZooKeeper, modo combinado broker+controller en un único contenedor |
-| [ADR-009](docs/ADR009.pdf) | SnakeYAML + Mustache para IaC generado | Generación de `Dockerfile` y `docker-compose.yml` en runtime desde plantillas tipadas |
-| [ADR-011](docs/ADR011.pdf) | Spring WebFlux reactivo | Non-blocking I/O para manejar concurrencia en pipelines de entrenamiento largos |
+| ADR | Decisión | Justificación |
+|-----|---------|---------------|
+| ADR-001 | React + React Flow para el lienzo | Drag & drop, nodos custom con estado visual en vivo |
+| ADR-002 | SSE para logs en tiempo real | Unidireccional, sin overhead de WebSocket bidireccional |
+| ADR-003 | Prometheus + Grafana + cAdvisor | Estándar de facto para métricas de contenedores |
+| ADR-004 | Docker-outside-of-Docker (DooD) | El orquestador maneja el Docker del host para desplegar model-services |
+| ADR-005 | Patrones SOLID (Strategy/Builder/Facade/Template Method) | Estrategias TF/PyTorch intercambiables sin tocar el executor |
+| ADR-006 | **K6** para pruebas de carga (vs JMeter) | Bajo overhead, scripting versionable, percentiles nativos |
+| ADR-007 | MLflow como fuente única de verdad | API REST: artefactos, runs y versiones programáticos |
+| ADR-008 | Kafka KRaft (sin ZooKeeper) | Broker+controller en un contenedor; CI principal en Gitea |
+| ADR-009 | SnakeYAML para IaC generado en runtime | Dockerfile/compose del model-service tipados y validados |
+| ADR-011 | Spring WebFlux reactivo | I/O no bloqueante para pipelines de entrenamiento largos |
 
 ---
 
@@ -350,40 +395,8 @@ SynapseOps/
 | Tópico | Dirección | Descripción |
 |--------|-----------|-------------|
 | `mlops.pipeline.requests` | orchestrator → ml-engine | Job de entrenamiento con hiperparámetros |
-| `mlops.pipeline.results` | ml-engine → orchestrator | Resultado con `run_id`, `model_version`, métricas |
-
-**Payload de job:**
-```json
-{
-  "executionId": "24",
-  "workspaceId": "1",
-  "framework": "tensorflow",
-  "architecture": "cnn_adaptive",
-  "epochs": 5,
-  "batchSize": 64,
-  "learningRate": 0.001,
-  "numClasses": 10,
-  "modelName": "mnist_cnn_demo",
-  "datasetPath": "keras://mnist"
-}
-```
-
-**Payload de resultado:**
-```json
-{
-  "execution_id": "24",
-  "status": "SUCCESS",
-  "run_id": "3dfe36ec660343d9b6515b3d56ac1f3c",
-  "model_version": "6",
-  "artifact_path": "/storage/1/models/24/model.keras",
-  "metrics": {
-    "final_accuracy": 0.9120,
-    "final_loss": 0.2929,
-    "val_accuracy": 0.9337,
-    "val_loss": 0.2143
-  }
-}
-```
+| `mlops.pipeline.results` | ml-engine → orchestrator | Resultado: `run_id`, `model_version`, métricas, drift, overfitting |
+| `mlops.pipeline.logs` | ml-engine → orchestrator | Eventos por fase/época → SSE (consola en vivo) |
 
 ---
 
@@ -391,228 +404,71 @@ SynapseOps/
 
 | Acción | COLLABORATOR | ADMIN |
 |--------|:---:|:---:|
-| Crear / gestionar workspaces propios | ✅ | ✅ |
-| Subir datasets | ✅ | ✅ |
-| Crear y ejecutar pipelines | ✅ | ✅ |
-| Ver ejecuciones propias | ✅ | ✅ |
-| Ver todos los usuarios | ❌ | ✅ |
-| Activar / desactivar usuarios | ❌ | ✅ |
-| Acceder al Model Registry (MLflow) | ❌ | ✅ |
+| Crear/gestionar workspaces, datasets, pipelines propios | ✅ | ✅ |
+| Entrenar, desplegar y probar inferencia propia | ✅ | ✅ |
+| Ver telemetría (Monitoreo) propia | ✅ | ✅ |
+| Ver todos los usuarios · activar/desactivar | ❌ | ✅ |
+| Registro global de modelos (MLflow) | ❌ | ✅ |
+| Analítica global de la plataforma | ❌ | ✅ |
 | Ver todos los workspaces | ❌ | ✅ |
-
----
-
-## Datasets Soportados
-
-| Tipo | Método | Detalle |
-|------|--------|---------|
-| **Built-in (Keras)** | `keras://mnist`, `keras://fashion_mnist` | Cargados como numpy (sin TensorFlow), desde mirror HTTPS fiable. 28×28×1, 10 clases. |
-| **URL** | `{ "url": "https://…/data.zip" }` | `.zip` de imágenes público. Servicio **blindado**: valida tipo de contenido, sigue redirecciones, detecta páginas HTML/login (p. ej. Kaggle), tope de tamaño y anti *zip-slip*. |
-| **Subida ZIP** | `multipart/form-data` | `.zip` con imágenes; también `.png/.jpg/.jpeg` sueltas. |
-
-**Autodetección de esquema** (datasets propios, ZIP/URL): el `ml-engine` reconoce
-automáticamente dos *layouts* y **detecta nº de clases y `input_shape`**:
-1. **Splits explícitos:** `train/<clase>/*` + `(val|validation)/<clase>/*` `[+ test/<clase>/*]`.
-2. **Carpetas-clase planas:** `<clase>/*` → auto-split (ratio configurable en el nodo Split).
-
-Guardrails de memoria (entorno 8 GB): ≤ 50 clases, ≤ 20 000 imágenes, ≥ 2 clases.
-
----
-
-## Frameworks y CNN
-
-| Framework | Arquitectura | Artefacto |
-|-----------|--------------|-----------|
-| **TensorFlow / Keras** | `cnn` (adaptativa) | `.keras` |
-| **PyTorch** | `cnn` (adaptativa) | `.pt` |
-
-Ambos frameworks comparten la **misma CNN adaptativa** y exponen las mismas
-opciones (optimizador, BatchNorm, Early Stopping, Data Augmentation,
-normalización). El `num_classes` y el `input_shape` se **autodetectan** del dataset.
-
----
-
-## ML Engine y CNN Adaptativa (en detalle)
-
-### Arquitectura del ML Engine (FastAPI + Kafka)
-
-El `ml-engine` es un servicio FastAPI que consume trabajos de entrenamiento de
-Kafka y los ejecuta con un **Template Method + Strategy**:
-
-```
-Kafka topic mlops.pipeline.requests
-        │  (consumer daemon thread, procesamiento serial)
-        ▼
-PipelineExecutor.execute(job)        ← Template Method (pasos fijos)
-   1. Ingesta      → ingestion.load_dataset(...)   (carga + normalización + split)
-   2. Preprocess   → normalización {minmax|zscore|rescale} + (augmentation en train)
-   3. Split        → train/val/test (explícito o auto por trainRatio)
-   4. Entrenar     → TensorFlowStrategy | PyTorchStrategy   ← Strategy
-   5. Métricas     → sklearn (precision/recall/f1/roc-auc) + matriz de confusión
-   6. Registrar    → MLflow (params, métricas, artefacto, versión del modelo)
-        │
-        ├── Eventos por fase  →  Kafka mlops.pipeline.logs  →  SSE (consola en vivo)
-        └── Resultado final   →  Kafka mlops.pipeline.results → orquestador (BD)
-```
-
-- **Selección de framework:** `_select_strategy(job.framework)` (factory) elige
-  `TensorFlowStrategy` o `PyTorchStrategy`. El executor no conoce detalles del framework.
-- **Streaming de logs:** cada fase y cada época emiten un evento (`LogProducer`,
-  con *flush* inmediato) que el orquestador reenvía por SSE a la consola del lienzo.
-- **Autodetección de hardware:** `tf.config` / `torch.cuda` → GPU si existe, si no CPU.
-
-### La CNN adaptativa
-
-Una única CNN que **se adapta al `input_shape` detectado** (no requiere que el
-usuario defina capas):
-
-- **Bloques convolucionales según resolución:**
-  - Entrada pequeña (H ≤ 32, p. ej. 28×28 MNIST): **2 bloques** Conv→(BN)→ReLU→MaxPool con 32, 64 filtros.
-  - Entrada mayor (H > 32, imágenes a color): **3 bloques** con 32, 64, 128 filtros.
-- **Cabezal:** `GlobalAveragePooling → Dense(128, ReLU) → Dropout(0.4) → Dense(num_classes, softmax)`.
-- **Adaptación de canales:** acepta 1 canal (escala de grises) o 3 (RGB) automáticamente.
-- **`num_classes`** = autodetectado del dataset (la última capa se dimensiona sola).
-
-### Opciones de entrenamiento (configurables por nodo)
-
-| Opción | Nodo | Valores | Efecto |
-|--------|------|---------|--------|
-| **Optimizador** | Entrenamiento | `adam` · `adamw` · `sgd` (momentum) · `rmsprop` | Algoritmo de optimización. |
-| **Batch Normalization** | Entrenamiento | on/off | Inserta `BatchNorm` tras cada conv (estabiliza/acelera). |
-| **Early Stopping** | Entrenamiento | on/off + paciencia + monitor (`val_loss`/`val_accuracy`) | Detiene si no mejora; **restaura los mejores pesos**. |
-| **Data Augmentation** | Preprocesamiento | on/off | TF: `RandomFlip/Rotation/Zoom`; PyTorch: flip aleatorio por lote. |
-| **Normalización** | Preprocesamiento | `minmax [0,1]` · `zscore (media/σ)` · `rescale [-1,1]` | Escalado de píxeles. |
-| **Tamaño de imagen** | Preprocesamiento | px (datasets propios) | *Resize* de entrada. |
-| **% Train** | Split | 50–90 | Ratio del auto-split (datasets sin splits explícitos). |
-
-### Métricas registradas (por modelo/versión)
-
-- **Entrenamiento/validación:** `accuracy`/`loss` (train) y `val_accuracy`/`val_loss` (Keras por época).
-- **Avanzadas (sklearn, sobre val y test):** `precision`, `recall`, `f1` (macro), `roc_auc` (OVR macro).
-- **Matriz de confusión:** se registra como tag JSON y se renderiza interactiva en *Detalles del modelo*.
-
-> El encabezado de cada versión prioriza **test → val → train accuracy** (métrica
-> honesta de desempeño); el detalle muestra todos los hiperparámetros + métricas.
-
----
-
-## Lienzo Low-Code (Sprint 2)
-
-El módulo **Lienzo** es el centro operativo: se arrastran/tocan nodos
-(Ingesta → Preprocesamiento → Split → Entrenamiento → Despliegue), se conectan en
-orden y se ejecuta todo con **"Iniciar flujo"**:
-
-- **Validación del grafo** antes de ejecutar: nodos presentes y **conectados en
-  orden**, sin duplicados, todos configurados y con dataset asignado (mensajes claros).
-- **Estados por nodo en vivo** (Idle → Running → Success/Error) mapeados a las
-  fases reales que emite el ml-engine por SSE.
-- **Consola de logs persistente** (siempre visible, desglosable; reanuda el
-  historial al volver a la vista vía *replay* SSE).
-- **Edición a prueba de errores:** borrador automático del lienzo, indicador de
-  cambios sin guardar, aviso al salir y guardia por nodo.
-- **Gestión de dataset** desde el **nodo Ingesta** (built-in / URL / ZIP) y de
-  **pipelines** (crear/renombrar/eliminar) desde el propio Lienzo.
-
-Módulos relacionados:
-- **Espacios de trabajo:** CRUD de proyectos + listados detallados (pipelines,
-  dataset, **historial de ejecuciones**).
-- **Mis modelos:** registro de modelos del usuario (versiones, métricas, stage,
-  *deploy handoff*, eliminar) con RBAC por workspace.
 
 ---
 
 ## API Reference
 
-La documentación Swagger completa está disponible en:
+Swagger completo en `http://localhost:8080/swagger-ui.html`. Endpoints principales:
 
 ```
-http://localhost:8080/swagger-ui.html
+# Auth
+POST   /api/v1/auth/login | /logout
+
+# Workspaces · Datasets
+GET|POST|PUT|DELETE  /api/v1/workspaces[/{id}]
+POST   /api/v1/workspaces/{id}/dataset          # subir .zip/imagen
+POST   /api/v1/workspaces/{id}/dataset/url      # URL o keras://
+GET|DELETE /api/v1/workspaces/{id}/dataset/{file}
+
+# Pipelines · Canvas · Ejecuciones
+GET|POST|PUT|DELETE /api/v1/workspaces/{w}/pipelines[/{p}]
+GET|PUT  /api/v1/workspaces/{w}/pipelines/{p}/canvas
+POST   /api/v1/workspaces/{w}/pipelines/{p}/execute
+GET    /api/v1/workspaces/{w}/pipelines/{p}/executions[/{e}]
+GET    /api/v1/workspaces/{w}/pipelines/{p}/executions/{e}/logs   # SSE
+
+# Despliegues (model-services)
+GET    /api/v1/deployments
+POST   /api/v1/deployments                      # body: { runId }
+DELETE /api/v1/deployments/{executionId}
+POST   /api/v1/deployments/{executionId}/predict
+
+# Telemetría (usuario) y Analítica (ADMIN)
+GET    /api/v1/telemetry/{lifecycle,by-model,lifecycle.csv}
+GET    /api/v1/analytics/{lifecycle,by-model,lifecycle.csv}
+
+# Storage · Mis modelos · MLflow (ADMIN) · Usuarios (ADMIN)
+GET    /api/v1/storage/{limits,usage}
+GET    /api/v1/workspaces/{w}/models[/{name}/versions[/{v}/details]]
+GET    /api/v1/mlflow/{health,experiments,models,runs/{id}}
+GET|POST /api/v1/users ; PATCH /api/v1/users/{id}
 ```
-
-Endpoints principales:
-
-```
-POST   /api/v1/auth/login
-POST   /api/v1/auth/logout
-
-GET    /api/v1/workspaces
-POST   /api/v1/workspaces
-PUT    /api/v1/workspaces/{id}
-DELETE /api/v1/workspaces/{id}
-POST   /api/v1/workspaces/{id}/dataset/url
-POST   /api/v1/workspaces/{id}/dataset
-
-GET    /api/v1/workspaces/{wId}/pipelines
-POST   /api/v1/workspaces/{wId}/pipelines
-PUT    /api/v1/workspaces/{wId}/pipelines/{pId}
-DELETE /api/v1/workspaces/{wId}/pipelines/{pId}
-
-POST   /api/v1/workspaces/{wId}/pipelines/{pId}/execute
-GET    /api/v1/workspaces/{wId}/pipelines/{pId}/executions
-GET    /api/v1/workspaces/{wId}/pipelines/{pId}/executions/{eId}
-
-GET    /api/v1/workspaces/{wId}/pipelines/{pId}/canvas        # topología (HU-024)
-PUT    /api/v1/workspaces/{wId}/pipelines/{pId}/canvas
-GET    /api/v1/workspaces/{wId}/pipelines/{pId}/executions/{eId}/logs   # SSE (replay)
-
-# Perfil propio
-GET    /api/v1/users/me
-PUT    /api/v1/users/me
-PATCH  /api/v1/users/me/password
-
-# Mis modelos (registro con alcance de workspace — RBAC DN-3)
-GET    /api/v1/workspaces/{wId}/models
-GET    /api/v1/workspaces/{wId}/models/{name}/versions
-GET    /api/v1/workspaces/{wId}/models/{name}/versions/{v}/details   # params + métricas + matriz
-DELETE /api/v1/workspaces/{wId}/models/{name}/versions/{v}
-POST   /api/v1/workspaces/{wId}/models/{name}/versions/{v}/stage     # None|Staging|Production|Archived
-
-GET    /api/v1/users
-POST   /api/v1/users
-PATCH  /api/v1/users/{id}            # body: {"enabled": bool} — activar/desactivar (idempotente)
-
-# Consola global de MLflow (solo ADMIN, lectura de gobierno)
-GET    /api/v1/mlflow/health
-GET    /api/v1/mlflow/experiments
-GET    /api/v1/mlflow/models
-GET    /api/v1/mlflow/models/{name}/versions
-GET    /api/v1/mlflow/runs/{runId}
-```
-
-> **`/execute`** acepta además (opcional): `optimizer`, `batchNorm`, `earlyStopping`,
-> `esPatience`, `esMonitor`, `normalization`, `dataAugmentation`, `imageSize`,
-> `trainRatio`. La gestión de escritura de modelos es **por workspace** (DN-3): el
-> ADMIN es solo-lectura sobre lo ajeno; el dueño gestiona lo suyo.
 
 ---
 
 ## Roadmap
 
-- [x] **Sprint 1** — Arquitectura base, backend-orchestrator, ml-engine, Kafka, MLflow, JWT/RBAC
-- [x] **Sprint 2** — Lienzo Drag & Drop (5 nodos) + **Iniciar flujo** (validación de grafo, ejecución del flujo completo, estados por nodo), **logs SSE en vivo** (con replay/historial), CRUD de modelos versionados con RBAC (Mis modelos), módulo Espacios de trabajo + historial de ejecuciones, perfil de usuario, mejoras de CNN (optimizador, BatchNorm, Early Stopping, Data Augmentation, normalizaciones), métricas avanzadas (precision/recall/f1/roc-auc) + matriz de confusión, dataset blindado (URL/ZIP), build CPU/GPU, tests (JUnit + Vitest)
-- [ ] **Sprint 3** — Despliegue dinámico de model-service (`/predict`), dashboards Grafana, pruebas de carga JMeter/K6, cuestionario SUS (32 estudiantes)
+- [x] **Sprint 1** — Arquitectura base: orchestrator, ml-engine, Kafka, MLflow, PostgreSQL, JWT/RBAC.
+- [x] **Sprint 2** — Lienzo low-code (5 nodos) + *Iniciar flujo*, logs SSE en vivo, modelos versionados (RBAC), CNN configurable + métricas avanzadas, dataset blindado, build CPU/GPU.
+- [x] **Sprint 3** — Despliegue dinámico de model-services (`/predict`), telemetría de ciclo de vida (Process Tracker) + módulos Monitoreo/Analítica, **detección de calidad y data drift** (Evidently + PSI), observabilidad Prometheus/Grafana, split 3-vías con test ciego, validación de RNF con K6, gestión de almacenamiento con cuotas, CI/CD endurecido.
 
 ---
 
 ## Contribuidores
 
-| Nombre | Rol | Contacto |
-|--------|-----|---------|
-| **Adrian Nicolás Cisneros Bartra** | Arquitecto · Full Stack · ML Engineer | UPAO — Ing. Computación y Sistemas |
-| **Alfredo Rogger Guzman Moscol** | Full Stack · QA Engineer | UPAO — Ing. Computación y Sistemas |
-| **Walter Cueva Chavez** | Asesor Técnico | UPAO |
-
----
-
-## Contexto Académico
-
-Este proyecto forma parte de la investigación:
-
-> **"Impacto de una plataforma web low-code basada en contenedores para optimizar la eficiencia operativa y usabilidad en la gestión del ciclo de vida MLOps en proyectos académicos universitarios"**
->
-> Universidad Privada Antenor Orrego (UPAO) — Trujillo, Perú · 2026
-
-La validación empírica incluye la aplicación del cuestionario **SUS (System Usability Scale)** en una muestra de 32 proyectos estudiantiles, con análisis estadístico mediante IBM SPSS / Python SciPy.
+| Nombre | Rol |
+|--------|-----|
+| **Adrian Nicolás Cisneros Bartra** | Arquitecto · Full Stack · ML Engineer |
+| **Alfredo Rogger Guzman Moscol** | Full Stack · QA Engineer |
+| **Walter Cueva Chavez** | Asesor Técnico |
 
 ---
 
@@ -626,7 +482,7 @@ MIT License — Copyright (c) 2026 Adrian Cisneros, Alfredo Guzman
 
 <div align="center">
 
-**SynapseOps** — *Democratizando MLOps en la academia*
+**SynapseOps** — *Del dataset al endpoint, en un lienzo.*
 
 `docker compose up -d` — Un comando. Nueve servicios. Ciclo MLOps completo.
 

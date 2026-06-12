@@ -234,6 +234,7 @@ export function WorkspacesPage({ token, searchQuery, onAuthError }: WorkspacesPa
 
   const openInBuilder = (ws: WorkspaceSummary) => {
     setWorkspace(ws.name)
+    localStorage.setItem('synapseops:builder-ws-id', String(ws.idWorkspace))
     navigate('/builder')
   }
 

@@ -32,10 +32,14 @@ build/
 ### VS Code ###
 .vscode/
 
-# Python
-ml-engine/.venv/
-ml-engine/__pycache__/
-ml-engine/*.pyc
+# Python (recursivo: el código vive en Backend/ml-engine, Backend/model-service, …)
+**/.venv/
+**/__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 ml-engine/.env
 
 # Environment variables
@@ -56,3 +60,10 @@ CLAUDE.md
 
 # Storage
 /storage-dev
+
+# Load-test outputs (resultados de corrida — no versionar; el fixture test_image.png sí se versiona)
+/infra/load-tests/summary.json
+/infra/load-tests/resource-usage.csv
+/infra/load-tests/*.summary.json
+/infra/load-tests/results*.json
+/infra/load-tests/results*.csv

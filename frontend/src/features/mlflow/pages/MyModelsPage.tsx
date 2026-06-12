@@ -21,6 +21,7 @@ import {
   transitionWorkspaceModelStage,
 } from '@/features/mlflow/api'
 import { stageVariant, VersionCard, type RegistryApi } from '@/features/mlflow/components/ModelRegistry'
+import { deployModel } from '@/features/deployments/api'
 import { useMyModels } from '@/features/mlflow/useMyModels'
 
 interface MyModelsPageProps {
@@ -68,6 +69,7 @@ export function MyModelsPage({ token, searchQuery, onAuthError }: MyModelsPagePr
         return { params: s.params ?? {}, metrics: s.metrics ?? {}, confusionMatrix: parseConfusion(s.tags) }
       },
       allowDeploy: true,
+      deploy: (runId) => deployModel(token, runId),
     }
   }, [token, selected])
 

@@ -31,15 +31,16 @@ KERAS_DATASETS = ("mnist", "fashion_mnist")
 
 # ── Guardrails para el contenedor de 8GB ───────────────────────────────────────
 IMG_SIZE: Tuple[int, int] = (64, 64)   # tamaño fijo de entrada para datasets propios
-MAX_IMAGES = 20_000                    # tope de imágenes a materializar en memoria
-MAX_CLASSES = 50                       # tope de clases
-MIN_IMAGES = 4                         # mínimo razonable para entrenar
+MAX_IMAGES = 50_000                    # tope de imágenes a materializar en memoria
+MIN_IMAGES = 20                         # mínimo por clase para entrenar (evita overfitting)
+MAX_CLASSES = 50                        # tope de clases
+_HOLDOUT_FRACTION = 0.15               # test ciego a reservar cuando no hay split 'test'
 IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".bmp")
 
 _SPLIT_ALIASES = {
-    "train": ("train", "training"),
-    "val":   ("val", "valid", "validation"),
-    "test":  ("test", "testing"),
+    "train": ("train", "training", "train_data", "trainset"),
+    "val":   ("val", "valid", "validation", "val_data", "valset"),
+    "test":  ("test", "testing", "test_data", "testset"),
 }
 
 
@@ -238,6 +239,12 @@ def _load_image_dataset(root: Path, size: Tuple[int, int], ratio: float) -> Data
         log.info("Layout detectado: splits explícitos en %s (tamaño=%s)", root, size)
         return _load_explicit_splits(train_dir, val_dir, test_dir, size)
 
+    # Solo 'train' (sin val): NO es una clase llamada "train" — se trata su contenido
+    # como carpetas-clase planas y se auto-divide en 3 vías.
+    if train_dir and not val_dir:
+        log.info("Layout detectado: solo split 'train' → auto-split 3-vías sobre sus clases.")
+        return _load_flat_with_autosplit(train_dir, size, ratio)
+
     log.info("Layout detectado: carpetas-clase planas en %s (auto-split %d/%d, tamaño=%s)",
              root, int(ratio * 100), int((1 - ratio) * 100), size)
     return _load_flat_with_autosplit(root, size, ratio)
@@ -248,6 +255,13 @@ def _load_explicit_splits(train_dir: Path, val_dir: Path,
     train_g = _gather_class_files(train_dir)
     val_g   = _gather_class_files(val_dir)
     test_g  = _gather_class_files(test_dir) if test_dir else {}
+
+    # Métricas honestas: si el dataset NO trae split de test, se separa uno del train
+    # (estratificado, semilla fija) para reportar sobre datos verdaderamente no vistos.
+    if not test_g:
+        train_g, test_g = _carve_holdout(train_g, _HOLDOUT_FRACTION)
+        log.info("Sin split 'test' explícito → se reserva %.0f%% del train como test ciego.",
+                 _HOLDOUT_FRACTION * 100)
 
     # Mapeo de clases consistente entre splits (unión ordenada).
     class_names = sorted(set(train_g) | set(val_g) | set(test_g))
@@ -272,6 +286,8 @@ def _load_explicit_splits(train_dir: Path, val_dir: Path,
     X_test = y_test = None
     if test_g:
         X_test, y_test = _materialize(test_g, class_to_idx, size)
+        if X_test.size == 0:
+            X_test = y_test = None
 
     input_shape = X_train.shape[1:]
     log.info("Splits explícitos: train=%d val=%d test=%s clases=%d",
@@ -289,27 +305,46 @@ def _load_flat_with_autosplit(root: Path, size: Tuple[int, int], ratio: float) -
     gathered = _cap_to_limit(gathered, MAX_IMAGES)   # fallback: recorta al tope de memoria
     class_to_idx = {c: i for i, c in enumerate(class_names)}
 
+    # Split 3-vías estratificado por clase (semilla fija → determinista).
+    # `ratio` = fracción de train; el resto se reparte mitad val / mitad test ciego.
     rng = np.random.default_rng(42)
     train_g: Dict[str, List[Path]] = {}
     val_g:   Dict[str, List[Path]] = {}
+    test_g:  Dict[str, List[Path]] = {}
     for cname, files in gathered.items():
         files = list(files)
         rng.shuffle(files)
-        if len(files) < 2:
+        n = len(files)
+        if n < 2:
             raise ValueError(
-                f"La clase '{cname}' tiene {len(files)} imagen(es); se requieren ≥2 "
+                f"La clase '{cname}' tiene {n} imagen(es); se requieren ≥2 "
                 f"para dividir en train/validación.")
-        k = max(1, int(len(files) * ratio))
-        train_g[cname] = files[:k]
-        val_g[cname]   = files[k:] or files[-1:]
+        k_train = max(1, min(int(n * ratio), n - 1))   # deja ≥1 para evaluación
+        rest = files[k_train:]
+        train_g[cname] = files[:k_train]
+        if len(rest) >= 2:
+            # val recibe la mitad mayor; test la menor (held-out real).
+            n_test = len(rest) // 2
+            val_g[cname]  = rest[:len(rest) - n_test]
+            test_g[cname] = rest[len(rest) - n_test:]
+        else:
+            val_g[cname] = rest            # clase muy pequeña: sin test propio
+            test_g[cname] = []
 
     X_train, y_train = _materialize(train_g, class_to_idx, size)
     X_val,   y_val   = _materialize(val_g, class_to_idx, size)
+    X_test = y_test = None
+    if any(test_g.values()):
+        X_test, y_test = _materialize(test_g, class_to_idx, size)
+        if X_test.size == 0:
+            X_test = y_test = None
+
     input_shape = X_train.shape[1:]
-    log.info("Auto-split: train=%d val=%d clases=%d",
-             len(X_train), len(X_val), len(class_names))
+    log.info("Auto-split 3-vías: train=%d val=%d test=%s clases=%d",
+             len(X_train), len(X_val),
+             0 if X_test is None else len(X_test), len(class_names))
     return DatasetBundle(X_train, y_train, X_val, y_val, input_shape,
-                         len(class_names), class_names)
+                         len(class_names), class_names, X_test, y_test)
 
 
 # ── Helpers de carga ────────────────────────────────────────────────────────────
@@ -323,12 +358,34 @@ def _normalize_root(root: Path) -> Path:
         subdirs = [e for e in entries if e.is_dir()]
         image_files = [e for e in entries
                        if e.is_file() and e.suffix.lower() in IMAGE_EXTS]
-        # Desciende solo si hay UNA carpeta y ninguna imagen suelta en este nivel.
+        # Desciende si hay UNA carpeta y ninguna imagen suelta en este nivel.
         if len(subdirs) == 1 and not image_files:
             root = subdirs[0]
-        else:
-            break
+            continue
+        # Varias carpetas sin imágenes sueltas: si SOLO UNA parece dataset (splits o
+        # clases con imágenes), desciende a ella e ignora docs/anotaciones/metadata.
+        if len(subdirs) > 1 and not image_files:
+            dataset_like = [d for d in subdirs if _looks_like_dataset(d)]
+            if len(dataset_like) == 1:
+                root = dataset_like[0]
+                continue
+        break
     return root
+
+
+def _looks_like_dataset(d: Path) -> bool:
+    """¿`d` es un split (train/val/test) o tiene clases (subcarpetas con imágenes)?"""
+    split_names = {a for aliases in _SPLIT_ALIASES.values() for a in aliases}
+    child_dirs = [c for c in d.iterdir() if c.is_dir()
+                  and not c.name.startswith(("__MACOSX", "."))]
+    if any(c.name.lower() in split_names for c in child_dirs):
+        return True
+    # Basta una imagen dentro de alguna subcarpeta-clase para considerarlo dataset.
+    for c in child_dirs:
+        for f in c.rglob("*"):
+            if f.is_file() and f.suffix.lower() in IMAGE_EXTS:
+                return True
+    return False
 
 
 def _resolve_split_dir(root: Path, split: str) -> Optional[Path]:
@@ -391,6 +448,23 @@ def _validate_count(total: int) -> None:
     if total < MIN_IMAGES:
         raise ValueError(
             f"El dataset tiene {total} imágenes; se requieren al menos {MIN_IMAGES}.")
+
+
+def _carve_holdout(gathered: Dict[str, List[Path]],
+                   fraction: float) -> Tuple[Dict[str, List[Path]], Dict[str, List[Path]]]:
+    """Separa una fracción estratificada por clase como held-out (test ciego).
+    Determinista (semilla fija). Deja ≥1 imagen por clase en el train de origen."""
+    rng = np.random.default_rng(42)
+    kept: Dict[str, List[Path]] = {}
+    holdout: Dict[str, List[Path]] = {}
+    for cname, files in gathered.items():
+        files = list(files)
+        rng.shuffle(files)
+        n = len(files)
+        n_hold = min(max(0, int(round(n * fraction))), n - 1)  # nunca vacía el train
+        holdout[cname] = files[:n_hold]
+        kept[cname] = files[n_hold:]
+    return kept, holdout
 
 
 def _cap_to_limit(gathered: Dict[str, List[Path]], limit: int) -> Dict[str, List[Path]]:

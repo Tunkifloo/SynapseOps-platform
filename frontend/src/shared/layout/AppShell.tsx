@@ -8,10 +8,13 @@ import {
   type ReactNode,
 } from 'react'
 import {
+  Activity,
   Bell,
   Boxes,
+  ChartColumn,
   CheckCircle2,
   CircleAlert,
+  Database,
   FolderPlus,
   Info,
   LayoutDashboard,
@@ -20,6 +23,7 @@ import {
   Network,
   PanelLeftClose,
   PanelLeftOpen,
+  Rocket,
   Search,
   UserPlus,
   UserRound,
@@ -34,6 +38,7 @@ import { Input } from '@/shared/components/ui/input'
 import { Badge } from '@/shared/components/ui/badge'
 import { ConfirmDialog } from '@/shared/components/ConfirmDialog'
 import { getMlflowHealth } from '@/features/mlflow/api'
+import { API_BASE_URL } from '@/shared/api/env'
 import { cn } from '@/lib/utils'
 import type { Role } from '@/types'
 
@@ -43,7 +48,7 @@ interface SessionUser {
   role: Role
 }
 
-type Section = 'dashboard' | 'workspaces' | 'builder' | 'models' | 'admin' | 'mlflow' | 'profile'
+type Section = 'dashboard' | 'workspaces' | 'builder' | 'models' | 'datasets' | 'deployments' | 'monitoring' | 'analytics' | 'admin' | 'mlflow' | 'profile'
 
 interface NavigationItem {
   key: Section
@@ -85,12 +90,16 @@ export function AppShell({
     { key: 'workspaces', label: 'Espacios de trabajo', icon: Layers, path: '/workspaces' },
     { key: 'builder', label: 'Lienzo', icon: Network, path: '/builder' },
     { key: 'models', label: 'Mis modelos', icon: Boxes, path: '/models' },
+    { key: 'datasets', label: 'Gestión de Dataset', icon: Database, path: '/datasets' },
+    { key: 'deployments', label: 'Despliegues', icon: Rocket, path: '/deployments' },
+    { key: 'monitoring', label: 'Monitoreo', icon: Activity, path: '/monitoring' },
   ]
   const adminItems: NavigationItem[] =
     user?.role === 'ADMIN'
       ? [
           { key: 'admin', label: 'Usuarios', icon: Users, path: '/admin' },
           { key: 'mlflow', label: 'Registro de modelos', icon: Boxes, path: '/mlflow' },
+          { key: 'analytics', label: 'Analítica', icon: ChartColumn, path: '/analytics' },
         ]
       : []
 
@@ -388,15 +397,19 @@ function CommandSearch({
       { label: 'Resumen', hint: 'Ir al dashboard', keywords: 'dashboard inicio resumen', icon: LayoutDashboard, path: '/dashboard' },
       { label: 'Espacios de trabajo', hint: 'Ver proyectos', keywords: 'workspaces proyectos espacios', icon: Layers, path: '/workspaces' },
       { label: 'Crear nuevo espacio', hint: 'Nuevo proyecto', keywords: 'crear nuevo proyecto espacio', icon: FolderPlus, path: '/workspaces' },
-      { label: 'Lienzo', hint: 'Constructor de pipelines', keywords: 'lienzo pipeline canvas builder', icon: Network, path: '/builder' },
-      { label: 'Mis modelos', hint: 'Registro de modelos', keywords: 'modelos models registry', icon: Boxes, path: '/models' },
+      { label: 'Lienzo', hint: 'Constructor de pipelines', keywords: 'lienzo pipeline canvas builder entrenar', icon: Network, path: '/builder' },
+      { label: 'Mis modelos', hint: 'Modelos entrenados', keywords: 'modelos models registry desplegar', icon: Boxes, path: '/models' },
+      { label: 'Gestión de Dataset', hint: 'Datasets y almacenamiento', keywords: 'datasets dataset datos archivos almacenamiento storage', icon: Database, path: '/datasets' },
+      { label: 'Despliegues', hint: 'Model-services activos', keywords: 'despliegues deployments predict inferencia endpoint', icon: Rocket, path: '/deployments' },
+      { label: 'Monitoreo', hint: 'Telemetría de tus proyectos', keywords: 'monitoreo monitoring telemetria metricas drift calidad', icon: Activity, path: '/monitoring' },
       { label: 'Mi perfil', hint: 'Cuenta y contraseña', keywords: 'perfil cuenta contraseña', icon: UserRound, path: '/profile' },
     ]
     if (role === 'ADMIN') {
       base.push(
         { label: 'Usuarios', hint: 'Gestión de usuarios', keywords: 'usuarios admin gestion', icon: Users, path: '/admin' },
         { label: 'Crear usuario', hint: 'Nuevo estudiante', keywords: 'crear usuario estudiante', icon: UserPlus, path: '/admin' },
-        { label: 'Registro global', hint: 'Modelos de plataforma', keywords: 'registro global mlflow modelos', icon: Boxes, path: '/mlflow' }
+        { label: 'Registro de modelos', hint: 'Model Registry de MLflow', keywords: 'registro global mlflow modelos registry', icon: Boxes, path: '/mlflow' },
+        { label: 'Analítica', hint: 'Telemetría de la plataforma', keywords: 'analitica analytics telemetria global plataforma admin', icon: ChartColumn, path: '/analytics' }
       )
     }
     return base
@@ -498,28 +511,86 @@ function NotificationsBell({ token, role }: { token: string; role?: Role }) {
   const [unread, setUnread] = useState(0)
   const [health, setHealth] = useState<'up' | 'down' | 'unknown'>('unknown')
   const idRef = useRef(0)
+  // Hitos ya notificados (clave = ejecución::nivel::mensaje). PERSISTE entre suscripciones
+  // SSE: al cambiar de workspace en el lienzo y volver se re-suscribe y el backend reenvía
+  // el historial (replay); sin esto, los mismos hitos se re-notificarían como "no leídos".
+  const seenRef = useRef<Set<string>>(new Set())
   // El healthcheck (MLflow) es de alcance ADMIN; para colaboradores se omite.
   const canCheckHealth = role === 'ADMIN'
 
-  // Eventos del lienzo (emitidos por LogConsole).
+  const addNotif = useCallback((level: string, message: string, terminal: boolean) => {
+    idRef.current += 1
+    const item: NotifItem = {
+      id: idRef.current,
+      level,
+      message,
+      time: new Date().toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' }),
+      terminal,
+    }
+    setItems((prev) => [item, ...prev].slice(0, 30))
+    setUnread((u) => u + 1)
+  }, [])
+
+  // Fuente externa genérica: cualquier módulo puede emitir 'synapseops:notify'.
   useEffect(() => {
     const handler = (event: Event) => {
-      const detail = (event as CustomEvent).detail as { level: string; message: string; terminal: boolean }
-      if (!detail) return
-      idRef.current += 1
-      const item: NotifItem = {
-        id: idRef.current,
-        level: detail.level,
-        message: detail.message,
-        time: new Date().toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' }),
-        terminal: detail.terminal,
-      }
-      setItems((prev) => [item, ...prev].slice(0, 30))
-      setUnread((u) => u + 1)
+      const d = (event as CustomEvent).detail as { level: string; message: string; terminal: boolean }
+      if (d) addNotif(d.level, d.message, !!d.terminal)
     }
     window.addEventListener('synapseops:notify', handler)
     return () => window.removeEventListener('synapseops:notify', handler)
+  }, [addNotif])
+
+  // ── Suscriptor SSE PERSISTENTE de la ejecución activa ───────────────────────
+  // Vive en AppShell (siempre montado) → notifica ingesta/entrenamiento/despliegue
+  // AUNQUE el usuario esté en otro módulo, y DEDUPLICA el replay (no re-notifica al
+  // volver al lienzo). El lienzo difunde la ejecución vía 'synapseops:active-execution'.
+  const [activeExec, setActiveExec] =
+    useState<{ executionId: number; workspaceId: number; pipelineId: number } | null>(null)
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const d = (event as CustomEvent).detail as
+        | { executionId: number; workspaceId: number; pipelineId: number }
+        | null
+      // Ignora re-emisiones de la MISMA ejecución (evita re-suscribir y re-notificar).
+      setActiveExec((prev) => (prev?.executionId === d?.executionId ? prev : d))
+    }
+    window.addEventListener('synapseops:active-execution', handler)
+    return () => window.removeEventListener('synapseops:active-execution', handler)
   }, [])
+
+  useEffect(() => {
+    if (!activeExec || !token) return
+    const execId = activeExec.executionId
+    const url =
+      `${API_BASE_URL}/workspaces/${activeExec.workspaceId}/pipelines/${activeExec.pipelineId}` +
+      `/executions/${execId}/logs?token=${encodeURIComponent(token)}`
+    const source = new EventSource(url)
+    source.addEventListener('log', (event: Event) => {
+      try {
+        const d = JSON.parse((event as MessageEvent).data) as
+          { level: string; message: string; terminal?: boolean }
+        const m = (d.message ?? '').toLowerCase()
+        // Hitos a notificar: ingesta lista, entrenamiento completado, despliegue
+        // exitoso, y cualquier error/fallo o evento terminal.
+        const milestone =
+          d.level === 'ERROR' || m.includes('fallid') ||
+          m.includes('dataset listo') ||
+          m.includes('entrenamiento completado') ||
+          m.includes('desplegado y healthy') ||
+          !!d.terminal
+        if (!milestone) return
+        // Clave por EJECUCIÓN: persiste entre suscripciones → el replay al volver al
+        // lienzo no re-notifica hitos ya vistos de esa misma ejecución.
+        const key = `${execId}::${d.level}::${d.message}`
+        if (seenRef.current.has(key)) return
+        seenRef.current.add(key)
+        addNotif(d.level, d.message, !!d.terminal)
+      } catch { /* evento no parseable: ignorar */ }
+    })
+    // Sin cerrar en onerror: EventSource reconecta solo; el seen-set evita duplicados.
+    return () => source.close()
+  }, [activeExec, token, addNotif])
 
   const checkHealth = useCallback(async () => {
     if (!canCheckHealth) return

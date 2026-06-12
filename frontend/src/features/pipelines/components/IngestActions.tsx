@@ -1,5 +1,6 @@
 import { useState, type ChangeEvent } from 'react'
-import { UploadCloud } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { CheckCircle, Database, UploadCloud } from 'lucide-react'
 
 import { Button } from '@/shared/components/ui/button'
 import { Input } from '@/shared/components/ui/input'
@@ -15,6 +16,7 @@ const ALLOWED_EXTS = ['.png', '.jpg', '.jpeg', '.zip']
 interface IngestActionsProps {
   token: string
   workspaceId: number
+  datasetPath?: string | null
   mode: string
   kerasDataset?: string
   url?: string
@@ -28,6 +30,7 @@ interface IngestActionsProps {
 export function IngestActions({
   token,
   workspaceId,
+  datasetPath,
   mode,
   kerasDataset,
   url,
@@ -35,6 +38,7 @@ export function IngestActions({
 }: IngestActionsProps) {
   const [file, setFile] = useState<File | null>(null)
   const [loading, setLoading] = useState(false)
+  const navigate = useNavigate()
 
   const onFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     const selected = e.target.files?.[0] ?? null
@@ -80,11 +84,40 @@ export function IngestActions({
     }
   }
 
+  // Ya hay dataset asignado al proyecto → no se reconfigura el origen aquí: se gestiona
+  // (reemplazar/eliminar/visualizar) en el módulo de Datasets. UX de estado clara.
+  if (datasetPath) {
+    return (
+      <div className="space-y-3 rounded-xl border border-border bg-card/40 p-3">
+        <p className="text-xs font-semibold tracking-[0.1em] text-muted-foreground uppercase">
+          Dataset del proyecto
+        </p>
+        <div className="flex items-start gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-2.5">
+          <CheckCircle className="size-3.5 text-emerald-400 mt-0.5 shrink-0" />
+          <div className="min-w-0 flex-1">
+            <p className="text-[11px] font-semibold text-emerald-400">Dataset activo</p>
+            <p className="truncate text-xs text-slate-300 font-mono" title={datasetPath}>{datasetPath}</p>
+          </div>
+        </div>
+        <p className="text-[11px] text-muted-foreground">
+          El dataset ya está asignado a este proyecto. Para reemplazarlo, eliminarlo o
+          visualizarlo, ve a Gestión de Dataset.
+        </p>
+        <Button variant="outline" size="sm" className="w-full" onClick={() => navigate('/datasets')}>
+          <Database />
+          Gestionar dataset
+        </Button>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-3 rounded-xl border border-border bg-card/40 p-3">
       <p className="text-xs font-semibold tracking-[0.1em] text-muted-foreground uppercase">
         Asignar dataset
       </p>
+
+      <p className="text-xs text-muted-foreground">No hay dataset asignado. Configura el origen arriba.</p>
 
       {mode === 'zip' && (
         <Input

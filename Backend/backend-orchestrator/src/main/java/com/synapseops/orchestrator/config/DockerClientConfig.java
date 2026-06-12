@@ -3,7 +3,7 @@ package com.synapseops.orchestrator.config;
 import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.core.DefaultDockerClientConfig;
 import com.github.dockerjava.core.DockerClientImpl;
-import com.github.dockerjava.httpclient5.ApacheDockerHttpClient;
+import com.github.dockerjava.zerodep.ZerodepDockerHttpClient;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -24,7 +24,7 @@ public class DockerClientConfig {
                 .withApiVersion("1.47")
                 .build();
 
-        ApacheDockerHttpClient httpClient = new ApacheDockerHttpClient.Builder()
+        ZerodepDockerHttpClient httpClient = new ZerodepDockerHttpClient.Builder()
                 .dockerHost(config.getDockerHost())
                 .maxConnections(20)
                 .connectionTimeout(Duration.ofSeconds(5))

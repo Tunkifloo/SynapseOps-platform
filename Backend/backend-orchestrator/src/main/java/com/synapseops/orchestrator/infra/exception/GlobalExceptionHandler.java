@@ -1,6 +1,7 @@
 package com.synapseops.orchestrator.infra.exception;
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.io.buffer.DataBufferLimitException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
@@ -38,11 +39,34 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(IllegalArgumentException.class)
     public ProblemDetail handleIllegalArgument(IllegalArgumentException ex,
-                                               ServerWebExchange exchange) {
+                                                ServerWebExchange exchange) {
+        if (ex.getMessage() != null && ex.getMessage().contains("supera el tamaño máximo")) {
+            ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.PAYLOAD_TOO_LARGE);
+            problem.setType(URI.create("/errors/payload-too-large"));
+            problem.setTitle("Archivo demasiado grande");
+            problem.setDetail(ex.getMessage());
+            problem.setProperty("timestamp", Instant.now());
+            problem.setProperty("path", exchange.getRequest().getPath().value());
+            return problem;
+        }
         ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.BAD_REQUEST);
         problem.setType(URI.create("/errors/business-rule"));
         problem.setTitle("Solicitud inválida");
         problem.setDetail(ex.getMessage());
+        problem.setProperty("timestamp", Instant.now());
+        problem.setProperty("path", exchange.getRequest().getPath().value());
+        return problem;
+    }
+
+    @ExceptionHandler(DataBufferLimitException.class)
+    public ProblemDetail handleBufferLimit(DataBufferLimitException ex,
+                                           ServerWebExchange exchange) {
+        // WebFlux abortó la parte multipart por superar el tope real de streaming
+        // (spring.webflux.multipart.max-disk-usage-per-part). Tope efectivo, no por header.
+        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.PAYLOAD_TOO_LARGE);
+        problem.setType(URI.create("/errors/payload-too-large"));
+        problem.setTitle("Archivo demasiado grande");
+        problem.setDetail("El archivo supera el tamaño máximo permitido por el servidor.");
         problem.setProperty("timestamp", Instant.now());
         problem.setProperty("path", exchange.getRequest().getPath().value());
         return problem;

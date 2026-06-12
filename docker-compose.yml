@@ -105,7 +105,10 @@ services:
     restart: unless-stopped
     privileged: true
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Conjunto validado en ADR-003 §6.1. /rootfs + /var/run son necesarios para
+      # que cAdvisor enumere los contenedores (sin ellos solo reporta el cgroup raíz).
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
       - /sys:/sys:ro
       - /var/lib/docker/:/var/lib/docker:ro
       - /dev/disk/:/dev/disk:ro
@@ -123,6 +126,11 @@ services:
     image: prom/prometheus:v2.51.2
     container_name: prometheus-tsdb
     restart: unless-stopped
+    # HU-009 · Docker SD necesita leer /var/run/docker.sock. La imagen de Prometheus
+    # corre por defecto como nobody (uid 65534) y el socket es de root → "permission
+    # denied" en el discovery. Se corre como root (igual que backend/ml-engine) para
+    # que el autodescubrimiento de model-services funcione.
+    user: root
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.path=/prometheus"
@@ -131,6 +139,8 @@ services:
     volumes:
       - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
+      # HU-009 · Docker SD: Prometheus descubre los model-services por el socket.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     ports:
       - "9090:9090"
     networks:
@@ -189,6 +199,7 @@ services:
       MLFLOW_TRACKING_URI: http://mlflow-server:5000
       STORAGE_BASE_PATH: /storage
       STORAGE_MAX_FILE_SIZE_MB: ${STORAGE_MAX_FILE_SIZE_MB:-500}
+      STORAGE_MAX_WORKSPACE_MB: ${STORAGE_MAX_WORKSPACE_MB:-2000}
       ADMIN_USERNAME: ${ADMIN_USERNAME}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
       ADMIN_EMAIL: ${ADMIN_EMAIL}

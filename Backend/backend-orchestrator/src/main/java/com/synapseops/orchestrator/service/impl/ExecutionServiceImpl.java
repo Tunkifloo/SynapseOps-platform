@@ -57,6 +57,7 @@ public class ExecutionServiceImpl implements ExecutionService {
 
             PipelineExecution execution = new PipelineExecution();
             execution.setPipeline(pipeline);
+            execution.setModelName(request.modelName());   // telemetría por modelo (TEL-04+)
             execution.start();
             executionRepository.save(execution);
 
