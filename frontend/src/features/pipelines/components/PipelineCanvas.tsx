@@ -476,8 +476,12 @@ export function PipelineCanvas({
             if (deployNodeAtStart && deployConnectedAtStart && runId) {
               void deployFlowModel(runId, deployNodeAtStart.id)
             } else {
-              // Sin nodo de Despliegue: el ciclo termina en el entrenamiento. Cierra la
-              // consola SSE limpiamente (el evento de entrenamiento ya no es terminal).
+              // Sin nodo de Despliegue (o sin conectar): el ciclo termina en el
+              // entrenamiento — es válido (el usuario puede querer solo entrenar). Se
+              // retroalimenta cómo desplegar después.
+              notify.success('Modelo entrenado y registrado', {
+                description: 'Para desplegarlo, ve a Mis modelos → detalles → Desplegar.',
+              })
               setLogCloseSignal((s) => s + 1)
               setFlowRunning(false)
             }

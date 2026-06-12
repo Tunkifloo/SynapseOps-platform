@@ -397,15 +397,19 @@ function CommandSearch({
       { label: 'Resumen', hint: 'Ir al dashboard', keywords: 'dashboard inicio resumen', icon: LayoutDashboard, path: '/dashboard' },
       { label: 'Espacios de trabajo', hint: 'Ver proyectos', keywords: 'workspaces proyectos espacios', icon: Layers, path: '/workspaces' },
       { label: 'Crear nuevo espacio', hint: 'Nuevo proyecto', keywords: 'crear nuevo proyecto espacio', icon: FolderPlus, path: '/workspaces' },
-      { label: 'Lienzo', hint: 'Constructor de pipelines', keywords: 'lienzo pipeline canvas builder', icon: Network, path: '/builder' },
-      { label: 'Mis modelos', hint: 'Registro de modelos', keywords: 'modelos models registry', icon: Boxes, path: '/models' },
+      { label: 'Lienzo', hint: 'Constructor de pipelines', keywords: 'lienzo pipeline canvas builder entrenar', icon: Network, path: '/builder' },
+      { label: 'Mis modelos', hint: 'Modelos entrenados', keywords: 'modelos models registry desplegar', icon: Boxes, path: '/models' },
+      { label: 'Gestión de Dataset', hint: 'Datasets y almacenamiento', keywords: 'datasets dataset datos archivos almacenamiento storage', icon: Database, path: '/datasets' },
+      { label: 'Despliegues', hint: 'Model-services activos', keywords: 'despliegues deployments predict inferencia endpoint', icon: Rocket, path: '/deployments' },
+      { label: 'Monitoreo', hint: 'Telemetría de tus proyectos', keywords: 'monitoreo monitoring telemetria metricas drift calidad', icon: Activity, path: '/monitoring' },
       { label: 'Mi perfil', hint: 'Cuenta y contraseña', keywords: 'perfil cuenta contraseña', icon: UserRound, path: '/profile' },
     ]
     if (role === 'ADMIN') {
       base.push(
         { label: 'Usuarios', hint: 'Gestión de usuarios', keywords: 'usuarios admin gestion', icon: Users, path: '/admin' },
         { label: 'Crear usuario', hint: 'Nuevo estudiante', keywords: 'crear usuario estudiante', icon: UserPlus, path: '/admin' },
-        { label: 'Registro global', hint: 'Modelos de plataforma', keywords: 'registro global mlflow modelos', icon: Boxes, path: '/mlflow' }
+        { label: 'Registro de modelos', hint: 'Model Registry de MLflow', keywords: 'registro global mlflow modelos registry', icon: Boxes, path: '/mlflow' },
+        { label: 'Analítica', hint: 'Telemetría de la plataforma', keywords: 'analitica analytics telemetria global plataforma admin', icon: ChartColumn, path: '/analytics' }
       )
     }
     return base

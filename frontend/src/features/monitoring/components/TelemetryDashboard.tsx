@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Activity, Boxes, Download, Gauge, Info, RefreshCw, Rocket, Timer, Users } from 'lucide-react'
 
 import { Button } from '@/shared/components/ui/button'
+import { PageHeader } from '@/shared/components/PageHeader'
 import { notify } from '@/shared/notify'
 import { cn } from '@/lib/utils'
 import type { ByModelView, LifecycleMetrics } from '../types'
@@ -105,39 +106,37 @@ export function TelemetryDashboard({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold">{title}</h1>
-            <span className={cn(
-              'rounded-md px-2 py-0.5 text-[11px] font-semibold',
-              isGlobal ? 'bg-cta/15 text-cta' : 'bg-primary/10 text-primary',
-            )}>
-              {isGlobal ? 'Plataforma · ADMIN' : 'Mis proyectos'}
-            </span>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            {subtitle}
-            {life ? <span className="font-medium text-foreground"> · muestra n={life.sampleSize}</span> : null}
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="ghost" size="sm" onClick={() => void load()} disabled={loading}>
-            <RefreshCw className={cn(loading && 'animate-spin')} /> Actualizar
-          </Button>
-          <Button variant="cta" size="sm" onClick={() => void onDownload()} disabled={downloading || !life?.rows.length} loading={downloading}>
-            <Download /> Descargar CSV
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        icon={Activity}
+        title={title}
+        subtitle={life ? `${subtitle} · ${life.sampleSize} ejecuciones` : subtitle}
+        badge={
+          <span className={cn(
+            'rounded-md px-2 py-0.5 text-[11px] font-semibold',
+            isGlobal ? 'bg-cta/15 text-cta' : 'bg-primary/10 text-primary',
+          )}>
+            {isGlobal ? 'Plataforma · ADMIN' : 'Mis proyectos'}
+          </span>
+        }
+        actions={
+          <>
+            <Button variant="ghost" size="sm" onClick={() => void load()} disabled={loading}>
+              <RefreshCw className={cn(loading && 'animate-spin')} /> Actualizar
+            </Button>
+            <Button variant="cta" size="sm" onClick={() => void onDownload()} disabled={downloading || !life?.rows.length} loading={downloading}>
+              <Download /> Descargar CSV
+            </Button>
+          </>
+        }
+      />
 
       {/* Banner explicativo: qué estás viendo, en lenguaje claro. */}
       <div className="flex items-start gap-2 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-xs leading-relaxed text-muted-foreground">
         <Info className="mt-0.5 size-4 shrink-0 text-primary" />
         <p>
           {isGlobal
-            ? 'Telemetría del ciclo de vida (OE4) de TODOS los proyectos de la plataforma — vista de administrador para el estudio. '
-            : 'Telemetría del ciclo de vida (OE4) de tus proyectos: cuánto tarda entrenar y desplegar, y qué tan automatizado es el flujo. '}
+            ? 'Telemetría del ciclo de vida de TODOS los proyectos de la plataforma (vista de administrador). '
+            : 'Telemetría del ciclo de vida de tus proyectos: cuánto tarda entrenar y desplegar, y qué tan automatizado es el flujo. '}
           Pasa el cursor sobre <span className="font-medium text-foreground">cada métrica (ⓘ)</span> para ver su definición.
           Mide cada flujo: <span className="font-medium text-foreground">Ingesta → Entrenamiento → Aprobación → Despliegue</span>.
         </p>
