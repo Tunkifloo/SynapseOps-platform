@@ -145,7 +145,7 @@ public class TelemetryServiceImpl implements TelemetryService {
     private String toCsv(LifecycleMetricsResponse view) {
         StringBuilder sb = new StringBuilder(
                 "execution_id,owner,workspace,pipeline,model,status,t_re_seconds,lt_d_seconds,"
-                        + "cold_start_ms,deploy_status,interaction_effort\n");
+                        + "cold_start_ms,deploy_status,interaction_effort,data_quality\n");
         for (LifecycleMetricRow r : view.rows()) {
             sb.append(r.executionId()).append(',')
                     .append(csv(r.ownerUsername())).append(',')
@@ -157,7 +157,8 @@ public class TelemetryServiceImpl implements TelemetryService {
                     .append(num(r.leadTimeDeploySeconds())).append(',')
                     .append(r.coldStartMs() == null ? "" : r.coldStartMs()).append(',')
                     .append(csv(r.deployStatus())).append(',')
-                    .append(r.interactionEffort() == null ? "" : r.interactionEffort())
+                    .append(r.interactionEffort() == null ? "" : r.interactionEffort()).append(',')
+                    .append(csv(r.dataQuality()))
                     .append('\n');
         }
         return sb.toString();
@@ -178,7 +179,35 @@ public class TelemetryServiceImpl implements TelemetryService {
                 seconds(e.getModelApprovedAt(), e.getDeployAvailableAt()),       // LT_d
                 e.getColdStartMs(),
                 e.getDeployStatus(),
-                nodeCount(e.getPipeline().getCanvasJson()));
+                nodeCount(e.getPipeline().getCanvasJson()),
+                dataQuality(e));
+    }
+
+    /**
+     * Señal de calidad del entrenamiento desde el artefacto: combina el aviso de
+     * overfitting y la deriva de datos (split/re-entrenamiento). null si no hay datos.
+     */
+    private String dataQuality(PipelineExecution e) {
+        MLArtifact a = e.getArtifact();
+        if (a == null || a.getMetrics() == null || a.getMetrics().isBlank()) {
+            return null;
+        }
+        try {
+            JsonNode m = objectMapper.readTree(a.getMetrics());
+            boolean overfit = m.path("overfit_warning").isObject()
+                    && !"mild".equals(m.path("overfit_warning").path("severity").asText(""));
+            JsonNode drift = m.path("drift");
+            boolean drifted = drift.path("split").path("drifted").asBoolean(false)
+                    || drift.path("retraining").path("drifted").asBoolean(false);
+            if (overfit && drifted) return "OVERFIT+DRIFT";
+            if (overfit) return "OVERFIT";
+            if (drifted) return "DRIFT";
+            // Hubo señales calculadas pero sin alerta → OK; si no había ninguna, null.
+            return (m.has("overfit_warning") || drift.isObject()) ? "OK" : null;
+        } catch (Exception ex) {
+            log.debug("Calidad no parseable (exec={}): {}", e.getIdExecution(), ex.getMessage());
+            return null;
+        }
     }
 
     /** Mejor accuracy del artefacto (val_accuracy > final_accuracy > accuracy); null si no hay. */

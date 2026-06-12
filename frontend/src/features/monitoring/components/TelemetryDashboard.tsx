@@ -185,6 +185,7 @@ export function TelemetryDashboard({
                       <th className="px-4 py-2 font-medium" title={HELP.cold}>Cold start ⓘ</th>
                       <th className="px-4 py-2 font-medium" title={HELP.deploy}>Despliegue</th>
                       <th className="px-4 py-2 font-medium" title={HELP.effort}>Nodos ⓘ</th>
+                      <th className="px-4 py-2 font-medium" title="Señal de calidad del entrenamiento: overfitting y/o data drift detectados.">Calidad</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -204,6 +205,14 @@ export function TelemetryDashboard({
                           {r.deployStatus ?? '—'}
                         </td>
                         <td className="px-4 py-2 font-mono">{r.interactionEffort ?? '—'}</td>
+                        <td className="px-4 py-2">
+                          {r.dataQuality
+                            ? <span className={cn('rounded px-1.5 py-0.5 text-[11px] font-medium',
+                                r.dataQuality === 'OK' ? 'bg-success/10 text-success' : 'bg-warning/15 text-warning')}>
+                                {r.dataQuality}
+                              </span>
+                            : <span className="text-muted-foreground">—</span>}
+                        </td>
                       </tr>
                     ))}
                   </tbody>

@@ -90,6 +90,7 @@ function snapshot(nodes: Node<PipelineNodeData>[], edges: Edge[]): string {
       delete cfg.runId
       delete cfg.modelVersion
       delete cfg.metrics
+      delete cfg.endpoint
       return { id: n.id, type: n.type, position: n.position, label: n.data.label, kind: n.data.kind, config: cfg }
     }),
     edges: edges.map((e) => ({ id: e.id, source: e.source, target: e.target })),
@@ -138,11 +139,14 @@ export function PipelineCanvas({
   } | null>(null)
   const loadedRef = useRef(false)                 // evita marcar dirty durante la carga inicial
   const baselineRef = useRef<string>('')          // snapshot del último estado guardado/cargado
-  const { screenToFlowPosition } = useReactFlow()
+  const { screenToFlowPosition, setViewport, fitView } = useReactFlow()
 
   // Claves de persistencia local por pipeline (items 3 y 4).
   const draftKey = pipelineId ? `synapseops:canvas-draft:${workspace?.idWorkspace}:${pipelineId}` : null
   const execKey  = pipelineId ? `synapseops:active-exec:${workspace?.idWorkspace}:${pipelineId}` : null
+  // Estados de nodos (checks verdes) y viewport: persisten al navegar de módulo y volver.
+  const statusKey   = pipelineId ? `synapseops:canvas-status:${workspace?.idWorkspace}:${pipelineId}` : null
+  const viewportKey = pipelineId ? `synapseops:canvas-viewport:${workspace?.idWorkspace}:${pipelineId}` : null
 
   // Persiste la ejecución activa para reanudar la consola al volver (item 4-frontend).
   const setActiveExecution = useCallback((id: number | null) => {
@@ -397,9 +401,20 @@ export function PipelineCanvas({
     const splitCfg: NodeConfig = splitNode
       ? { ...defaultConfig('split'), ...(splitNode.data.config ?? {}) } : {}
 
+    // Topología fija del flujo (capturada al inicio): evita que el nodo de Despliegue
+    // se "pierda" si el estado cambia durante el sondeo largo.
+    const deployNodeAtStart = nodes.find((n) => n.data.kind === 'deploy')
+    const deployConnectedAtStart =
+      !!deployNodeAtStart && edges.some((e) => e.target === deployNodeAtStart.id)
+
     setFlowRunning(true)
-    // Reinicia estados y arranca por Ingesta; el resto se anima por fases SSE.
-    setNodes((nds) => nds.map((n) => ({ ...n, data: { ...n.data, status: 'idle' as const, error: undefined } })))
+    // Reinicia estados Y limpia la config runtime del flujo ANTERIOR (runId, versión,
+    // métricas, endpoint): así, tras re-entrenar v2 no se sigue mostrando la v1 stale.
+    setNodes((nds) => nds.map((n) => {
+      const cfg = { ...n.data.config }
+      delete cfg.runId; delete cfg.modelVersion; delete cfg.metrics; delete cfg.endpoint
+      return { ...n, data: { ...n.data, status: 'idle' as const, error: undefined, config: cfg } }
+    }))
     setStatusByKind(['ingest'], 'running')
 
     const payload: ExecutionRequest = {
@@ -456,10 +471,8 @@ export function PipelineCanvas({
               : n))
             notify.success('Flujo completado', { description: exec.mlflowRunId ? `Run ${exec.mlflowRunId}` : undefined })
             // Auto-despliegue si el nodo Despliegue está presente y conectado al flujo.
-            const deployNode = nodes.find((n) => n.data.kind === 'deploy')
-            const connected = !!deployNode && edges.some((e) => e.target === deployNode.id)
-            if (deployNode && connected && runId) {
-              void deployFlowModel(runId, deployNode.id)
+            if (deployNodeAtStart && deployConnectedAtStart && runId) {
+              void deployFlowModel(runId, deployNodeAtStart.id)
             } else {
               // Sin nodo de Despliegue: el ciclo termina en el entrenamiento. Cierra la
               // consola SSE limpiamente (el evento de entrenamiento ya no es terminal).
@@ -710,19 +723,33 @@ export function PipelineCanvas({
     setDirty(false)
     void (async () => {
       try {
-        // Estado del nodo (running/success) es transitorio → se reinicia a idle al
-        // cargar; el estado en vivo lo reconstruye el replay SSE (item 1).
         const dsLabel = workspace?.datasetPath?.split(/[/\\]/).pop()
-        const idle = (ns: Node<PipelineNodeData>[]) =>
-          ns.map((n) => ({
-            ...n,
-            data: {
-              ...n.data,
-              status: 'idle' as const,
-              error: undefined,
-              ...(n.data.kind === 'ingest' && dsLabel ? { datasetDescriptor: dsLabel } : {}),
-            },
-          }))
+
+        // Overlay de estados persistido (checks verdes): restaura success/error al volver
+        // al lienzo. 'running' se baja a idle (lo redrive el replay SSE de la ejecución
+        // activa), evitando que un nodo quede "corriendo" indefinidamente.
+        let overlay: Record<string, { status: PipelineNodeStatus; error?: string; config?: Record<string, string | number> }> = {}
+        if (statusKey) {
+          try {
+            const raw = localStorage.getItem(statusKey)
+            if (raw) overlay = JSON.parse(raw)
+          } catch { /* overlay corrupto: se ignora */ }
+        }
+        const applyState = (ns: Node<PipelineNodeData>[]) =>
+          ns.map((n) => {
+            const o = overlay[n.id]
+            const restore = !!o && (o.status === 'success' || o.status === 'error')
+            return {
+              ...n,
+              data: {
+                ...n.data,
+                status: restore ? o.status : ('idle' as const),
+                error: restore ? o.error : undefined,
+                config: restore && o.config ? { ...n.data.config, ...o.config } : n.data.config,
+                ...(n.data.kind === 'ingest' && dsLabel ? { datasetDescriptor: dsLabel } : {}),
+              },
+            }
+          })
 
         const canvas = await loadCanvas(token, wsId, pipelineId)
         if (cancelled) return
@@ -736,7 +763,7 @@ export function PipelineCanvas({
             if (raw) {
               const draft = JSON.parse(raw) as { nodes: Node<PipelineNodeData>[]; edges: Edge[] }
               if (snapshot(draft.nodes, draft.edges) !== baselineRef.current) {
-                setNodes(idle(draft.nodes)); setEdges(draft.edges)
+                setNodes(applyState(draft.nodes)); setEdges(draft.edges)
                 restored = true
                 notify.warning('Borrador restaurado', {
                   description: 'Tienes cambios del lienzo sin guardar. Pulsa "Guardar" para confirmarlos.',
@@ -745,8 +772,20 @@ export function PipelineCanvas({
             }
           } catch { /* borrador corrupto: se ignora */ }
         }
-        if (!restored) { setNodes(idle(canvas.nodes as Node<PipelineNodeData>[])); setEdges(canvas.edges) }
+        if (!restored) { setNodes(applyState(canvas.nodes as Node<PipelineNodeData>[])); setEdges(canvas.edges) }
         setSelectedNodeId(null)
+
+        // Restaura el viewport (pan/zoom) en el que estaba el usuario; si no hay uno
+        // guardado, encuadra el flujo. Se difiere para que React Flow registre los nodos.
+        const vpRaw = viewportKey ? localStorage.getItem(viewportKey) : null
+        window.setTimeout(() => {
+          if (cancelled) return
+          if (vpRaw) {
+            try { setViewport(JSON.parse(vpRaw)) } catch { fitView({ padding: 0.2 }) }
+          } else {
+            fitView({ padding: 0.2 })
+          }
+        }, 60)
 
         // Reanuda la consola de la última ejecución (replay del backend).
         if (execKey) {
@@ -780,6 +819,32 @@ export function PipelineCanvas({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nodes, edges])
+
+  // Persiste los estados terminales de los nodos (success/error) + su config runtime
+  // (runId, endpoint, …) para restaurarlos al volver al lienzo desde otro módulo.
+  useEffect(() => {
+    if (!loadedRef.current || !statusKey) return
+    const overlay: Record<string, { status: PipelineNodeStatus; error?: string; config?: Record<string, string | number> }> = {}
+    for (const n of nodes) {
+      if (n.data.status && n.data.status !== 'idle') {
+        const c = n.data.config ?? {}
+        overlay[n.id] = {
+          status: n.data.status,
+          error: n.data.error,
+          config: {
+            ...(c.runId ? { runId: c.runId } : {}),
+            ...(c.modelVersion ? { modelVersion: c.modelVersion } : {}),
+            ...(c.metrics ? { metrics: c.metrics } : {}),
+            ...(c.endpoint ? { endpoint: c.endpoint } : {}),
+          },
+        }
+      }
+    }
+    try {
+      if (Object.keys(overlay).length) localStorage.setItem(statusKey, JSON.stringify(overlay))
+      else localStorage.removeItem(statusKey)
+    } catch { /* almacenamiento no disponible */ }
+  }, [nodes, statusKey])
 
   // Aviso del navegador al cerrar/refrescar con cambios sin guardar (item 3).
   useEffect(() => {
@@ -894,10 +959,15 @@ export function PipelineCanvas({
           onConnect={onConnect}
           onNodeClick={(_, node) => requestSelectNode(node.id)}
           onPaneClick={() => requestCloseNode()}
+          onMoveEnd={(_, vp) => {
+            // Recuerda pan/zoom para restaurar el mismo espacio al volver al lienzo.
+            if (viewportKey) {
+              try { localStorage.setItem(viewportKey, JSON.stringify(vp)) } catch { /* noop */ }
+            }
+          }}
           nodeTypes={nodeTypes}
           defaultEdgeOptions={{ animated: true }}
           deleteKeyCode={null}
-          fitView
           proOptions={{ hideAttribution: true }}
         >
           <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="var(--border)" />

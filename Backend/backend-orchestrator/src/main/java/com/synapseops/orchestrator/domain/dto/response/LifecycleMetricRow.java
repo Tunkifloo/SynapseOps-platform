@@ -19,5 +19,7 @@ public record LifecycleMetricRow(
         Double leadTimeDeploySeconds,
         Long coldStartMs,
         String deployStatus,
-        Integer interactionEffort
+        Integer interactionEffort,
+        /** Señal de calidad: OK | OVERFIT | DRIFT | OVERFIT+DRIFT | null (sin datos). */
+        String dataQuality
 ) {}

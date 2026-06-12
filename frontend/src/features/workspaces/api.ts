@@ -82,6 +82,24 @@ export const getStorageLimits = (token: string) => (
   fetchJson<StorageLimits>('/storage/limits', token)
 )
 
+export interface WorkspaceUsage {
+  workspaceId: number
+  name: string
+  usedBytes: number
+}
+
+export interface StorageUsage {
+  maxFileSizeMb: number
+  maxWorkspaceMb: number
+  totalUsedBytes: number
+  workspaces: WorkspaceUsage[]
+}
+
+// Uso de disco real por workspace + límites. Alimenta la UX de almacenamiento.
+export const getStorageUsage = (token: string) => (
+  fetchJson<StorageUsage>('/storage/usage', token)
+)
+
 export const createPipeline = (token: string, workspaceId: number, payload: PipelineFormData) => (
   sendJson<PipelineSummary>(`/workspaces/${workspaceId}/pipelines`, token, 'POST', payload)
 )

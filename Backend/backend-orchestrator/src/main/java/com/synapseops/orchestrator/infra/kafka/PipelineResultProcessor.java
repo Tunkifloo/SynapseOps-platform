@@ -2,6 +2,7 @@ package com.synapseops.orchestrator.infra.kafka;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.synapseops.orchestrator.domain.entity.*;
 import com.synapseops.orchestrator.infra.repository.*;
 import com.synapseops.orchestrator.infra.sse.ExecutionEventBus;
@@ -57,7 +58,10 @@ public class PipelineResultProcessor {
                 String modelVersion    = result.path("model_version").asText();
                 String artifactPath    = result.path("artifact_path").asText("");
                 String hyperparamsJson = result.path("hyperparameters").toString();
-                String metricsJson     = result.path("metrics").toString();
+                // El overfit_warning y el drift vienen en la RAÍZ del resultado (no dentro
+                // de "metrics"); se fusionan en el blob de métricas (única fuente que el
+                // frontend ya consume) para mostrarlos en el lienzo y en Monitoreo.
+                String metricsJson     = mergeQualitySignals(result);
 
                 execution.complete(runId);
                 // TEL-01 · Process Tracker: timestamps del ciclo. Los del ml-engine
@@ -117,6 +121,27 @@ public class PipelineResultProcessor {
             log.error("Error procesando resultado Kafka: {}", e.getMessage(), e);
             throw new RuntimeException("Error en PipelineResultProcessor", e);
         }
+    }
+
+    /**
+     * Fusiona las señales de calidad de raíz (overfit_warning, drift) dentro del blob
+     * "metrics" que persiste el MLArtifact y consume el frontend. Tolerante: si "metrics"
+     * no es objeto, parte de uno vacío.
+     */
+    private String mergeQualitySignals(JsonNode result) {
+        JsonNode metricsNode = result.path("metrics");
+        ObjectNode merged = metricsNode.isObject()
+                ? ((ObjectNode) metricsNode).deepCopy()
+                : objectMapper.createObjectNode();
+        JsonNode overfit = result.path("overfit_warning");
+        if (overfit != null && !overfit.isMissingNode() && !overfit.isNull()) {
+            merged.set("overfit_warning", overfit);
+        }
+        JsonNode drift = result.path("drift");
+        if (drift != null && !drift.isMissingNode() && !drift.isNull()) {
+            merged.set("drift", drift);
+        }
+        return merged.toString();
     }
 
     /** Parseo tolerante de un timestamp ISO-8601 local del ml-engine (null si falta/ inválido). */

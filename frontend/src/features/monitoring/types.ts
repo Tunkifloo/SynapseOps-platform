@@ -16,6 +16,8 @@ export interface LifecycleMetricRow {
   deployStatus: string | null
   /** Esfuerzo de Interacción: nº de nodos del lienzo low-code. */
   interactionEffort: number | null
+  /** Señal de calidad: OK | OVERFIT | DRIFT | OVERFIT+DRIFT | null. */
+  dataQuality: string | null
 }
 
 export interface LifecycleMetrics {
