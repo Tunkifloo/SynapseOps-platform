@@ -70,6 +70,18 @@ export const deleteDataset = (token: string, workspaceId: number, filename: stri
   sendVoid(`/workspaces/${workspaceId}/dataset/${filename}`, token, 'DELETE')
 )
 
+export interface StorageLimits {
+  maxFileSizeMb: number
+  maxWorkspaceMb: number
+  allowedExtensions: string[]
+}
+
+// Límites efectivos del backend (fuente única de verdad). El frontend ya no hardcodea
+// ni depende de una variable de build potencialmente desincronizada.
+export const getStorageLimits = (token: string) => (
+  fetchJson<StorageLimits>('/storage/limits', token)
+)
+
 export const createPipeline = (token: string, workspaceId: number, payload: PipelineFormData) => (
   sendJson<PipelineSummary>(`/workspaces/${workspaceId}/pipelines`, token, 'POST', payload)
 )

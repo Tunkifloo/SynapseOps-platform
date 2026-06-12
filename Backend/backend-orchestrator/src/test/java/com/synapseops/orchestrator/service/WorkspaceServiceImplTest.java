@@ -38,6 +38,7 @@ class WorkspaceServiceImplTest {
     @Mock UserRepository      userRepository;
     @Mock WorkspaceMapper     workspaceMapper;
     @Mock JdbcTemplate jdbcTemplate;
+    @Mock com.synapseops.orchestrator.service.StorageMaintenanceService storageMaintenance;
 
     @InjectMocks WorkspaceServiceImpl workspaceService;
 

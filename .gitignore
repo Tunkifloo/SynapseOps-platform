@@ -60,3 +60,10 @@ CLAUDE.md
 
 # Storage
 /storage-dev
+
+# Load-test outputs (resultados de corrida — no versionar; el fixture test_image.png sí se versiona)
+/infra/load-tests/summary.json
+/infra/load-tests/resource-usage.csv
+/infra/load-tests/*.summary.json
+/infra/load-tests/results*.json
+/infra/load-tests/results*.csv

@@ -5,6 +5,16 @@ spring:
   codec:
     max-in-memory-size: 10MB
 
+  # ── Multipart (WebFlux) ────────────────────────────────────────────────────
+  # Tope REAL de subida: WebFlux aborta la parte en streaming si supera
+  # max-disk-usage-per-part (no depende del header Content-Length). Se ata al
+  # mismo STORAGE_MAX_FILE_SIZE_MB que valida el dominio → una sola fuente de verdad.
+  webflux:
+    multipart:
+      max-in-memory-size: 1MB
+      max-disk-usage-per-part: ${STORAGE_MAX_FILE_SIZE_MB:500}MB
+      max-parts: 16
+
   application:
     name: backend-orchestrator
 
@@ -158,6 +168,15 @@ logging:
 storage:
   base-path: ${STORAGE_BASE_PATH:/storage}
   max-file-size-mb: ${STORAGE_MAX_FILE_SIZE_MB:500}
+  # Cuota de disco por workspace (datasets + extracted + models + downloads).
+  # Protege el host de 8 GB de llenarse; RN-001 solo cubre RAM/CPU.
+  max-workspace-mb: ${STORAGE_MAX_WORKSPACE_MB:2000}
+  # Extensiones aceptadas — fuente única consumida por la validación y el endpoint /storage/limits.
+  allowed-extensions:
+    - png
+    - jpg
+    - jpeg
+    - zip
   allowed-types:
     - text/csv
     - image/png

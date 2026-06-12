@@ -11,6 +11,7 @@ import { notify } from '@/shared/notify'
 import { API_BASE_URL } from '@/shared/api/env'
 import {
   deleteDataset,
+  getStorageLimits,
   listMyWorkspaces,
   listWorkspacePipelines,
   uploadDataset,
@@ -55,6 +56,7 @@ export function DatasetManagement({ token }: DatasetManagementProps) {
   const [replaceKeras, setReplaceKeras] = useState('mnist')
   const [isReplacing, setIsReplacing] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [maxMb, setMaxMb] = useState(500)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -76,6 +78,15 @@ export function DatasetManagement({ token }: DatasetManagementProps) {
   }, [token])
 
   useEffect(() => { void load() }, [load])
+
+  // Límite efectivo del backend (fuente única). Si falla, queda el default seguro de 500.
+  useEffect(() => {
+    let active = true
+    getStorageLimits(token)
+      .then((limits) => { if (active) setMaxMb(limits.maxFileSizeMb) })
+      .catch(() => { /* mantiene el default */ })
+    return () => { active = false }
+  }, [token])
 
   const withDataset = useMemo(() => workspaces.filter((w) => !!w.datasetPath), [workspaces])
   const withoutDataset = useMemo(() => workspaces.filter((w) => !w.datasetPath), [workspaces])
@@ -126,7 +137,6 @@ export function DatasetManagement({ token }: DatasetManagementProps) {
 
   const storageUsed = withDataset.length
   const storageTotal = workspaces.length
-  const maxMb = Number(import.meta.env.VITE_STORAGE_MAX_FILE_SIZE_MB) || 500
   const storagePercent = storageTotal > 0 ? Math.round((storageUsed / storageTotal) * 100) : 0
   const totalPipelines = Object.values(pipelineCounts).reduce((a, b) => a + b, 0)
 

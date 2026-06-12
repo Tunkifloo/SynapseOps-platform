@@ -9,6 +9,7 @@ import com.synapseops.orchestrator.infra.exception.ResourceNotFoundException;
 import com.synapseops.orchestrator.infra.repository.UserRepository;
 import com.synapseops.orchestrator.infra.repository.WorkspaceRepository;
 import com.synapseops.orchestrator.mapper.WorkspaceMapper;
+import com.synapseops.orchestrator.service.StorageMaintenanceService;
 import com.synapseops.orchestrator.service.WorkspaceService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -29,6 +30,7 @@ public class WorkspaceServiceImpl implements WorkspaceService {
     private final UserRepository      userRepository;
     private final WorkspaceMapper     workspaceMapper;
     private final JdbcTemplate        jdbcTemplate;
+    private final StorageMaintenanceService storageMaintenance;
 
     @Override
     public Flux<WorkspaceResponse> getMyWorkspaces(String username) {
@@ -101,8 +103,12 @@ public class WorkspaceServiceImpl implements WorkspaceService {
         return Mono.fromCallable(() -> {
             Workspace workspace = resolveWorkspace(id);
             verifyOwnership(workspace, username);
+            long userId = workspace.getUser().getIdUser();
             jdbcTemplate.update("DELETE FROM workspaces WHERE id_workspace = ?",
                     workspace.getIdWorkspace());
+            // Limpieza en cascada del volumen: datasets (orquestador) + artefactos del
+            // ml-engine (extracted/models/downloads). Antes quedaban huérfanos para siempre.
+            storageMaintenance.purgeWorkspace(userId, id);
             return true;
         }).subscribeOn(Schedulers.boundedElastic()).then();
     }

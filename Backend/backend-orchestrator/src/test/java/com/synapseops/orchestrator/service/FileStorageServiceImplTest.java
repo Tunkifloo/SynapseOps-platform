@@ -17,6 +17,7 @@ import reactor.test.StepVerifier;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -30,6 +31,7 @@ class FileStorageServiceImplTest {
     Path tempDir;
 
     @Mock StorageProperties storageProperties;
+    @Mock StorageMaintenanceService storageMaintenance;
     @Mock FilePart          filePart;
     @Mock HttpHeaders       fileHeaders;
 
@@ -41,6 +43,11 @@ class FileStorageServiceImplTest {
     @BeforeEach
     void setUp() {
         lenient().when(storageProperties.getBasePath()).thenReturn(tempDir.toString());
+        lenient().when(storageProperties.getAllowedExtensions())
+                .thenReturn(List.of("png", "jpg", "jpeg", "zip"));
+        lenient().when(storageProperties.getMaxWorkspaceMb()).thenReturn(2000L);
+        lenient().when(storageMaintenance.workspaceUsageBytes(anyLong(), anyLong()))
+                .thenReturn(0L);
     }
 
     @Nested
@@ -208,6 +215,28 @@ class FileStorageServiceImplTest {
             StepVerifier.create(storageService.store(filePart, USER_ID, WORKSPACE_ID))
                     .assertNext(path -> assertThat(path).isNotBlank())
                     .verifyComplete();
+        }
+
+        @Test
+        @DisplayName("Debe rechazar la subida si el workspace superaría su cuota de disco")
+        void shouldRejectWhenWorkspaceQuotaExceeded() {
+            long quotaBytes = 2000L * 1024 * 1024;
+
+            when(storageProperties.getMaxFileSizeMb()).thenReturn(500L);
+            when(filePart.filename()).thenReturn("dataset.zip");
+            when(filePart.headers()).thenReturn(fileHeaders);
+            when(fileHeaders.getContentLength()).thenReturn(100L * 1024 * 1024);
+            // Uso actual ya casi en la cuota → la subida la superaría.
+            when(storageMaintenance.workspaceUsageBytes(USER_ID, WORKSPACE_ID))
+                    .thenReturn(quotaBytes - 1024L);
+
+            StepVerifier.create(storageService.store(filePart, USER_ID, WORKSPACE_ID))
+                    .expectErrorMatches(ex ->
+                            ex instanceof IllegalArgumentException &&
+                                    ex.getMessage().contains("cuota"))
+                    .verify();
+
+            verify(filePart, never()).transferTo(any(Path.class));
         }
     }
 
