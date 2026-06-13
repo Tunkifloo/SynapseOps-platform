@@ -75,7 +75,7 @@ export function DeployActions({
           {accuracy && (
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">Accuracy</span>
-              <span className="font-mono text-success">{accuracy}</span>
+              <span className="font-mono text-success-strong">{accuracy}</span>
             </div>
           )}
           <div className="flex items-center justify-between">
@@ -87,14 +87,14 @@ export function DeployActions({
 
       {/* Estado EN VIVO del despliegue. */}
       {deployStatus === 'running' ? (
-        <p className="flex items-start gap-1.5 text-xs leading-relaxed text-info">
+        <p className="flex items-start gap-1.5 text-xs leading-relaxed text-info-strong">
           <Loader2 className="mt-0.5 size-3.5 shrink-0 animate-spin" />
           Desplegando el model-service… build de la imagen, puede tardar varios minutos.
           Sigue el detalle en la consola de logs.
         </p>
       ) : deployStatus === 'success' ? (
         <div className="space-y-2">
-          <p className="flex items-start gap-1.5 text-xs leading-relaxed text-success">
+          <p className="flex items-start gap-1.5 text-xs leading-relaxed text-success-strong">
             <CheckCircle2 className="mt-0.5 size-3.5 shrink-0" />
             model-service <span className="font-semibold">activo</span>. Endpoint listo para inferencias.
           </p>
@@ -102,7 +102,7 @@ export function DeployActions({
             <button
               type="button"
               onClick={copyEndpoint}
-              className="flex w-full items-center gap-2 rounded-lg border border-border bg-background/60 px-2.5 py-1.5 text-left font-mono text-[11px] text-foreground/90 transition-colors hover:bg-accent/40"
+              className="flex w-full items-center gap-2 rounded-lg border border-border bg-background/60 px-2.5 py-1.5 text-left font-mono text-[11px] text-foreground/90 transition-colors duration-150 ease-out-quart hover:bg-accent/40"
               title="Copiar endpoint"
             >
               <Copy className="size-3 shrink-0 text-primary" />
@@ -115,7 +115,7 @@ export function DeployActions({
         </div>
       ) : deployStatus === 'error' ? (
         <div className="space-y-2">
-          <p className="flex items-start gap-1.5 text-xs leading-relaxed text-destructive">
+          <p className="flex items-start gap-1.5 text-xs leading-relaxed text-destructive-strong">
             <XCircle className="mt-0.5 size-3.5 shrink-0" />
             El despliegue falló. Revisa la consola de logs (el contenedor se detuvo).
           </p>

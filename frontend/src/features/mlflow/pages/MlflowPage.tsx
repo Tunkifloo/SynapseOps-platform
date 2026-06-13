@@ -6,6 +6,7 @@ import { Button } from '@/shared/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui/card'
 import { Sheet, SheetBody, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/shared/components/ui/sheet'
 import { Spinner } from '@/shared/components/ui/spinner'
+import { PageHeader } from '@/shared/components/PageHeader'
 import { cn } from '@/lib/utils'
 import { MlflowPanel } from '@/features/mlflow/components/MlflowPanel'
 import { stageVariant, VersionCard, type RegistryApi } from '@/features/mlflow/components/ModelRegistry'
@@ -83,35 +84,33 @@ export function MlflowPage({ token, onAuthError }: MlflowPageProps) {
 
   return (
     <div className="space-y-5">
-      <section className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
+      <PageHeader
+        title="Registro global de modelos"
+        subtitle="Vista a nivel plataforma de experimentos, modelos registrados y su estado en el Model Registry."
+        badge={
+          <Badge variant="info" className="gap-1.5">
             <ShieldCheck className="size-3.5" />
             Solo administradores
-          </div>
-          <h1 className="font-heading text-2xl font-bold tracking-tight text-foreground xl:text-3xl">
-            Registro global de modelos
-          </h1>
-          <p className="mt-1.5 max-w-3xl text-sm leading-6 text-muted-foreground">
-            Vista a nivel plataforma de experimentos, modelos registrados y su estado en el Model Registry.
-          </p>
-        </div>
-        <Button
-          type="button"
-          variant="outline"
-          onClick={() => window.dispatchEvent(new CustomEvent('synapseops:refresh-mlflow'))}
-          className="shrink-0"
-        >
-          <RefreshCw />
-          Actualizar
-        </Button>
-      </section>
+          </Badge>
+        }
+        actions={
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => window.dispatchEvent(new CustomEvent('synapseops:refresh-mlflow'))}
+            className="shrink-0"
+          >
+            <RefreshCw />
+            Actualizar
+          </Button>
+        }
+      />
 
       {/* KPIs de plataforma */}
       <div className="grid gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-4">
-        <Kpi title="Modelos" value={reg.totalModels} icon={Boxes} accent="bg-primary/5 text-primary" loading={reg.loading} />
-        <Kpi title="En producción" value={reg.inProduction} icon={Rocket} accent="bg-success/5 text-success" loading={reg.loading} />
-        <Kpi title="Versiones" value={reg.totalVersions} icon={Layers} accent="bg-cta/5 text-cta" loading={reg.loading} />
+        <Kpi title="Modelos" value={reg.totalModels} icon={Boxes} accent="bg-primary/5 text-primary-strong" loading={reg.loading} />
+        <Kpi title="En producción" value={reg.inProduction} icon={Rocket} accent="bg-success/5 text-success-strong" loading={reg.loading} />
+        <Kpi title="Versiones" value={reg.totalVersions} icon={Layers} accent="bg-cta/5 text-cta-strong" loading={reg.loading} />
         <Kpi title="Experimentos" value={reg.experiments} icon={FlaskConical} accent="bg-violet-500/5 text-violet-600" loading={reg.loading} />
       </div>
 
@@ -175,7 +174,7 @@ export function MlflowPage({ token, onAuthError }: MlflowPageProps) {
                 </thead>
                 <tbody>
                   {reg.rows.map((r) => (
-                    <tr key={r.name} className="border-b border-border last:border-0 transition-colors hover:bg-accent/40">
+                    <tr key={r.name} className="border-b border-border last:border-0 transition-colors duration-150 ease-out-quart hover:bg-accent/40">
                       <td className="px-5 py-3">
                         <div className="flex items-center gap-2.5">
                           <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary ring-1 ring-primary/15">
@@ -185,7 +184,7 @@ export function MlflowPage({ token, onAuthError }: MlflowPageProps) {
                         </div>
                       </td>
                       <td className="px-3 py-3 font-mono text-muted-foreground">v{r.latestVersion}</td>
-                      <td className="px-3 py-3 font-mono font-semibold text-success">
+                      <td className="px-3 py-3 font-mono font-semibold text-success-strong">
                         {r.latestAccuracy != null ? r.latestAccuracy.toFixed(4) : '—'}
                       </td>
                       <td className="px-3 py-3">

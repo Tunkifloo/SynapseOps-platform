@@ -82,7 +82,7 @@ export function SignUpPage() {
 
   return (
     <div className="bg-dots flex min-h-[100svh] items-center justify-center px-4 py-8">
-      <div className="w-full max-w-xl overflow-hidden rounded-3xl border border-border bg-card shadow-[0_24px_60px_-24px_rgba(15,23,42,0.25)]">
+      <div className="w-full max-w-xl overflow-hidden rounded-3xl border border-border bg-card shadow-[0_24px_60px_-24px_rgba(15,23,42,0.25)] motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2 motion-safe:ease-out-quart motion-safe:[animation-duration:280ms]">
         {/* Cabecera de marca */}
         <div className="border-b border-border bg-secondary/40 px-8 pt-9 pb-7 text-center">
           <div className="mb-4 flex justify-center">
@@ -214,9 +214,9 @@ export function SignUpPage() {
             <button
               type="button"
               onClick={() => setShowPassword((v) => !v)}
-              className="absolute top-1/2 right-3.5 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
+              className="absolute top-1/2 right-2.5 -translate-y-1/2 rounded-md p-1 text-muted-foreground transition-colors duration-150 ease-out-quart hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
               aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
-              tabIndex={-1}
+              aria-pressed={showPassword}
             >
               {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
             </button>
@@ -238,7 +238,7 @@ export function SignUpPage() {
           {error && (
             <p
               role="alert"
-              className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm font-medium text-destructive"
+              className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm font-medium text-destructive-strong motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-top-1 motion-safe:duration-150"
             >
               {error}
             </p>
@@ -261,7 +261,7 @@ export function SignUpPage() {
 
           <p className="text-center text-sm text-muted-foreground">
             ¿Ya tienes cuenta?{' '}
-            <Link to="/login" className="font-semibold text-primary hover:underline">
+            <Link to="/login" className="rounded font-semibold text-primary-strong transition-colors duration-150 ease-out-quart hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50">
               Inicia sesión
             </Link>
           </p>
@@ -306,7 +306,7 @@ function Field({ id, label, error, optional, icon, className, children }: FieldP
         )}
         {children}
       </div>
-      {error && <p className="text-xs font-medium text-destructive">{error}</p>}
+      {error && <p className="text-xs font-medium text-destructive-strong">{error}</p>}
     </div>
   )
 }

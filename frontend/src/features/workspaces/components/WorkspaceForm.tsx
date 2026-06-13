@@ -60,7 +60,7 @@ export function WorkspaceForm({
           aria-invalid={showNameError ? true : undefined}
           className={cn('h-10', showNameError && 'border-destructive focus-visible:ring-destructive/30')}
         />
-        {showNameError && <p className="text-xs font-medium text-destructive">{nameError}</p>}
+        {showNameError && <p className="text-xs font-medium text-destructive-strong">{nameError}</p>}
       </div>
 
       <div className="space-y-1.5">
@@ -72,7 +72,7 @@ export function WorkspaceForm({
           value={form.description}
           onChange={onChange('description')}
           placeholder="Describe el propósito del proyecto"
-          className="min-h-24 w-full rounded-xl border border-input bg-card px-3 py-2.5 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/30"
+          className="min-h-24 w-full rounded-xl border border-input bg-card px-3 py-2.5 text-sm text-foreground outline-none transition-[color,background-color,border-color,box-shadow] duration-150 ease-out-quart placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/30"
         />
       </div>
 

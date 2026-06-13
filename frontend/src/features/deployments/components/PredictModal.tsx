@@ -146,7 +146,7 @@ export function PredictModal({
           onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
           onDragLeave={() => setDragging(false)}
           onDrop={onDrop}
-          className={`flex cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed px-4 py-6 text-center transition-colors ${
+          className={`flex cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed px-4 py-6 text-center transition-colors duration-150 ease-out-quart ${
             dragging ? 'border-primary bg-primary/10' : 'border-border hover:bg-accent/40'
           }`}
         >
@@ -170,24 +170,24 @@ export function PredictModal({
               const lowConf = !!it.result && it.result.confidence < LOW_CONF
               const canRetry = !it.pending && (!!it.error || lowConf)
               return (
-              <div key={idx} className="flex items-center gap-3 rounded-lg border border-border bg-card/60 p-2">
+              <div key={idx} className="flex items-center gap-3 rounded-lg border border-border bg-card/60 p-2 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 motion-safe:duration-150">
                 <img src={it.url} alt={it.file.name} className="size-12 shrink-0 rounded-md object-cover" />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-xs font-medium text-foreground">{it.file.name}</p>
                   {it.pending ? (
-                    <p className="flex items-center gap-1 text-[11px] text-info"><Loader2 className="size-3 animate-spin" /> Infiriendo…</p>
+                    <p className="flex items-center gap-1 text-[11px] text-info-strong"><Loader2 className="size-3 animate-spin" /> Infiriendo…</p>
                   ) : it.error ? (
-                    <p className="flex items-center gap-1 text-[11px] text-destructive"><XCircle className="size-3" /> {it.error}</p>
+                    <p className="flex items-center gap-1 text-[11px] text-destructive-strong"><XCircle className="size-3" /> {it.error}</p>
                   ) : it.result ? (
                     lowConf ? (
-                      <p className="flex items-center gap-1 text-[11px] text-warning">
+                      <p className="flex items-center gap-1 text-[11px] text-warning-strong">
                         <AlertTriangle className="size-3" />
                         <span>Poco fiable:</span>
                         <span className="font-medium text-foreground">{it.result.class_name ?? `clase ${it.result.prediction}`}</span>
                         <span>· {(it.result.confidence * 100).toFixed(1)}%</span>
                       </p>
                     ) : (
-                      <p className="flex items-center gap-1 text-[11px] text-success">
+                      <p className="flex items-center gap-1 text-[11px] text-success-strong">
                         <CheckCircle2 className="size-3" />
                         <span className="font-medium text-foreground">{it.result.class_name ?? `clase ${it.result.prediction}`}</span>
                         <span className="text-muted-foreground">· {(it.result.confidence * 100).toFixed(1)}%</span>
@@ -202,7 +202,7 @@ export function PredictModal({
                     <button
                       type="button"
                       onClick={() => void predictOne(idx)}
-                      className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
+                      className="rounded-md p-1 text-muted-foreground transition-colors duration-150 ease-out-quart hover:bg-primary/10 hover:text-primary"
                       aria-label="Reintentar predicción"
                       title="Reintentar"
                     >
@@ -212,7 +212,7 @@ export function PredictModal({
                   <button
                     type="button"
                     onClick={() => removeAt(idx)}
-                    className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                    className="rounded-md p-1 text-muted-foreground transition-colors duration-150 ease-out-quart hover:bg-destructive/10 hover:text-destructive"
                     aria-label="Quitar imagen"
                   >
                     <Trash2 className="size-3.5" />

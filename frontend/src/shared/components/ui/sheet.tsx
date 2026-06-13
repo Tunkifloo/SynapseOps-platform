@@ -30,12 +30,12 @@ function SheetContent({
     <DialogPrimitive.Portal>
       <DialogPrimitive.Overlay
         data-slot="sheet-overlay"
-        className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0"
+        className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm duration-200 ease-out-quart data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0"
       />
       <DialogPrimitive.Content
         data-slot="sheet-content"
         className={cn(
-          "fixed inset-y-0 z-50 flex h-full w-full max-w-md flex-col bg-card text-card-foreground shadow-2xl ring-1 ring-foreground/10 transition duration-300 data-[state=open]:animate-in data-[state=closed]:animate-out",
+          "fixed inset-y-0 z-50 flex h-full w-full max-w-md flex-col bg-card text-card-foreground shadow-2xl ring-1 ring-foreground/10 duration-200 ease-out-expo data-[state=open]:animate-in data-[state=closed]:animate-out",
           side === "right"
             ? "right-0 border-l border-border data-[state=open]:slide-in-from-right data-[state=closed]:slide-out-to-right"
             : "left-0 border-r border-border data-[state=open]:slide-in-from-left data-[state=closed]:slide-out-to-left",
@@ -47,7 +47,7 @@ function SheetContent({
         {showCloseButton && (
           <DialogPrimitive.Close
             data-slot="sheet-close-button"
-            className="absolute top-4 right-4 inline-flex size-8 items-center justify-center rounded-full text-muted-foreground transition-colors outline-none cursor-pointer hover:bg-muted hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 [&_svg]:size-4"
+            className="absolute top-4 right-4 inline-flex size-8 items-center justify-center rounded-full text-muted-foreground transition-colors duration-150 ease-out-quart outline-none cursor-pointer hover:bg-muted hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 [&_svg]:size-4"
             aria-label="Cerrar"
           >
             <X />

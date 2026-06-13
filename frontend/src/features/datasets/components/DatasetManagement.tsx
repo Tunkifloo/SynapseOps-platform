@@ -384,10 +384,10 @@ export function DatasetManagement({ token }: DatasetManagementProps) {
           </SheetHeader>
           <SheetBody>
             {selectedWs?.datasetPath && (
-              <div className="flex items-start gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-3 mb-4">
-                <CheckCircle className="size-4 text-emerald-400 mt-0.5 shrink-0" />
+              <div className="mb-4 flex items-start gap-3 rounded-xl border border-success/30 bg-success/5 p-3">
+                <CheckCircle className="mt-0.5 size-4 shrink-0 text-success-strong" />
                 <div className="min-w-0 flex-1">
-                  <p className="text-[11px] font-bold uppercase tracking-widest text-emerald-400 mb-1">
+                  <p className="mb-1 text-[11px] font-bold uppercase tracking-widest text-success-strong">
                     Dataset activo
                   </p>
                   <p className="text-xs text-muted-foreground break-all font-mono">{selectedWs.datasetPath}</p>
@@ -406,7 +406,7 @@ export function DatasetManagement({ token }: DatasetManagementProps) {
                     key={key}
                     type="button"
                     onClick={() => setReplaceMode(key)}
-                    className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-[10px] font-medium transition-all ${
+                    className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-[10px] font-medium transition-all duration-150 ease-out-quart ${
                       replaceMode === key
                         ? 'bg-primary text-primary-foreground shadow'
                         : 'text-muted-foreground hover:text-foreground'
@@ -455,7 +455,7 @@ export function DatasetManagement({ token }: DatasetManagementProps) {
                   <select
                     value={replaceKeras}
                     onChange={(e) => setReplaceKeras(e.target.value)}
-                    className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                    className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-foreground transition-colors duration-150 ease-out-quart focus:outline-none focus:ring-2 focus:ring-ring/50"
                   >
                     {KERAS_DATASETS.map((ds) => (
                       <option key={ds.value} value={ds.value}>{ds.label}</option>

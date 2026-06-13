@@ -28,7 +28,7 @@ export function NodePalette({ onAdd }: NodePaletteProps) {
           onDragStart={(e) => onDragStart(e, node.kind)}
           onClick={() => onAdd(node.kind)}
           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onAdd(node.kind) } }}
-          className="flex min-w-[160px] shrink-0 cursor-grab items-center gap-3 rounded-xl border border-border bg-card px-3 py-2.5 text-card-foreground transition-colors outline-none hover:border-primary/40 hover:bg-accent/40 focus-visible:ring-[3px] focus-visible:ring-ring/50 active:cursor-grabbing md:min-w-0"
+          className="flex min-w-[160px] shrink-0 cursor-grab items-center gap-3 rounded-xl border border-border bg-card px-3 py-2.5 text-card-foreground outline-none transition-[color,background-color,border-color] duration-150 ease-out-quart hover:border-primary/40 hover:bg-accent/40 focus-visible:ring-[3px] focus-visible:ring-ring/50 active:cursor-grabbing md:min-w-0"
           title={`Arrastra o toca para añadir "${node.label}"`}
         >
           <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
