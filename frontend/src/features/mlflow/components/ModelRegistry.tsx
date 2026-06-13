@@ -318,6 +318,7 @@ export function VersionCard({ api, modelName, version, onAuthError, onChanged }:
                     format={(v) => (typeof v === 'number' ? v.toFixed(4) : String(v))}
                     valueClass="text-success"
                   />
+                  <QualityReport metrics={details?.metrics ?? {}} />
                   {details?.confusionMatrix && <ConfusionMatrixView cm={details.confusionMatrix} />}
                   {(!details ||
                     (Object.keys(details.params).length === 0 &&
@@ -405,6 +406,52 @@ interface DetailGridProps {
   entries: [string, string | number][]
   format: (value: string | number) => string
   valueClass?: string
+}
+
+/**
+ * Reporte de calidad del modelo a partir de las métricas del run: brecha de
+ * overfitting (accuracy − val_accuracy) y deriva de datos (PSI de split y
+ * re-entrenamiento, logueados por el ml-engine). Se oculta si la versión no
+ * tiene estas métricas (modelos previos a la telemetría de calidad).
+ */
+function QualityReport({ metrics }: { metrics: Record<string, number> }) {
+  const acc = metrics.accuracy ?? metrics.final_accuracy
+  const val = metrics.val_accuracy
+  const gap = acc != null && val != null ? acc - val : null
+  const splitPsi = metrics.drift_split_max_psi
+  const retrainPsi = metrics.drift_retrain_max_psi
+  if (gap == null && splitPsi == null && retrainPsi == null) return null
+
+  type Tone = 'ok' | 'warn' | 'bad'
+  const chips: { label: string; tone: Tone }[] = []
+  if (gap != null) {
+    const g = (gap * 100).toFixed(1)
+    chips.push(gap > 0.15
+      ? { label: `Overfitting alto — brecha train/val ${g}%`, tone: 'bad' }
+      : gap > 0.08
+        ? { label: `Ligero overfitting — brecha train/val ${g}%`, tone: 'warn' }
+        : { label: 'Sin señales de overfitting (train ≈ val)', tone: 'ok' })
+  }
+  const psiTone = (p: number): Tone => (p >= 0.25 ? 'bad' : p >= 0.1 ? 'warn' : 'ok')
+  const psiLabel = (p: number) => (p >= 0.25 ? 'significativa' : p >= 0.1 ? 'moderada' : 'estable')
+  if (splitPsi != null) chips.push({ label: `Calidad del split (train vs val): deriva ${psiLabel(splitPsi)} · PSI ${splitPsi.toFixed(2)}`, tone: psiTone(splitPsi) })
+  if (retrainPsi != null) chips.push({ label: `Cambio de datos vs corrida previa: deriva ${psiLabel(retrainPsi)} · PSI ${retrainPsi.toFixed(2)}`, tone: psiTone(retrainPsi) })
+
+  const toneClass: Record<Tone, string> = {
+    ok: 'bg-success/10 text-success',
+    warn: 'bg-warning/15 text-warning',
+    bad: 'bg-destructive/10 text-destructive',
+  }
+  return (
+    <div>
+      <p className="mb-1.5 text-[10px] font-semibold tracking-[0.14em] text-muted-foreground uppercase">Calidad y data drift</p>
+      <div className="flex flex-col gap-1.5">
+        {chips.map((c, i) => (
+          <span key={i} className={`rounded-md px-2 py-1 text-[11px] font-medium ${toneClass[c.tone]}`}>{c.label}</span>
+        ))}
+      </div>
+    </div>
+  )
 }
 
 function DetailGrid({ title, entries, format, valueClass }: DetailGridProps) {
