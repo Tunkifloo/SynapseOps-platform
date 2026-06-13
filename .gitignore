@@ -53,10 +53,14 @@ ml-engine/.env
 # Agents
 /.agents
 /.claude
+/.impeccable
 /graphify-out
 CLAUDE.md
+AGENTS.md
+PRODUCT.md
 /docs
 /design-system
+skills-lock.json
 
 # Storage
 /storage-dev

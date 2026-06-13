@@ -34,6 +34,7 @@ import {
   SheetTitle,
 } from '@/shared/components/ui/sheet'
 import { ConfirmDialog } from '@/shared/components/ConfirmDialog'
+import { PageHeader } from '@/shared/components/PageHeader'
 import { notify } from '@/shared/notify'
 import {
   createWorkspace,
@@ -266,20 +267,16 @@ export function WorkspacesPage({ token, searchQuery, onAuthError }: WorkspacesPa
   return (
     <div className="space-y-5">
       {/* Encabezado + CTA */}
-      <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="font-heading text-2xl font-bold tracking-tight text-foreground xl:text-3xl">
-            Espacios de trabajo
-          </h1>
-          <p className="mt-1.5 max-w-3xl text-sm leading-6 text-muted-foreground">
-            Crea y administra tus proyectos. El dataset, los pipelines y su ejecución se gestionan en el Lienzo.
-          </p>
-        </div>
-        <Button variant="cta" size="lg" onClick={openCreate} className="shrink-0">
-          <FolderPlus />
-          Crear nuevo espacio
-        </Button>
-      </section>
+      <PageHeader
+        title="Espacios de trabajo"
+        subtitle="Crea y administra tus proyectos. El dataset, los pipelines y su ejecución se gestionan en el Lienzo."
+        actions={
+          <Button variant="cta" size="lg" onClick={openCreate} className="shrink-0">
+            <FolderPlus />
+            Crear nuevo espacio
+          </Button>
+        }
+      />
 
       {/* Tabs / filtros */}
       <div className="flex flex-wrap items-center gap-1 rounded-xl border border-border bg-card p-1">
@@ -290,9 +287,9 @@ export function WorkspacesPage({ token, searchQuery, onAuthError }: WorkspacesPa
             onClick={() => setTab(t.key)}
             aria-current={tab === t.key ? 'true' : undefined}
             className={cn(
-              'inline-flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-sm font-semibold transition-colors',
+              'inline-flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-sm font-semibold transition-colors duration-150 ease-out-quart',
               tab === t.key
-                ? 'bg-primary/10 text-primary'
+                ? 'bg-primary/10 text-primary-strong'
                 : 'text-muted-foreground hover:bg-muted hover:text-foreground'
             )}
           >
@@ -300,7 +297,7 @@ export function WorkspacesPage({ token, searchQuery, onAuthError }: WorkspacesPa
             <span
               className={cn(
                 'rounded-full px-1.5 py-0.5 text-[11px] font-semibold',
-                tab === t.key ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'
+                tab === t.key ? 'bg-primary/15 text-primary-strong' : 'bg-muted text-muted-foreground'
               )}
             >
               {counts[t.key]}
@@ -328,14 +325,14 @@ export function WorkspacesPage({ token, searchQuery, onAuthError }: WorkspacesPa
                   openDetail(ws)
                 }
               }}
-              className="group relative flex min-w-0 cursor-pointer flex-col rounded-2xl border border-border bg-card p-5 text-left shadow-sm transition-all outline-none hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md focus-visible:ring-[3px] focus-visible:ring-ring/50"
+              className="group relative flex min-w-0 cursor-pointer flex-col rounded-2xl border border-border bg-card p-5 text-left shadow-sm outline-none transition-[transform,border-color,box-shadow] duration-200 ease-out-quart hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md focus-visible:ring-[3px] focus-visible:ring-ring/50 active:translate-y-0"
             >
               <div className="mb-3 flex items-start justify-between gap-2">
                 <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary ring-1 ring-primary/15">
                   <Layers className="size-5" />
                 </div>
                 {/* Acciones rápidas (hover) */}
-                <div className="flex shrink-0 gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                <div className="flex shrink-0 gap-1 opacity-0 transition-opacity duration-150 ease-out-quart group-hover:opacity-100 focus-within:opacity-100">
                   <Button
                     variant="ghost"
                     size="icon-sm"
@@ -395,7 +392,7 @@ export function WorkspacesPage({ token, searchQuery, onAuthError }: WorkspacesPa
             <button
               type="button"
               onClick={openCreate}
-              className="flex min-h-[168px] cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-border bg-card/40 p-5 text-center text-muted-foreground transition-colors outline-none hover:border-primary/50 hover:bg-accent/40 hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50"
+              className="flex min-h-[168px] cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-border bg-card/40 p-5 text-center text-muted-foreground outline-none transition-[transform,color,background-color,border-color] duration-200 ease-out-quart hover:-translate-y-0.5 hover:border-primary/50 hover:bg-accent/40 hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 active:translate-y-0"
             >
               <div className="flex size-11 items-center justify-center rounded-xl bg-primary/10 text-primary ring-1 ring-primary/15">
                 <Plus className="size-5" />
@@ -476,7 +473,7 @@ export function WorkspacesPage({ token, searchQuery, onAuthError }: WorkspacesPa
                           <div key={p.idPipeline} className="rounded-lg border border-border bg-card">
                             <button
                               onClick={() => void togglePipelineHistory(p.idPipeline)}
-                              className="flex w-full cursor-pointer items-center justify-between gap-3 px-3 py-2 text-left transition-colors hover:bg-muted/50"
+                              className="flex w-full cursor-pointer items-center justify-between gap-3 px-3 py-2 text-left transition-colors duration-150 ease-out-quart hover:bg-muted/50"
                               aria-expanded={isOpen}
                             >
                               <div className="flex min-w-0 items-center gap-2">
@@ -506,7 +503,7 @@ export function WorkspacesPage({ token, searchQuery, onAuthError }: WorkspacesPa
                             </button>
 
                             {isOpen && (
-                              <div className="space-y-1.5 border-t border-border px-3 py-2">
+                              <div className="space-y-1.5 border-t border-border px-3 py-2 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-top-1 motion-safe:duration-150">
                                 <p className="flex items-center gap-1.5 text-[11px] font-semibold tracking-[0.1em] text-muted-foreground uppercase">
                                   <History className="size-3" /> Historial de ejecuciones
                                 </p>

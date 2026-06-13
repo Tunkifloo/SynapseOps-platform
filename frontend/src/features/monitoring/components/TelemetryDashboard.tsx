@@ -26,7 +26,7 @@ const secs = (v: number | null) => (v == null ? '—' : v >= 60 ? `${Math.floor(
 const ms = (v: number | null) => (v == null ? '—' : `${Math.round(v)} ms`)
 const eff = (v: number | null) => (v == null ? '—' : v.toFixed(1))
 const acc = (v: number | null) => (v == null ? '—' : `${(v * 100).toFixed(1)}%`)
-const statusTone = (s: string) => (s === 'COMPLETED' ? 'text-success' : s === 'FAILED' ? 'text-destructive' : 'text-info')
+const statusTone = (s: string) => (s === 'COMPLETED' ? 'text-success-strong' : s === 'FAILED' ? 'text-destructive-strong' : 'text-info-strong')
 
 // Glosario único: cada métrica explica QUÉ es, su unidad y la DIRECCIÓN deseada.
 const HELP = {
@@ -97,8 +97,8 @@ export function TelemetryDashboard({
       type="button"
       onClick={() => setTab(key)}
       className={cn(
-        'rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',
-        tab === key ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-accent/40',
+        'rounded-lg px-3 py-1.5 text-sm font-medium transition-colors duration-150 ease-out-quart',
+        tab === key ? 'bg-primary/10 text-primary-strong' : 'text-muted-foreground hover:bg-accent/40',
       )}
       aria-pressed={tab === key}
     >
@@ -128,7 +128,7 @@ export function TelemetryDashboard({
     {
       key: 'deploy', header: 'Despliegue', title: HELP.deploy,
       render: (r) => (
-        <span className={r.deployStatus === 'SUCCESS' ? 'text-success' : r.deployStatus === 'FAILED' ? 'text-destructive' : 'text-muted-foreground'}>
+        <span className={r.deployStatus === 'SUCCESS' ? 'text-success-strong' : r.deployStatus === 'FAILED' ? 'text-destructive-strong' : 'text-muted-foreground'}>
           {r.deployStatus ?? '—'}
         </span>
       ),
@@ -138,7 +138,7 @@ export function TelemetryDashboard({
       key: 'quality', header: 'Calidad',
       title: 'Señal de calidad del entrenamiento: overfitting y/o data drift detectados.',
       render: (r) => (r.dataQuality
-        ? <span className={cn('rounded px-1.5 py-0.5 text-[11px] font-medium', r.dataQuality === 'OK' ? 'bg-success/10 text-success' : 'bg-warning/15 text-warning')}>{r.dataQuality}</span>
+        ? <span className={cn('rounded px-1.5 py-0.5 text-[11px] font-medium', r.dataQuality === 'OK' ? 'bg-success/10 text-success-strong' : 'bg-warning/15 text-warning-strong')}>{r.dataQuality}</span>
         : <span className="text-muted-foreground">—</span>),
     },
   ]
@@ -152,7 +152,7 @@ export function TelemetryDashboard({
         badge={
           <span className={cn(
             'rounded-md px-2 py-0.5 text-[11px] font-semibold',
-            isGlobal ? 'bg-cta/15 text-cta' : 'bg-primary/10 text-primary',
+            isGlobal ? 'bg-cta/15 text-cta-strong' : 'bg-primary/10 text-primary-strong',
           )}>
             {isGlobal ? 'Plataforma · ADMIN' : 'Mis proyectos'}
           </span>
@@ -238,7 +238,7 @@ export function TelemetryDashboard({
                       </p>
                     </div>
                   </div>
-                  <span className="shrink-0 rounded-md bg-success/10 px-2 py-0.5 font-mono text-sm font-semibold text-success" title={HELP.accuracy}>
+                  <span className="shrink-0 rounded-md bg-success/10 px-2 py-0.5 font-mono text-sm font-semibold text-success-strong" title={HELP.accuracy}>
                     {acc(m.bestAccuracy)}
                   </span>
                 </div>

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react'
+import { AlertTriangle, CheckCircle2 } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
 
@@ -61,8 +61,8 @@ export function ConfirmDialog({
             className={cn(
               'mb-2 flex size-11 items-center justify-center rounded-xl border',
               isDestructive
-                ? 'border-destructive/25 bg-destructive/10 text-destructive'
-                : 'border-primary/25 bg-primary/10 text-primary'
+                ? 'border-destructive/25 bg-destructive/10 text-destructive-strong'
+                : 'border-primary/25 bg-primary/10 text-primary-strong'
             )}
           >
             {isDestructive ? <AlertTriangle className="size-5" /> : <CheckCircle2 className="size-5" />}
@@ -78,17 +78,10 @@ export function ConfirmDialog({
           <Button
             type="button"
             variant={isDestructive ? 'destructive' : 'cta'}
-            disabled={isWorking}
+            loading={isWorking}
             onClick={() => void handleConfirm()}
           >
-            {isWorking ? (
-              <>
-                <Loader2 className="mr-2 size-4 animate-spin" />
-                Procesando…
-              </>
-            ) : (
-              confirmLabel
-            )}
+            {isWorking ? 'Procesando…' : confirmLabel}
           </Button>
         </DialogFooter>
       </DialogContent>

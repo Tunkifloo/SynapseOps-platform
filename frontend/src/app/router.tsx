@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 
 import type { Role } from '@/types'
 import { ForbiddenPage } from '@/features/_shared/ForbiddenPage'
+import { NotFoundPage } from '@/features/_shared/NotFoundPage'
 import { LoginPage } from '@/features/auth/pages/LoginPage'
 import { AppShell } from '@/shared/layout/AppShell'
 import { Spinner } from '@/shared/components/ui/spinner'
@@ -246,7 +247,8 @@ export function AppRouter() {
         />
 
         <Route path="/forbidden" element={<ForbiddenPage />} />
-        <Route path="*" element={<Navigate to={isAuthenticated ? '/dashboard' : '/login'} replace />} />
+        <Route path="/" element={<Navigate to={isAuthenticated ? '/dashboard' : '/login'} replace />} />
+        <Route path="*" element={<NotFoundPage />} />
       </Routes>
       </Suspense>
     </BrowserRouter>

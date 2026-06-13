@@ -25,15 +25,15 @@ function ToastViewport({
 }
 
 const toastVariants = cva(
-  "group pointer-events-auto relative flex w-full items-start gap-3 overflow-hidden rounded-2xl border bg-card p-4 text-card-foreground shadow-lg ring-1 ring-foreground/10 transition-all data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-80 data-[state=open]:slide-in-from-right-full data-[state=closed]:slide-out-to-right-full data-[swipe=end]:animate-out data-[swipe=move]:translate-x-[var(--radix-toast-swipe-move-x)] data-[swipe=cancel]:translate-x-0",
+  "group pointer-events-auto relative flex w-full items-start gap-3 overflow-hidden rounded-2xl border bg-card p-4 text-card-foreground shadow-lg ring-1 ring-foreground/10 transition-all duration-200 ease-out-quart data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-80 data-[state=open]:slide-in-from-right-full data-[state=closed]:slide-out-to-right-full data-[swipe=end]:animate-out data-[swipe=move]:translate-x-[var(--radix-toast-swipe-move-x)] data-[swipe=cancel]:translate-x-0",
   {
     variants: {
       variant: {
         default: "border-border",
-        success: "border-success/40 [&_[data-slot=toast-title]]:text-success",
-        warning: "border-warning/40 [&_[data-slot=toast-title]]:text-warning",
-        info: "border-info/40 [&_[data-slot=toast-title]]:text-info",
-        destructive: "border-destructive/40 [&_[data-slot=toast-title]]:text-destructive",
+        success: "border-success/40 [&_[data-slot=toast-title]]:text-success-strong",
+        warning: "border-warning/40 [&_[data-slot=toast-title]]:text-warning-strong",
+        info: "border-info/40 [&_[data-slot=toast-title]]:text-info-strong",
+        destructive: "border-destructive/40 [&_[data-slot=toast-title]]:text-destructive-strong",
       },
     },
     defaultVariants: { variant: "default" },
@@ -64,7 +64,7 @@ function ToastAction({
     <ToastPrimitive.Action
       data-slot="toast-action"
       className={cn(
-        "inline-flex h-8 shrink-0 items-center justify-center rounded-full border border-border bg-transparent px-3 text-sm font-medium transition-colors outline-none cursor-pointer hover:bg-muted focus-visible:ring-[3px] focus-visible:ring-ring/50",
+        "inline-flex h-8 shrink-0 items-center justify-center rounded-full border border-border bg-transparent px-3 text-sm font-medium transition-colors duration-150 ease-out-quart outline-none cursor-pointer hover:bg-muted focus-visible:ring-[3px] focus-visible:ring-ring/50",
         className
       )}
       {...props}
@@ -81,7 +81,7 @@ function ToastClose({
       data-slot="toast-close"
       aria-label="Cerrar"
       className={cn(
-        "absolute top-2 right-2 inline-flex size-7 items-center justify-center rounded-full text-muted-foreground/70 transition-colors outline-none cursor-pointer hover:bg-muted hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 [&_svg]:size-3.5",
+        "absolute top-2 right-2 inline-flex size-7 items-center justify-center rounded-full text-muted-foreground/70 transition-colors duration-150 ease-out-quart outline-none cursor-pointer hover:bg-muted hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 [&_svg]:size-3.5",
         className
       )}
       {...props}

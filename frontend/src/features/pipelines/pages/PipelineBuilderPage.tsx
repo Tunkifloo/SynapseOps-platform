@@ -15,6 +15,7 @@ import {
 import { Spinner } from '@/shared/components/ui/spinner'
 import { Badge } from '@/shared/components/ui/badge'
 import { ConfirmDialog } from '@/shared/components/ConfirmDialog'
+import { PageHeader } from '@/shared/components/PageHeader'
 import { notify } from '@/shared/notify'
 import {
   createPipeline,
@@ -174,18 +175,13 @@ export function PipelineBuilderPage({ token, onAuthError }: PipelineBuilderPageP
 
   return (
     <div className="flex h-[calc(100svh-8rem)] min-h-[480px] flex-col gap-4">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <h1 className="font-heading text-2xl font-bold tracking-tight text-foreground">
-            Lienzo del pipeline
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Arrastra nodos, conéctalos y ejecuta el entrenamiento para el proyecto activo.
-          </p>
-        </div>
-
-        {!loading && workspaces.length > 0 && (
-          <div className="flex flex-wrap items-center gap-2">
+      <PageHeader
+        title="Lienzo del pipeline"
+        subtitle="Arrastra nodos, conéctalos y ejecuta el entrenamiento para el proyecto activo."
+        actions={!loading && workspaces.length > 0 ? (
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="flex min-w-0 flex-col gap-1">
+              <span className="px-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Proyecto</span>
             <Select
               value={activeWsId ? String(activeWsId) : ''}
               onValueChange={(v) => {
@@ -208,7 +204,11 @@ export function PipelineBuilderPage({ token, onAuthError }: PipelineBuilderPageP
                 ))}
               </SelectContent>
             </Select>
+            </div>
 
+            <div className="flex min-w-0 flex-col gap-1">
+              <span className="px-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Pipeline</span>
+              <div className="flex items-center gap-1">
             {renaming ? (
               <div className="flex items-center gap-1">
                 <Input
@@ -266,6 +266,8 @@ export function PipelineBuilderPage({ token, onAuthError }: PipelineBuilderPageP
                 )}
               </>
             )}
+              </div>
+            </div>
 
             <Button variant="outline" size="sm" loading={creating} onClick={() => void handleCreatePipeline()}>
               <Plus />
@@ -278,8 +280,8 @@ export function PipelineBuilderPage({ token, onAuthError }: PipelineBuilderPageP
               </Badge>
             )}
           </div>
-        )}
-      </div>
+        ) : null}
+      />
 
       <div className="min-h-0 flex-1">
         {loading ? (

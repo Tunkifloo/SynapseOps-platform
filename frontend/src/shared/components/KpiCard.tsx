@@ -41,7 +41,7 @@ export function KpiCard({ title, value, hint, icon: Icon, accent = 'cyan', loadi
       onKeyDown={interactive ? (e) => { if (e.key === 'Enter' || e.key === ' ') onClick?.() } : undefined}
       className={cn(
         'relative min-w-0 overflow-hidden',
-        interactive && 'cursor-pointer transition-colors outline-none hover:border-primary/40 hover:bg-accent/30 focus-visible:border-primary/40 focus-visible:ring-2 focus-visible:ring-primary/30',
+        interactive && 'cursor-pointer outline-none transition-[color,background-color,border-color,transform,box-shadow] duration-200 ease-out-quart hover:-translate-y-0.5 hover:border-primary/40 hover:bg-accent/30 hover:shadow-md hover:shadow-primary/5 focus-visible:border-primary/40 focus-visible:ring-2 focus-visible:ring-primary/30 active:translate-y-0',
       )}
     >
       <div aria-hidden="true" className={cn('pointer-events-none absolute -top-6 -right-6 size-24 rounded-bl-[3rem]', a.corner)} />

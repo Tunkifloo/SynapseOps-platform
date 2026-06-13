@@ -37,13 +37,13 @@ const handleClass = '!size-2.5 !rounded-full !border-2 !border-background !bg-pr
 function StatusIndicator({ status, error }: { status: PipelineNodeStatus; error?: string }) {
   if (status === 'idle') return null
   if (status === 'running') {
-    return <Spinner size="sm" className="text-info" label="En ejecución" />
+    return <Spinner size="sm" className="text-info-strong" label="En ejecución" />
   }
   const Icon = statusIcon[status]
   const isError = status === 'error'
   return (
     <span
-      className={isError ? 'text-destructive' : 'text-success'}
+      className={isError ? 'text-destructive-strong' : 'text-success-strong'}
       role="img"
       aria-label={isError ? `Error: ${error ?? 'fallo en el nodo'}` : 'Completado'}
       title={isError ? (error ?? 'Error en el nodo') : 'Completado'}
@@ -61,7 +61,7 @@ export function PipelineNode({ data, selected }: NodeProps<PipelineNodeData>) {
   return (
     <div
       className={cn(
-        'flex min-w-[200px] items-center gap-3 rounded-xl border border-border bg-card px-3 py-2.5 text-card-foreground shadow-md ring-1 transition-shadow',
+        'flex min-w-[200px] items-center gap-3 rounded-xl border border-border bg-card px-3 py-2.5 text-card-foreground shadow-md ring-1 transition-shadow duration-200 ease-out-quart',
         statusRing[status],
         selected && '!ring-2 !ring-primary !animate-none'
       )}

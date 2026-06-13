@@ -44,7 +44,7 @@ export function LoginForm({
 
   return (
     <div className="flex min-h-[100svh] items-center justify-center bg-background p-4 md:p-8">
-      <div className="flex w-full max-w-6xl flex-col overflow-hidden rounded-3xl border border-border bg-card shadow-[0_24px_60px_-24px_rgba(15,23,42,0.35)] md:min-h-[620px] md:flex-row">
+      <div className="flex w-full max-w-6xl flex-col overflow-hidden rounded-3xl border border-border bg-card shadow-[0_24px_60px_-24px_rgba(15,23,42,0.35)] motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2 motion-safe:ease-out-quart motion-safe:[animation-duration:280ms] md:min-h-[620px] md:flex-row">
         {/* ── Panel de marca (navy) ─────────────────────────────────────── */}
         <div className="relative flex flex-col justify-between overflow-hidden bg-sidebar p-8 text-white md:w-5/12 md:p-12">
           <div
@@ -112,7 +112,7 @@ export function LoginForm({
                   />
                 </div>
                 {credentialError && (
-                  <p className="text-xs font-medium text-destructive">{credentialError}</p>
+                  <p className="text-xs font-medium text-destructive-strong">{credentialError}</p>
                 )}
               </div>
 
@@ -124,7 +124,7 @@ export function LoginForm({
                   </label>
                   <Link
                     to="/forgot-password"
-                    className="text-sm font-medium text-cta transition-colors hover:text-cta/80"
+                    className="rounded text-sm font-medium text-cta-strong transition-colors duration-150 ease-out-quart hover:text-cta-strong/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
                   >
                     ¿Olvidaste tu contraseña?
                   </Link>
@@ -150,21 +150,21 @@ export function LoginForm({
                     type="button"
                     onClick={() => setShowPassword((v) => !v)}
                     aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
-                    className="absolute top-1/2 right-3.5 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
-                    tabIndex={-1}
+                    aria-pressed={showPassword}
+                    className="absolute top-1/2 right-2.5 -translate-y-1/2 rounded-md p-1 text-muted-foreground transition-colors duration-150 ease-out-quart hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
                   >
                     {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                   </button>
                 </div>
                 {passwordError && (
-                  <p className="text-xs font-medium text-destructive">{passwordError}</p>
+                  <p className="text-xs font-medium text-destructive-strong">{passwordError}</p>
                 )}
               </div>
 
               {error && (
                 <p
                   role="alert"
-                  className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm font-medium text-destructive"
+                  className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm font-medium text-destructive-strong motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-top-1 motion-safe:duration-150"
                 >
                   {error}
                 </p>
@@ -190,7 +190,7 @@ export function LoginForm({
 
             <p className="mt-8 text-center text-sm text-muted-foreground">
               ¿No tienes cuenta?{' '}
-              <Link to="/signup" className="font-semibold text-primary hover:underline">
+              <Link to="/signup" className="rounded font-semibold text-primary-strong transition-colors duration-150 ease-out-quart hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50">
                 Regístrate
               </Link>
             </p>

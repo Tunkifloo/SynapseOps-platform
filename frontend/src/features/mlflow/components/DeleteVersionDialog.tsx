@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { AlertTriangle, Loader2, Trash2 } from 'lucide-react'
+import { AlertTriangle, Trash2 } from 'lucide-react'
 
 import {
   Dialog,
@@ -47,7 +47,7 @@ export function DeleteVersionDialog({
     <Dialog open={open} onOpenChange={(next) => !isDeleting && onOpenChange(next)}>
       <DialogContent showCloseButton={!isDeleting} className="max-w-md">
         <DialogHeader>
-          <div className="mb-2 flex size-11 items-center justify-center rounded-xl border border-destructive/25 bg-destructive/10 text-destructive">
+          <div className="mb-2 flex size-11 items-center justify-center rounded-xl border border-destructive/25 bg-destructive/10 text-destructive-strong">
             <AlertTriangle className="size-5" />
           </div>
           <DialogTitle>Eliminar versión del modelo</DialogTitle>
@@ -73,17 +73,12 @@ export function DeleteVersionDialog({
           <Button
             type="button"
             variant="destructive"
-            disabled={isDeleting}
+            loading={isDeleting}
             onClick={() => void handleConfirm()}
           >
-            {isDeleting ? (
+            {isDeleting ? 'Eliminando…' : (
               <>
-                <Loader2 className="mr-2 size-4 animate-spin" />
-                Eliminando…
-              </>
-            ) : (
-              <>
-                <Trash2 className="mr-2 size-4" />
+                <Trash2 className="size-4" />
                 Eliminar versión
               </>
             )}

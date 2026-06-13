@@ -92,11 +92,11 @@ export function IngestActions({
         <p className="text-xs font-semibold tracking-[0.1em] text-muted-foreground uppercase">
           Dataset del proyecto
         </p>
-        <div className="flex items-start gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-2.5">
-          <CheckCircle className="size-3.5 text-emerald-400 mt-0.5 shrink-0" />
+        <div className="flex items-start gap-2 rounded-lg border border-success/30 bg-success/5 p-2.5">
+          <CheckCircle className="mt-0.5 size-3.5 shrink-0 text-success-strong" />
           <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-semibold text-emerald-400">Dataset activo</p>
-            <p className="truncate text-xs text-slate-300 font-mono" title={datasetPath}>{datasetPath}</p>
+            <p className="text-[11px] font-semibold text-success-strong">Dataset activo</p>
+            <p className="truncate font-mono text-xs text-muted-foreground" title={datasetPath}>{datasetPath}</p>
           </div>
         </div>
         <p className="text-[11px] text-muted-foreground">
