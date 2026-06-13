@@ -63,7 +63,7 @@ export function TrainMetrics({ status, metrics, runId }: TrainMetricsProps) {
   return (
     <div className="space-y-2">
       <div className="space-y-2 rounded-xl border border-success/30 bg-success/5 p-3">
-        <p className="text-xs font-semibold tracking-[0.1em] text-success uppercase">
+        <p className="text-xs font-semibold tracking-[0.1em] text-success-strong uppercase">
           Métricas del último Run
         </p>
         <div className="grid grid-cols-2 gap-2">

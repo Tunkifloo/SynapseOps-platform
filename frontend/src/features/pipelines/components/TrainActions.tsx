@@ -31,7 +31,7 @@ export function TrainActions({ config, canRun, onExecute }: TrainActionsProps) {
         Ejecución
       </p>
       {!canRun && (
-        <p className="text-xs text-warning">
+        <p className="text-xs text-warning-strong">
           Asigna un dataset al proyecto (nodo de Ingesta) antes de entrenar.
         </p>
       )}

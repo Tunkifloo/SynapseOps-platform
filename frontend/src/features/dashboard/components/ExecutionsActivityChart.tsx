@@ -74,7 +74,11 @@ export function ExecutionsActivityChart({ executions }: ExecutionsActivityChartP
         {/* Columnas */}
         <div className="flex flex-1 items-end justify-between gap-1.5 sm:gap-3">
           {days.map((d, i) => (
-            <div key={i} className="group relative flex flex-1 flex-col items-center">
+            <div
+              key={i}
+              className="group relative flex flex-1 flex-col items-center motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-4 motion-safe:ease-out-quart motion-safe:[animation-duration:280ms]"
+              style={{ animationDelay: `${i * 50}ms` }}
+            >
               {/* Tooltip */}
               <div className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-2 hidden -translate-x-1/2 rounded-lg border border-border bg-popover px-3 py-2 text-xs whitespace-nowrap text-popover-foreground shadow-md group-hover:block">
                 <p className="mb-1 font-semibold capitalize">{d.label}</p>
@@ -88,7 +92,7 @@ export function ExecutionsActivityChart({ executions }: ExecutionsActivityChartP
 
               {/* Barra apilada */}
               <div
-                className="flex w-full max-w-[44px] flex-col-reverse overflow-hidden rounded-md bg-muted/60 transition-colors group-hover:bg-muted"
+                className="flex w-full max-w-[44px] flex-col-reverse overflow-hidden rounded-md bg-muted/60 transition-colors duration-150 ease-out-quart group-hover:bg-muted"
                 style={{ height: TRACK_HEIGHT }}
                 aria-label={`${d.label}: ${d.completed} completadas, ${d.running} en curso, ${d.failed} fallidas`}
               >

@@ -228,7 +228,7 @@ export function VersionCard({ api, modelName, version, onAuthError, onChanged }:
 
         <div className="flex flex-col items-end gap-1">
           <span className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">Accuracy</span>
-          <span className="text-base font-semibold text-success">
+          <span className="text-base font-semibold text-success-strong">
             {accuracy != null ? accuracy.toFixed(4) : '—'}
           </span>
           <span className="text-[10px] text-muted-foreground">loss {loss != null ? loss.toFixed(4) : '—'}</span>
@@ -293,7 +293,7 @@ export function VersionCard({ api, modelName, version, onAuthError, onChanged }:
         <div className="mt-3 border-t border-border pt-2">
           <button
             onClick={() => void toggleDetails()}
-            className="flex cursor-pointer items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+            className="flex cursor-pointer items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors duration-150 ease-out-quart hover:text-foreground"
             aria-expanded={detailsOpen}
           >
             {detailsOpen ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
@@ -316,7 +316,7 @@ export function VersionCard({ api, modelName, version, onAuthError, onChanged }:
                     title="Métricas"
                     entries={Object.entries(details?.metrics ?? {})}
                     format={(v) => (typeof v === 'number' ? v.toFixed(4) : String(v))}
-                    valueClass="text-success"
+                    valueClass="text-success-strong"
                   />
                   <QualityReport metrics={details?.metrics ?? {}} />
                   {details?.confusionMatrix && <ConfusionMatrixView cm={details.confusionMatrix} />}
@@ -438,9 +438,9 @@ function QualityReport({ metrics }: { metrics: Record<string, number> }) {
   if (retrainPsi != null) chips.push({ label: `Cambio de datos vs corrida previa: deriva ${psiLabel(retrainPsi)} · PSI ${retrainPsi.toFixed(2)}`, tone: psiTone(retrainPsi) })
 
   const toneClass: Record<Tone, string> = {
-    ok: 'bg-success/10 text-success',
-    warn: 'bg-warning/15 text-warning',
-    bad: 'bg-destructive/10 text-destructive',
+    ok: 'bg-success/10 text-success-strong',
+    warn: 'bg-warning/15 text-warning-strong',
+    bad: 'bg-destructive/10 text-destructive-strong',
   }
   return (
     <div>
@@ -548,7 +548,7 @@ export function ModelRegistry({ api, onAuthError }: ModelRegistryProps) {
               </p>
             </div>
           </div>
-          <span className="rounded-full bg-primary/10 px-4 py-1.5 text-sm font-semibold text-primary">
+          <span className="rounded-full bg-primary/10 px-4 py-1.5 text-sm font-semibold text-primary-strong">
             {models.length}
           </span>
         </div>
@@ -571,12 +571,12 @@ export function ModelRegistry({ api, onAuthError }: ModelRegistryProps) {
               <div key={model.name} className="rounded-xl border border-border bg-card">
                 <button
                   onClick={() => toggle(model.name)}
-                  className="flex w-full cursor-pointer items-center justify-between px-4 py-3 text-left transition-colors hover:bg-muted/50"
+                  className="flex w-full cursor-pointer items-center justify-between px-4 py-3 text-left transition-colors duration-150 ease-out-quart hover:bg-muted/50"
                 >
                   <div>
                     <p className="text-sm font-semibold text-foreground">{model.name}</p>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Última versión: <span className="text-primary">v{model.latestVersion}</span>
+                      Última versión: <span className="text-primary-strong">v{model.latestVersion}</span>
                       {model.ownedVersions != null && (
                         <span className="ml-2 text-muted-foreground/70">· {model.ownedVersions} versión(es)</span>
                       )}
