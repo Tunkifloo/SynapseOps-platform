@@ -1,6 +1,6 @@
 import { useState, type ChangeEvent, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Eye, EyeOff, IdCard, Lock, Mail, User } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, Eye, EyeOff, IdCard, Lock, Mail, User } from 'lucide-react'
 
 import { forgotPassword } from '@/features/auth/api'
 import { validateEmail, validatePassword, validateRequired } from '@/features/auth/validation'
@@ -66,7 +66,7 @@ export function ForgotPasswordPage() {
 
   return (
     <div className="bg-dots flex min-h-[100svh] items-center justify-center px-4 py-8">
-      <div className="w-full max-w-md overflow-hidden rounded-3xl border border-border bg-card shadow-[0_24px_60px_-24px_rgba(15,23,42,0.25)]">
+      <div className="w-full max-w-md overflow-hidden rounded-3xl border border-border bg-card shadow-[0_24px_60px_-24px_rgba(15,23,42,0.25)] motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2 motion-safe:ease-out-quart motion-safe:[animation-duration:280ms]">
         <div className="border-b border-border bg-secondary/40 px-8 pt-9 pb-7 text-center">
           <div className="mb-4 flex justify-center">
             <Brand size="xl" showWordmark={false} />
@@ -96,7 +96,7 @@ export function ForgotPasswordPage() {
                 className={cn('h-11 pl-10', usernameErr && 'border-destructive focus-visible:ring-destructive/30')}
               />
             </div>
-            {usernameErr && <p className="text-xs font-medium text-destructive">{usernameErr}</p>}
+            {usernameErr && <p className="text-xs font-medium text-destructive-strong">{usernameErr}</p>}
           </div>
 
           <div className="space-y-1.5">
@@ -115,7 +115,7 @@ export function ForgotPasswordPage() {
                 className={cn('h-11 pl-10', emailErr && 'border-destructive focus-visible:ring-destructive/30')}
               />
             </div>
-            {emailErr && <p className="text-xs font-medium text-destructive">{emailErr}</p>}
+            {emailErr && <p className="text-xs font-medium text-destructive-strong">{emailErr}</p>}
           </div>
 
           <div className="space-y-1.5">
@@ -155,25 +155,29 @@ export function ForgotPasswordPage() {
                 type="button"
                 onClick={() => setShowPassword((v) => !v)}
                 aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
-                className="absolute top-1/2 right-3.5 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
-                tabIndex={-1}
+                aria-pressed={showPassword}
+                className="absolute top-1/2 right-2.5 -translate-y-1/2 rounded-md p-1 text-muted-foreground transition-colors duration-150 ease-out-quart hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
               >
                 {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
               </button>
             </div>
-            {passwordErr && <p className="text-xs font-medium text-destructive">{passwordErr}</p>}
+            {passwordErr && <p className="text-xs font-medium text-destructive-strong">{passwordErr}</p>}
           </div>
 
           {error && (
             <p
               role="alert"
-              className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm font-medium text-destructive"
+              className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm font-medium text-destructive-strong motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-top-1 motion-safe:duration-150"
             >
               {error}
             </p>
           )}
           {success && (
-            <p className="rounded-xl border border-success/30 bg-success/10 p-3 text-sm font-medium text-success">
+            <p
+              role="status"
+              className="flex items-center gap-2 rounded-xl border border-success/30 bg-success/10 p-3 text-sm font-medium text-success-strong motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95 motion-safe:duration-200"
+            >
+              <CheckCircle2 className="size-4 shrink-0" />
               {success}
             </p>
           )}
@@ -184,7 +188,7 @@ export function ForgotPasswordPage() {
 
           <Link
             to="/login"
-            className="flex items-center justify-center gap-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+            className="flex items-center justify-center gap-2 rounded text-sm font-medium text-muted-foreground transition-colors duration-150 ease-out-quart hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
           >
             <ArrowLeft className="size-4" />
             Volver al inicio de sesión

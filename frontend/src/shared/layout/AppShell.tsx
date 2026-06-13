@@ -20,11 +20,13 @@ import {
   LayoutDashboard,
   Layers,
   LogOut,
+  Moon,
   Network,
   PanelLeftClose,
   PanelLeftOpen,
   Rocket,
   Search,
+  Sun,
   UserPlus,
   UserRound,
   Users,
@@ -38,6 +40,7 @@ import { Input } from '@/shared/components/ui/input'
 import { Badge } from '@/shared/components/ui/badge'
 import { ConfirmDialog } from '@/shared/components/ConfirmDialog'
 import { getMlflowHealth } from '@/features/mlflow/api'
+import { useTheme } from '@/shared/theme/useTheme'
 import { API_BASE_URL } from '@/shared/api/env'
 import { cn } from '@/lib/utils'
 import type { Role } from '@/types'
@@ -146,11 +149,11 @@ export function AppShell({
 
   const navButtonClass = (active: boolean) =>
     cn(
-      'h-10 w-full gap-3 rounded-lg border-l-[3px] text-sm font-medium transition-colors',
+      'relative h-10 w-full gap-3 rounded-lg text-sm font-medium',
       collapsed ? 'justify-center px-0' : 'justify-start px-3',
       active
-        ? 'border-sidebar-primary bg-sidebar-accent text-sidebar-accent-foreground'
-        : 'border-transparent text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
+        ? 'bg-sidebar-accent font-semibold text-sidebar-accent-foreground'
+        : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
     )
 
   const renderNav = (items: NavigationItem[]) =>
@@ -165,6 +168,13 @@ export function AppShell({
           title={collapsed ? item.label : undefined}
           className={navButtonClass(active)}
         >
+          {/* Indicador de ítem activo: píldora intencional (reemplaza el side-stripe prohibido) */}
+          {active && (
+            <span
+              aria-hidden="true"
+              className="absolute top-1/2 left-0 h-5 w-1 -translate-y-1/2 rounded-r-full bg-sidebar-primary motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-75 motion-safe:duration-200"
+            />
+          )}
           <item.icon className={active ? 'text-sidebar-primary' : 'text-current'} />
           {!collapsed && item.label}
         </Button>
@@ -178,7 +188,7 @@ export function AppShell({
         style={{ width: asideWidth }}
         className={cn(
           'relative hidden h-full shrink-0 flex-col justify-between border-r border-sidebar-border bg-sidebar lg:flex',
-          resizing ? 'select-none' : 'transition-[width] duration-200'
+          resizing ? 'select-none' : 'transition-[width] duration-200 ease-out-quart'
         )}
       >
         <div className="min-h-0 flex-1 overflow-y-auto p-3 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -193,7 +203,7 @@ export function AppShell({
                 type="button"
                 onClick={toggleCollapsed}
                 aria-label="Colapsar barra lateral"
-                className="rounded-lg p-1.5 text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                className="rounded-lg p-1.5 text-sidebar-foreground/70 transition-colors duration-150 ease-out-quart hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
               >
                 <PanelLeftClose className="size-4" />
               </button>
@@ -205,7 +215,7 @@ export function AppShell({
               type="button"
               onClick={toggleCollapsed}
               aria-label="Expandir barra lateral"
-              className="mb-3 flex w-full justify-center rounded-lg p-1.5 text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              className="mb-3 flex w-full justify-center rounded-lg p-1.5 text-sidebar-foreground/70 transition-colors duration-150 ease-out-quart hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
             >
               <PanelLeftOpen className="size-4" />
             </button>
@@ -240,7 +250,7 @@ export function AppShell({
             aria-current={section === 'profile' ? 'page' : undefined}
             title={collapsed ? displayName : undefined}
             className={cn(
-              'flex w-full items-center gap-3 rounded-xl p-2 text-left transition-colors hover:bg-sidebar-accent',
+              'flex w-full items-center gap-3 rounded-xl p-2 text-left transition-colors duration-150 ease-out-quart hover:bg-sidebar-accent',
               collapsed && 'justify-center',
               section === 'profile' && 'bg-sidebar-accent'
             )}
@@ -280,7 +290,7 @@ export function AppShell({
             role="separator"
             aria-orientation="vertical"
             onMouseDown={startResize}
-            className="absolute top-0 right-0 z-10 h-full w-1.5 cursor-col-resize hover:bg-sidebar-primary/40"
+            className="absolute top-0 right-0 z-10 h-full w-1.5 cursor-col-resize transition-colors duration-150 ease-out-quart hover:bg-sidebar-primary/40"
             title="Arrastra para redimensionar"
           />
         )}
@@ -300,6 +310,7 @@ export function AppShell({
             />
 
             <div className="ml-auto flex items-center gap-2">
+              <ThemeToggle />
               <NotificationsBell token={token} role={user?.role} />
 
               {/* Acceso a perfil/logout en móvil (en desktop viven en el sidebar) */}
@@ -307,7 +318,7 @@ export function AppShell({
                 type="button"
                 onClick={() => navigate('/profile')}
                 aria-label="Ver mi perfil"
-                className="flex size-9 items-center justify-center rounded-full bg-primary/20 text-sm font-semibold text-primary ring-1 ring-primary/25 lg:hidden"
+                className="flex size-9 items-center justify-center rounded-full bg-primary/20 text-sm font-semibold text-primary-strong ring-1 ring-primary/25 transition-colors duration-150 ease-out-quart hover:bg-primary/30 lg:hidden"
               >
                 {avatarLetter}
               </button>
@@ -366,6 +377,29 @@ export function AppShell({
         onConfirm={() => onLogout()}
       />
     </div>
+  )
+}
+
+// ── Conmutador de tema (claro/oscuro) ──────────────────────────────────────────
+function ThemeToggle() {
+  const theme = useTheme((s) => s.theme)
+  const toggle = useTheme((s) => s.toggle)
+  const isDark = theme === 'dark'
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      onClick={toggle}
+      aria-label={isDark ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro'}
+      title={isDark ? 'Tema claro' : 'Tema oscuro'}
+    >
+      <span
+        key={theme}
+        className="inline-flex motion-safe:animate-in motion-safe:zoom-in-50 motion-safe:fade-in motion-safe:duration-200"
+      >
+        {isDark ? <Sun /> : <Moon />}
+      </span>
+    </Button>
   )
 }
 
@@ -467,7 +501,7 @@ function CommandSearch({
       />
 
       {open && (
-        <div className="absolute top-[calc(100%+6px)] left-0 z-50 w-full overflow-hidden rounded-xl border border-border bg-popover p-1.5 shadow-xl ring-1 ring-foreground/10">
+        <div className="absolute top-[calc(100%+6px)] left-0 z-50 w-full overflow-hidden rounded-xl border border-border bg-popover p-1.5 shadow-xl ring-1 ring-foreground/10 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-top-1 motion-safe:duration-150">
           <p className="px-2.5 py-1 text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
             Acciones
           </p>
@@ -481,7 +515,7 @@ function CommandSearch({
               }}
               onMouseEnter={() => setActiveIndex(i)}
               className={cn(
-                'flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left text-sm transition-colors',
+                'flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left text-sm transition-colors duration-100 ease-out-quart',
                 i === activeIndex ? 'bg-accent text-accent-foreground' : 'hover:bg-accent/60'
               )}
             >
@@ -618,10 +652,10 @@ function NotificationsBell({ token, role }: { token: string; role?: Role }) {
   }
 
   const levelIcon = (item: NotifItem) => {
-    if (item.level === 'ERROR') return <CircleAlert className="size-4 text-destructive" />
-    if (item.level === 'WARN') return <CircleAlert className="size-4 text-warning" />
-    if (item.terminal) return <CheckCircle2 className="size-4 text-success" />
-    return <Info className="size-4 text-info" />
+    if (item.level === 'ERROR') return <CircleAlert className="size-4 text-destructive-strong" />
+    if (item.level === 'WARN') return <CircleAlert className="size-4 text-warning-strong" />
+    if (item.terminal) return <CheckCircle2 className="size-4 text-success-strong" />
+    return <Info className="size-4 text-info-strong" />
   }
 
   return (
@@ -629,7 +663,7 @@ function NotificationsBell({ token, role }: { token: string; role?: Role }) {
       <Button variant="ghost" size="icon" onClick={toggle} aria-label="Notificaciones" className="relative">
         <Bell />
         {unread > 0 && (
-          <span className="absolute top-1 right-1 flex size-4 items-center justify-center rounded-full bg-cta text-[10px] font-bold text-cta-foreground">
+          <span className="absolute top-1 right-1 flex size-4 items-center justify-center rounded-full bg-cta text-[10px] font-bold text-cta-foreground motion-safe:animate-in motion-safe:zoom-in-50 motion-safe:duration-200">
             {unread > 9 ? '9+' : unread}
           </span>
         )}
@@ -638,7 +672,8 @@ function NotificationsBell({ token, role }: { token: string; role?: Role }) {
       {open && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} aria-hidden="true" />
-          <div className="absolute top-[calc(100%+8px)] right-0 z-50 w-80 overflow-hidden rounded-xl border border-border bg-popover shadow-xl ring-1 ring-foreground/10">
+          <div className="absolute top-[calc(100%+8px)] right-0 z-50 w-80 overflow-hidden rounded-xl border border-border bg-popover shadow-xl ring-1 ring-foreground/10 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-top-1 motion-safe:zoom-in-95 motion-safe:duration-150">
+
             {/* Cabecera: healthcheck (ADMIN) o título de notificaciones */}
             <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
               <div className="flex items-center gap-2">
@@ -667,7 +702,7 @@ function NotificationsBell({ token, role }: { token: string; role?: Role }) {
                 <button
                   type="button"
                   onClick={() => setItems([])}
-                  className="text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+                  className="text-xs font-medium text-muted-foreground transition-colors duration-150 ease-out-quart hover:text-foreground"
                 >
                   Limpiar
                 </button>

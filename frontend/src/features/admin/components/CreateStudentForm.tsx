@@ -39,7 +39,7 @@ function Field({
         {optional && <span className="font-normal text-muted-foreground"> (opcional)</span>}
       </Label>
       {children}
-      {error && <p className="text-xs font-medium text-destructive">{error}</p>}
+      {error && <p className="text-xs font-medium text-destructive-strong">{error}</p>}
     </div>
   )
 }
@@ -109,9 +109,9 @@ export function CreateStudentForm({
             <button
               type="button"
               onClick={() => setShowPassword((p) => !p)}
-              className="absolute top-1/2 right-3 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
-              tabIndex={-1}
+              className="absolute top-1/2 right-2.5 -translate-y-1/2 rounded-md p-1 text-muted-foreground transition-colors duration-150 ease-out-quart hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50"
               disabled={isEditing}
+              aria-pressed={showPassword}
               aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
             >
               {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}

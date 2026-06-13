@@ -50,7 +50,7 @@ export function DataTable<T>({ columns, rows, rowKey, empty, minWidth = 640, onR
               key={rowKey(row)}
               onClick={onRowClick ? () => onRowClick(row) : undefined}
               className={cn(
-                'border-b border-border/60 last:border-0 transition-colors',
+                'border-b border-border/60 last:border-0 transition-colors duration-150 ease-out-quart',
                 onRowClick ? 'cursor-pointer hover:bg-accent/40' : 'hover:bg-accent/20',
               )}
             >

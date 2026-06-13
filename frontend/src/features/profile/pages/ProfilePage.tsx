@@ -6,6 +6,7 @@ import { Button } from '@/shared/components/ui/button'
 import { Input } from '@/shared/components/ui/input'
 import { Label } from '@/shared/components/ui/label'
 import { Badge } from '@/shared/components/ui/badge'
+import { PageHeader } from '@/shared/components/PageHeader'
 import {
   Dialog,
   DialogContent,
@@ -175,12 +176,10 @@ export function ProfilePage({ token, onAuthError }: ProfilePageProps) {
 
   return (
     <div className="mx-auto max-w-3xl space-y-5">
-      <section>
-        <h1 className="font-heading text-2xl font-bold tracking-tight text-foreground xl:text-3xl">Mi perfil</h1>
-        <p className="mt-1.5 text-sm leading-6 text-muted-foreground">
-          Consulta y actualiza tus datos personales y tu contraseña.
-        </p>
-      </section>
+      <PageHeader
+        title="Mi perfil"
+        subtitle="Consulta y actualiza tus datos personales y tu contraseña."
+      />
 
       {isLoading ? (
         <div className="flex min-h-48 items-center justify-center text-sm text-muted-foreground">
@@ -191,7 +190,7 @@ export function ProfilePage({ token, onAuthError }: ProfilePageProps) {
           {/* Identidad (solo lectura) */}
           <Card className="py-0">
             <CardContent className="flex flex-wrap items-center gap-4 p-5">
-              <div className="flex size-14 shrink-0 items-center justify-center rounded-full bg-primary/15 text-xl font-bold text-primary ring-1 ring-primary/25">
+              <div className="flex size-14 shrink-0 items-center justify-center rounded-full bg-primary/15 text-xl font-bold text-primary-strong ring-1 ring-primary/25">
                 {avatarLetter}
               </div>
               <div className="min-w-0 flex-1">
@@ -227,7 +226,7 @@ export function ProfilePage({ token, onAuthError }: ProfilePageProps) {
                       aria-invalid={pErr('name') ? true : undefined}
                       className={cn('h-10', pErr('name') && 'border-destructive focus-visible:ring-destructive/30')}
                     />
-                    {pErr('name') && <p className="text-xs font-medium text-destructive">{pErr('name')}</p>}
+                    {pErr('name') && <p className="text-xs font-medium text-destructive-strong">{pErr('name')}</p>}
                   </div>
                   <div className="space-y-1.5">
                     <Label htmlFor="phone">
@@ -243,7 +242,7 @@ export function ProfilePage({ token, onAuthError }: ProfilePageProps) {
                       aria-invalid={pErr('phone') ? true : undefined}
                       className={cn('h-10', pErr('phone') && 'border-destructive focus-visible:ring-destructive/30')}
                     />
-                    {pErr('phone') && <p className="text-xs font-medium text-destructive">{pErr('phone')}</p>}
+                    {pErr('phone') && <p className="text-xs font-medium text-destructive-strong">{pErr('phone')}</p>}
                   </div>
                   <div className="space-y-1.5">
                     <Label htmlFor="paternalSurname">Apellido paterno</Label>
@@ -256,7 +255,7 @@ export function ProfilePage({ token, onAuthError }: ProfilePageProps) {
                       className={cn('h-10', pErr('paternalSurname') && 'border-destructive focus-visible:ring-destructive/30')}
                     />
                     {pErr('paternalSurname') && (
-                      <p className="text-xs font-medium text-destructive">{pErr('paternalSurname')}</p>
+                      <p className="text-xs font-medium text-destructive-strong">{pErr('paternalSurname')}</p>
                     )}
                   </div>
                   <div className="space-y-1.5">
@@ -340,7 +339,7 @@ export function ProfilePage({ token, onAuthError }: ProfilePageProps) {
                 />
               </div>
               {pwdErr('current', pwdTouched.current) && (
-                <p className="text-xs font-medium text-destructive">{pwdErr('current', pwdTouched.current)}</p>
+                <p className="text-xs font-medium text-destructive-strong">{pwdErr('current', pwdTouched.current)}</p>
               )}
             </div>
 
@@ -360,15 +359,15 @@ export function ProfilePage({ token, onAuthError }: ProfilePageProps) {
                 <button
                   type="button"
                   onClick={() => setShowPwd((v) => !v)}
-                  className="absolute top-1/2 right-3 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
-                  tabIndex={-1}
+                  className="absolute top-1/2 right-2.5 -translate-y-1/2 rounded-md p-1 text-muted-foreground transition-colors duration-150 ease-out-quart hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
                   aria-label={showPwd ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                  aria-pressed={showPwd}
                 >
                   {showPwd ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                 </button>
               </div>
               {pwdErr('next', pwdTouched.next) && (
-                <p className="text-xs font-medium text-destructive">{pwdErr('next', pwdTouched.next)}</p>
+                <p className="text-xs font-medium text-destructive-strong">{pwdErr('next', pwdTouched.next)}</p>
               )}
             </div>
 
@@ -385,7 +384,7 @@ export function ProfilePage({ token, onAuthError }: ProfilePageProps) {
                 className={cn('h-10', pwdErr('confirm', pwdTouched.confirm) && 'border-destructive focus-visible:ring-destructive/30')}
               />
               {pwdErr('confirm', pwdTouched.confirm) && (
-                <p className="text-xs font-medium text-destructive">{pwdErr('confirm', pwdTouched.confirm)}</p>
+                <p className="text-xs font-medium text-destructive-strong">{pwdErr('confirm', pwdTouched.confirm)}</p>
               )}
             </div>
 

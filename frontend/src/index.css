@@ -40,12 +40,19 @@ html { background-color: #f8fafc; }
   /* marca / acentos */
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+  /* texto de color accesible sobre tinte (AA en claro, brillante en oscuro) */
+  --color-primary-strong: var(--primary-strong);
+  --color-success-strong: var(--success-strong);
+  --color-warning-strong: var(--warning-strong);
+  --color-info-strong: var(--info-strong);
+  --color-destructive-strong: var(--destructive-strong);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-cta: var(--cta);
   --color-cta-foreground: var(--cta-foreground);
+  --color-cta-strong: var(--cta-strong);
 
   /* estados semánticos (badges, nodos del lienzo, toasts) */
   --color-success: var(--success);
@@ -86,6 +93,11 @@ html { background-color: #f8fafc; }
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+
+  /* ── Motion: curvas de aceleración ease-out (sin bounce) ── */
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+  --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 /* ── Tema CLARO (por defecto · maquetado SynapseOps) ──────────────────────── */
@@ -102,6 +114,12 @@ html { background-color: #f8fafc; }
   /* ── Identidad de marca: azul #00BBFF (primary) + naranja #FF6A00 (CTA) ── */
   --primary: #00bbff;                              /* azul de marca */
   --primary-foreground: #04263a;                   /* texto oscuro sobre cian brillante */
+  /* texto de color sobre tinte claro — versión oscura del mismo hue (AA ≥4.5:1) */
+  --primary-strong: #0e7490;                        /* cyan-700 */
+  --success-strong: #047857;                        /* emerald-700 */
+  --warning-strong: #b45309;                        /* amber-700 */
+  --info-strong: #0e7490;                           /* cyan-700 */
+  --destructive-strong: #b91c1c;                    /* red-700 */
   --secondary: #f1f5f9;                            /* slate-100 */
   --secondary-foreground: #1e293b;                 /* slate-800 */
   --muted: #f1f5f9;
@@ -111,6 +129,7 @@ html { background-color: #f8fafc; }
 
   --cta: #ff6a00;                                  /* naranja de marca (acción primaria) */
   --cta-foreground: #ffffff;
+  --cta-strong: #c2410c;                            /* naranja oscuro — texto/enlace accesible (AA) */
 
   --success: #10b981;                              /* emerald-500 */
   --success-foreground: #052e1b;
@@ -154,6 +173,12 @@ html { background-color: #f8fafc; }
   /* ── Identidad de marca SynapseOps: azul #00BBFF (primary) + naranja #FF6A00 (CTA) ── */
   --primary: #00BBFF;                             /* azul de marca */
   --primary-foreground: #04263a;                  /* texto oscuro sobre azul brillante */
+  /* texto de color sobre tinte oscuro — el hue brillante ya pasa AA en dark */
+  --primary-strong: #38d0ff;
+  --success-strong: oklch(0.78 0.16 162);
+  --warning-strong: #ff8a3d;
+  --info-strong: #38d0ff;
+  --destructive-strong: oklch(0.74 0.19 25);
   --secondary: oklch(0.29 0.04 264);              /* slate-800 */
   --secondary-foreground: oklch(0.984 0.003 247);
   --muted: oklch(0.29 0.04 264);
@@ -163,6 +188,7 @@ html { background-color: #f8fafc; }
 
   --cta: #FF6A00;                                 /* naranja de marca */
   --cta-foreground: #ffffff;
+  --cta-strong: #ff8a3d;                           /* naranja claro — texto/enlace accesible sobre dark */
 
   --success: oklch(0.70 0.17 162);                /* emerald */
   --success-foreground: oklch(0.18 0.04 162);
@@ -208,6 +234,24 @@ html { background-color: #f8fafc; }
   input::-ms-reveal,
   input::-ms-clear {
     display: none;
+  }
+}
+
+/* ── Accesibilidad: respeta prefers-reduced-motion en toda la app ──────────────
+   Reduce transiciones/animaciones a un crossfade instantáneo. Se preserva el
+   giro continuo del spinner (indicador de carga) a un ritmo más calmado. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  [data-slot="spinner"] svg {
+    animation-duration: 1.6s !important;
+    animation-iteration-count: infinite !important;
   }
 }
 

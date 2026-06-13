@@ -121,7 +121,7 @@ export function DeploymentsPage({ token, onAuthError }: DeploymentsPageProps) {
       )}
 
       {atCap && (
-        <p className="rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning">
+        <p className="rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning-strong">
           Alcanzaste el tope de despliegues ({view?.max}). Derriba uno para liberar recursos antes de desplegar otro.
         </p>
       )}
@@ -215,7 +215,7 @@ function DeploymentCard({ token, item, busy, onCopy, onRedeploy, onKill }: Deplo
         <button
           type="button"
           onClick={() => onCopy(item.endpoint as string)}
-          className="flex w-full items-center gap-2 rounded-lg border border-border bg-background/50 px-2.5 py-2 text-left text-xs transition-colors hover:bg-accent/40"
+          className="flex w-full items-center gap-2 rounded-lg border border-border bg-background/50 px-2.5 py-2 text-left text-xs transition-colors duration-150 ease-out-quart hover:bg-accent/40"
           title="Copiar endpoint /predict"
         >
           <Copy className="size-3.5 shrink-0 text-primary" />

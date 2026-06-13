@@ -6,16 +6,16 @@ import { Slot } from "radix-ui"
 import { cn } from "@/lib/utils"
 
 const badgeVariants = cva(
-  "inline-flex w-fit shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-medium transition-colors outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-3",
+  "inline-flex w-fit shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-medium transition-colors duration-150 ease-out-quart outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-3",
   {
     variants: {
       variant: {
-        default: "border-transparent bg-primary/15 text-primary",
+        default: "border-transparent bg-primary/15 text-primary-strong",
         secondary: "border-transparent bg-secondary text-secondary-foreground",
-        success: "border-transparent bg-success/15 text-success",
-        warning: "border-transparent bg-warning/15 text-warning",
-        info: "border-transparent bg-info/15 text-info",
-        destructive: "border-transparent bg-destructive/15 text-destructive",
+        success: "border-transparent bg-success/15 text-success-strong",
+        warning: "border-transparent bg-warning/15 text-warning-strong",
+        info: "border-transparent bg-info/15 text-info-strong",
+        destructive: "border-transparent bg-destructive/15 text-destructive-strong",
         outline: "border-border text-foreground",
       },
     },

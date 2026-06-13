@@ -296,7 +296,7 @@ export function NodeConfigPanel({
             <span className="font-medium text-foreground">{STATUS_LABEL[data.status ?? 'idle'].label}</span>
           </div>
           {data.status === 'error' && data.error && (
-            <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs font-medium text-destructive">
+            <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs font-medium text-destructive-strong">
               {data.error}
             </p>
           )}
@@ -305,7 +305,7 @@ export function NodeConfigPanel({
         {validationError && (
           <p
             role="alert"
-            className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm font-medium text-destructive"
+            className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm font-medium text-destructive-strong"
           >
             {validationError}
           </p>

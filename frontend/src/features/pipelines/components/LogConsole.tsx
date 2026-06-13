@@ -28,7 +28,7 @@ interface LogConsoleProps {
 }
 
 const levelClass = (level: string) =>
-  level === 'ERROR' ? 'text-destructive' : level === 'WARN' ? 'text-warning' : 'text-info'
+  level === 'ERROR' ? 'text-destructive-strong' : level === 'WARN' ? 'text-warning-strong' : 'text-info-strong'
 
 /**
  * Consola de logs en tiempo real (HU-023 / ADR-002). Se suscribe vía SSE
@@ -86,7 +86,7 @@ export function LogConsole({ token, workspaceId, pipelineId, executionId, onLogE
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
-          className="flex flex-1 cursor-pointer items-center gap-2 rounded-lg px-2 py-1 text-left text-sm font-semibold transition-colors hover:bg-accent/40"
+          className="flex flex-1 cursor-pointer items-center gap-2 rounded-lg px-2 py-1 text-left text-sm font-semibold transition-colors duration-150 ease-out-quart hover:bg-accent/40"
           aria-expanded={open}
         >
           <Terminal className="size-4 text-primary" /> Consola de logs
@@ -103,7 +103,7 @@ export function LogConsole({ token, workspaceId, pipelineId, executionId, onLogE
         </Button>
       </div>
       {open && (
-        <div className="max-h-44 overflow-auto border-t border-border bg-background/60 p-3 font-mono text-xs leading-relaxed">
+        <div className="max-h-44 overflow-auto border-t border-border bg-background/60 p-3 font-mono text-xs leading-relaxed motion-safe:animate-in motion-safe:fade-in motion-safe:duration-150">
           {lines.length === 0 ? (
             <p className="text-muted-foreground">
               {executionId == null

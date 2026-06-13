@@ -22,6 +22,7 @@ import { CreateStudentForm } from '@/features/admin/components/CreateStudentForm
 import { UsersTable } from '@/features/admin/components/UsersTable'
 import { emptyStudentForm, type CreateStudentFormData, type UserSummary } from '@/features/admin/types'
 import { ConfirmDialog } from '@/shared/components/ConfirmDialog'
+import { PageHeader } from '@/shared/components/PageHeader'
 import { notify } from '@/shared/notify'
 import { cn } from '@/lib/utils'
 
@@ -252,44 +253,40 @@ export function AdminUsersPage({ token, searchQuery, onAuthError }: AdminUsersPa
 
   return (
     <div className="w-full space-y-5">
-      <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="font-heading text-2xl font-bold tracking-tight text-foreground xl:text-3xl">
-            Gestión de usuarios
-          </h1>
-          <p className="mt-1.5 max-w-3xl text-sm leading-6 text-muted-foreground">
-            Administra las cuentas de estudiantes: crea, edita y habilita o inhabilita su acceso.
-          </p>
-        </div>
-        <Button variant="cta" size="lg" onClick={openCreate} className="shrink-0">
-          <UserPlus />
-          Crear usuario
-        </Button>
-      </section>
+      <PageHeader
+        title="Gestión de usuarios"
+        subtitle="Administra las cuentas de estudiantes: crea, edita y habilita o inhabilita su acceso."
+        actions={
+          <Button variant="cta" size="lg" onClick={openCreate} className="shrink-0">
+            <UserPlus />
+            Crear usuario
+          </Button>
+        }
+      />
 
       <div className="grid gap-3 sm:grid-cols-3 sm:gap-4">
         <StatCard
           title="Estudiantes activos"
           value={isLoading ? '…' : String(activeUsers.length)}
           icon={UserCheck}
-          accent="bg-success/10 text-success"
+          accent="bg-success/10 text-success-strong"
         />
         <StatCard
           title="Cuentas inhabilitadas"
           value={isLoading ? '…' : String(disabledUsers.length)}
           icon={UserX}
-          accent="bg-warning/10 text-warning"
+          accent="bg-warning/10 text-warning-strong"
         />
         <StatCard
           title="Total de cuentas"
           value={isLoading ? '…' : String(activeUsers.length + disabledUsers.length)}
           icon={UserCheck}
-          accent="bg-primary/10 text-primary"
+          accent="bg-primary/10 text-primary-strong"
         />
       </div>
 
       {error && (
-        <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive">
+        <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive-strong">
           {error}
         </div>
       )}
@@ -303,15 +300,15 @@ export function AdminUsersPage({ token, searchQuery, onAuthError }: AdminUsersPa
             onClick={() => setTab(t.key)}
             aria-current={tab === t.key ? 'true' : undefined}
             className={cn(
-              'inline-flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-sm font-semibold transition-colors',
-              tab === t.key ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+              'inline-flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-sm font-semibold transition-colors duration-150 ease-out-quart',
+              tab === t.key ? 'bg-primary/10 text-primary-strong' : 'text-muted-foreground hover:bg-muted hover:text-foreground'
             )}
           >
             {t.label}
             <span
               className={cn(
                 'rounded-full px-1.5 py-0.5 text-[11px] font-semibold',
-                tab === t.key ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'
+                tab === t.key ? 'bg-primary/15 text-primary-strong' : 'bg-muted text-muted-foreground'
               )}
             >
               {t.count}

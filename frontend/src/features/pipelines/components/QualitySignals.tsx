@@ -7,11 +7,11 @@ interface QualitySignalsProps {
 }
 
 const sevTone: Record<string, string> = {
-  none: 'border-success/30 bg-success/5 text-success',
-  moderate: 'border-warning/40 bg-warning/5 text-warning',
-  significant: 'border-destructive/40 bg-destructive/5 text-destructive',
-  mild: 'border-warning/40 bg-warning/5 text-warning',
-  high: 'border-destructive/40 bg-destructive/5 text-destructive',
+  none: 'border-success/30 bg-success/5 text-success-strong',
+  moderate: 'border-warning/40 bg-warning/5 text-warning-strong',
+  significant: 'border-destructive/40 bg-destructive/5 text-destructive-strong',
+  mild: 'border-warning/40 bg-warning/5 text-warning-strong',
+  high: 'border-destructive/40 bg-destructive/5 text-destructive-strong',
 }
 
 function DriftRow({ title, item, hint }: { title: string; item: DriftItem; hint: string }) {
@@ -70,7 +70,7 @@ export function QualitySignals({ signals }: QualitySignalsProps) {
           <span>{overfit.message}</span>
         </div>
       ) : (
-        <div className="flex items-center gap-1.5 rounded-lg border border-success/30 bg-success/5 px-2.5 py-2 text-[11px] text-success">
+        <div className="flex items-center gap-1.5 rounded-lg border border-success/30 bg-success/5 px-2.5 py-2 text-[11px] text-success-strong">
           <CheckCircle2 className="size-3.5 shrink-0" /> Sin señales de overfitting (train ≈ validación).
         </div>
       )}
@@ -93,7 +93,7 @@ export function QualitySignals({ signals }: QualitySignalsProps) {
 
       {hasDrift && !driftSplit?.drifted && !driftRetraining?.drifted && (
         <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-          <AlertTriangle className="size-3 shrink-0 text-success" /> Distribuciones de datos estables.
+          <AlertTriangle className="size-3 shrink-0 text-success-strong" /> Distribuciones de datos estables.
         </p>
       )}
     </div>

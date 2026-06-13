@@ -157,7 +157,7 @@ export function DashboardPage({ token, currentWorkspace, searchQuery, onAuthErro
       />
 
       {data.error && (
-        <p className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+        <p className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive-strong motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-top-1 motion-safe:duration-150">
           {data.error}
         </p>
       )}
@@ -177,15 +177,15 @@ export function DashboardPage({ token, currentWorkspace, searchQuery, onAuthErro
                   type="button"
                   onClick={() => navigate(s.to)}
                   className={cn(
-                    'flex items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left transition-colors outline-none',
+                    'flex items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left outline-none transition-[color,background-color,border-color,transform] duration-150 ease-out-quart',
                     s.done
                       ? 'border-success/30 bg-success/5'
-                      : 'cursor-pointer border-border hover:border-primary/40 hover:bg-accent/40 focus-visible:ring-2 focus-visible:ring-primary/30',
+                      : 'cursor-pointer border-border hover:-translate-y-0.5 hover:border-primary/40 hover:bg-accent/40 focus-visible:ring-2 focus-visible:ring-primary/30 active:translate-y-0',
                   )}
                 >
                   <span className={cn(
                     'flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-bold',
-                    s.done ? 'bg-success/15 text-success' : 'bg-primary/10 text-primary',
+                    s.done ? 'bg-success/15 text-success-strong' : 'bg-primary/10 text-primary-strong',
                   )}>
                     {s.done ? <CheckCircle2 className="size-4" /> : i + 1}
                   </span>
@@ -312,7 +312,7 @@ export function DashboardPage({ token, currentWorkspace, searchQuery, onAuthErro
                     <button
                       type="button"
                       onClick={() => openWorkspace(ws.name)}
-                      className="flex w-full min-w-0 cursor-pointer items-center gap-3 py-3 text-left transition-colors outline-none hover:bg-accent/40 focus-visible:bg-accent/40"
+                      className="flex w-full min-w-0 cursor-pointer items-center gap-3 rounded-lg px-2 py-3 text-left outline-none transition-colors duration-150 ease-out-quart hover:bg-accent/40 focus-visible:bg-accent/40"
                     >
                       <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary ring-1 ring-primary/15">
                         <Layers className="size-4" />
@@ -372,9 +372,9 @@ function QuickAction({ icon: Icon, label, hint, onClick }: {
     <button
       type="button"
       onClick={onClick}
-      className="group flex cursor-pointer items-center gap-3 rounded-2xl border border-border bg-card p-4 text-left transition-colors outline-none hover:border-primary/40 hover:bg-accent/30 focus-visible:ring-2 focus-visible:ring-primary/30"
+      className="group flex cursor-pointer items-center gap-3 rounded-2xl border border-border bg-card p-4 text-left outline-none transition-[color,background-color,border-color,transform,box-shadow] duration-200 ease-out-quart hover:-translate-y-0.5 hover:border-primary/40 hover:bg-accent/30 hover:shadow-md hover:shadow-primary/5 focus-visible:ring-2 focus-visible:ring-primary/30 active:translate-y-0"
     >
-      <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary ring-1 ring-primary/15 transition-colors group-hover:bg-primary/15">
+      <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary ring-1 ring-primary/15 transition-colors duration-200 ease-out-quart group-hover:bg-primary/15">
         <Icon className="size-5" />
       </span>
       <div className="min-w-0">
@@ -391,7 +391,7 @@ function OpRow({ label, value, tone }: { label: string; value: string; tone: 'in
       <span className="text-muted-foreground">{label}</span>
       <span className={cn(
         'font-mono font-semibold',
-        tone === 'info' ? 'text-info' : tone === 'success' ? 'text-success' : 'text-foreground',
+        tone === 'info' ? 'text-info-strong' : tone === 'success' ? 'text-success-strong' : 'text-foreground',
       )}>
         {value}
       </span>

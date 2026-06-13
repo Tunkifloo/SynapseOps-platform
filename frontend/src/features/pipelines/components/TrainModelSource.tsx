@@ -64,8 +64,8 @@ export function TrainModelSource({
           type="button"
           onClick={() => setMode('new')}
           className={cn(
-            'flex items-center justify-center gap-1.5 rounded-lg border px-2 py-2 text-xs font-medium transition-colors',
-            mode === 'new' ? 'border-primary/50 bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:bg-accent/40'
+            'flex items-center justify-center gap-1.5 rounded-lg border px-2 py-2 text-xs font-medium transition-colors duration-150 ease-out-quart',
+            mode === 'new' ? 'border-primary/50 bg-primary/10 text-primary-strong' : 'border-border text-muted-foreground hover:bg-accent/40'
           )}
         >
           <Sparkles className="size-3.5" /> Nuevo
@@ -74,8 +74,8 @@ export function TrainModelSource({
           type="button"
           onClick={() => setMode('existing')}
           className={cn(
-            'flex items-center justify-center gap-1.5 rounded-lg border px-2 py-2 text-xs font-medium transition-colors',
-            mode === 'existing' ? 'border-primary/50 bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:bg-accent/40'
+            'flex items-center justify-center gap-1.5 rounded-lg border px-2 py-2 text-xs font-medium transition-colors duration-150 ease-out-quart',
+            mode === 'existing' ? 'border-primary/50 bg-primary/10 text-primary-strong' : 'border-border text-muted-foreground hover:bg-accent/40'
           )}
         >
           <RotateCcw className="size-3.5" /> Re-entrenar
@@ -98,7 +98,7 @@ export function TrainModelSource({
           {loading ? (
             <p className="flex items-center gap-2 text-xs text-muted-foreground"><Spinner size="sm" /> Cargando modelos…</p>
           ) : models.length === 0 ? (
-            <p className="text-xs text-warning">Aún no hay modelos en este proyecto. Entrena uno nuevo primero.</p>
+            <p className="text-xs text-warning-strong">Aún no hay modelos en este proyecto. Entrena uno nuevo primero.</p>
           ) : (
             <Select value={modelName} onValueChange={(v) => onConfigChange({ modelName: v })}>
               <SelectTrigger id="train-model-existing"><SelectValue placeholder="Selecciona un modelo" /></SelectTrigger>

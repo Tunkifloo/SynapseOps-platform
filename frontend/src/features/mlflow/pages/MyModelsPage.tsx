@@ -4,6 +4,7 @@ import { Boxes, Eye } from 'lucide-react'
 import { Badge } from '@/shared/components/ui/badge'
 import { Button } from '@/shared/components/ui/button'
 import { Card, CardContent } from '@/shared/components/ui/card'
+import { PageHeader } from '@/shared/components/PageHeader'
 import {
   Select,
   SelectContent,
@@ -76,16 +77,10 @@ export function MyModelsPage({ token, searchQuery, onAuthError }: MyModelsPagePr
   return (
     <div className="space-y-5">
       {/* Encabezado */}
-      <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="font-heading text-2xl font-bold tracking-tight text-foreground xl:text-3xl">
-            Mis modelos
-          </h1>
-          <p className="mt-1.5 max-w-3xl text-sm leading-6 text-muted-foreground">
-            Artefactos versionados en MLflow de todos tus proyectos. Gestiona versiones, stage y despliegue.
-          </p>
-        </div>
-      </section>
+      <PageHeader
+        title="Mis modelos"
+        subtitle="Artefactos versionados en MLflow de todos tus proyectos. Gestiona versiones, stage y despliegue."
+      />
 
       {/* Filtros */}
       <div className="flex flex-wrap items-center gap-2">
@@ -139,7 +134,7 @@ export function MyModelsPage({ token, searchQuery, onAuthError }: MyModelsPagePr
               <Spinner size="sm" /> Cargando modelos…
             </div>
           ) : error ? (
-            <p className="p-6 text-center text-sm text-destructive">{error}</p>
+            <p className="p-6 text-center text-sm text-destructive-strong">{error}</p>
           ) : visible.length === 0 ? (
             <div className="flex min-h-48 flex-col items-center justify-center px-6 py-10 text-center">
               <Boxes className="mb-3 size-9 text-muted-foreground/50" />
@@ -169,7 +164,7 @@ export function MyModelsPage({ token, searchQuery, onAuthError }: MyModelsPagePr
                   {visible.map((r) => (
                     <tr
                       key={r.key}
-                      className="border-b border-border last:border-0 transition-colors hover:bg-accent/40"
+                      className="border-b border-border last:border-0 transition-colors duration-150 ease-out-quart hover:bg-accent/40"
                     >
                       <td className="px-5 py-3">
                         <div className="flex items-center gap-2.5">
@@ -183,7 +178,7 @@ export function MyModelsPage({ token, searchQuery, onAuthError }: MyModelsPagePr
                       <td className="px-3 py-3">
                         <span className="truncate text-muted-foreground">{r.workspaceName}</span>
                       </td>
-                      <td className="px-3 py-3 font-mono font-semibold text-success">
+                      <td className="px-3 py-3 font-mono font-semibold text-success-strong">
                         {r.latestAccuracy != null ? r.latestAccuracy.toFixed(4) : '—'}
                       </td>
                       <td className="px-3 py-3">

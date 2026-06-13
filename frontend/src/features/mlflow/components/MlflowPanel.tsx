@@ -30,7 +30,7 @@ function EmptyRegistryCard({ title, count, icon: Icon, emptyTitle, emptyText, ch
             </div>
             <h3 className="font-heading text-lg font-semibold text-foreground">{title}</h3>
           </div>
-          <span className="rounded-full bg-primary/10 px-4 py-1.5 text-sm font-semibold text-primary">{count}</span>
+          <span className="rounded-full bg-primary/10 px-4 py-1.5 text-sm font-semibold text-primary-strong">{count}</span>
         </div>
 
         {count === 0 ? (
@@ -82,13 +82,13 @@ export function MlflowPanel({ token, onAuthError }: MlflowPanelProps) {
       <Card className="py-0">
         <CardHeader className="px-6 pt-5">
           <div className="flex items-start gap-4">
-            <Activity className={cn('mt-0.5 size-6', isUp ? 'text-success' : 'text-muted-foreground')} />
+            <Activity className={cn('mt-0.5 size-6', isUp ? 'text-success-strong' : 'text-muted-foreground')} />
             <div>
               <CardTitle className="text-xl">Servidor de seguimiento MLflow</CardTitle>
               <p className="mt-1 text-sm leading-6 text-muted-foreground">
                 Estado del registro de experimentos y modelos.
                 {health && (
-                  <span className={cn('ml-2 font-semibold', isUp ? 'text-success' : 'text-warning')}>
+                  <span className={cn('ml-2 font-semibold', isUp ? 'text-success-strong' : 'text-warning-strong')}>
                     {isUp ? 'Operativo' : 'No disponible'}
                   </span>
                 )}

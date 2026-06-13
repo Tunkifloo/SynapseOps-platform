@@ -83,13 +83,13 @@ export function UsersTable({
           return (
             <article
               key={item.idUser}
-              className={`rounded-xl border p-4 transition-colors ${
+              className={`rounded-xl border p-4 transition-colors duration-150 ease-out-quart ${
                 isEditing ? 'border-primary/50 bg-primary/5' : 'border-border bg-card'
               }`}
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="flex min-w-0 items-center gap-3">
-                  <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-sm font-semibold text-primary">
+                  <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-sm font-semibold text-primary-strong">
                     {initials(item)}
                   </div>
                   <div className="min-w-0">
@@ -163,13 +163,13 @@ export function UsersTable({
               return (
                 <tr
                   key={item.idUser}
-                  className={`border-t border-border transition-colors ${
+                  className={`border-t border-border transition-colors duration-150 ease-out-quart ${
                     isEditing ? 'bg-primary/5 ring-1 ring-inset ring-primary/30' : 'hover:bg-accent/40'
                   }`}
                 >
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
-                      <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-sm font-semibold text-primary">
+                      <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-sm font-semibold text-primary-strong">
                         {initials(item)}
                       </div>
                       <div className="min-w-0">
