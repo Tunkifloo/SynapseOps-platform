@@ -5,6 +5,7 @@ No conoce detalles de carga, preproceso ni frameworks.
 """
 import json
 import logging
+import shutil
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -163,6 +164,11 @@ class PipelineExecutor:
         X_train, y_train = bundle.X_train, bundle.y_train
         X_val,   y_val   = bundle.X_val,   bundle.y_val
         input_shape, num_classes = bundle.input_shape, bundle.num_classes
+
+        # Los datos ya están materializados en memoria → se libera el disco transitorio
+        # de la ingesta (extracted/{execId} y descargas). Evita que cada ejecución deje
+        # una copia extraída del dataset y desborde la cuota del workspace.
+        self._cleanup_ingestion_artifacts(job)
 
         # Actualizar num_classes con el valor real del dataset (autodetección)
         job.num_classes = num_classes
@@ -351,6 +357,21 @@ class PipelineExecutor:
                 job.workspace_id / "models" / job.execution_id)
         path.mkdir(parents=True, exist_ok=True)
         return str(path)
+
+    def _cleanup_ingestion_artifacts(self, job: PipelineJob) -> None:
+        """Elimina el disco transitorio de la ingesta del workspace (extracted/ y
+        downloads/). Tras load_dataset los datos viven en memoria, así que estas copias
+        no se necesitan. El consumer procesa en serie, por lo que no hay otra ingesta en
+        curso usando estas carpetas. Acota el uso de disco a dataset + modelos."""
+        base = Path(settings.storage_base_path) / job.workspace_id
+        for sub in ("extracted", "downloads"):
+            d = base / sub
+            if d.exists():
+                try:
+                    shutil.rmtree(d, ignore_errors=True)
+                    log.info("Limpieza de ingesta: %s eliminado.", d)
+                except Exception as e:  # noqa: BLE001 — limpieza no crítica
+                    log.warning("No se pudo limpiar %s: %s", d, e)
 
     # ── Data drift ────────────────────────────────────────────────────────────
     def _compute_drift(self, job: PipelineJob, bundle, output_dir: str) -> "dict | None":
