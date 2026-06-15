@@ -279,7 +279,9 @@ export const NODE_FIELDS: Record<NodeKind, FieldDef[]> = {
       options: [
         { value: 'val_loss', label: 'val_loss (mín)' },
         { value: 'val_accuracy', label: 'val_accuracy (máx)' },
+        { value: 'both', label: 'Ambas (val_loss mín + val_accuracy máx)' },
       ],
+      help: '"Ambas" detiene solo cuando ni la pérdida ni la precisión mejoran.',
       showIf: (c) => c.earlyStopping === 'true',
     },
     // El modelo (nuevo vs re-entrenar existente) se gestiona en TrainModelSource.
@@ -288,16 +290,19 @@ export const NODE_FIELDS: Record<NodeKind, FieldDef[]> = {
 }
 
 /**
- * Valida la configuración de un nodo según su esquema (HU-003/HU-004/HU-005).
- * Devuelve el primer mensaje de error, o `null` si es válida.
+ * Errores de validación POR CAMPO (clave = nombre del campo). Permite el resaltado
+ * en tiempo real del campo concreto que falla (Ticket UX-2). Solo evalúa campos visibles.
  */
-export function validateConfig(kind: NodeKind, config: NodeConfig): string | null {
+export function fieldErrors(kind: NodeKind, config: NodeConfig): Record<string, string> {
+  const errors: Record<string, string> = {}
+
   // El nombre/modelo del entrenamiento se gestiona aparte (nuevo o existente).
   if (kind === 'train' && String(config.modelName ?? '').trim() === '') {
-    return config.modelMode === 'existing'
+    errors.modelName = config.modelMode === 'existing'
       ? 'Modelo: selecciona un modelo existente para re-entrenar.'
       : 'Modelo: ingresa un nombre para el nuevo modelo.'
   }
+
   for (const field of NODE_FIELDS[kind]) {
     if (field.showIf && !field.showIf(config)) continue
     const value = config[field.name]
@@ -305,22 +310,36 @@ export function validateConfig(kind: NodeKind, config: NodeConfig): string | nul
     if (field.type === 'number') {
       const n = Number(value)
       if (value === '' || value === undefined || Number.isNaN(n)) {
-        return `${field.label}: ingresa un valor numérico.`
+        errors[field.name] = `${field.label}: ingresa un valor numérico.`
+      } else if (field.min !== undefined && n < field.min) {
+        errors[field.name] = `${field.label}: mínimo ${field.min}.`
+      } else if (field.max !== undefined && n > field.max) {
+        errors[field.name] = `${field.label}: máximo ${field.max}.`
       }
-      if (field.min !== undefined && n < field.min) return `${field.label}: mínimo ${field.min}.`
-      if (field.max !== undefined && n > field.max) return `${field.label}: máximo ${field.max}.`
     } else if (field.type === 'select') {
-      if (value === undefined || value === '') return `${field.label}: selecciona una opción.`
+      if (value === undefined || value === '') {
+        errors[field.name] = `${field.label}: selecciona una opción.`
+      }
     } else {
       if (value === undefined || String(value).trim() === '') {
-        return `${field.label}: este campo es obligatorio.`
-      }
-      if (field.name === 'learningRate' && Number.isNaN(Number(value))) {
-        return 'Learning rate: debe ser un número (p. ej. 0.001).'
+        errors[field.name] = `${field.label}: este campo es obligatorio.`
+      } else if (
+        (field.name === 'learningRate' || field.name.endsWith('Lr'))
+        && Number.isNaN(Number(value))
+      ) {
+        errors[field.name] = `${field.label}: debe ser un número (p. ej. 0.001).`
       }
     }
   }
-  return null
+  return errors
+}
+
+/**
+ * Valida la configuración de un nodo según su esquema (HU-003/HU-004/HU-005).
+ * Devuelve el primer mensaje de error, o `null` si es válida.
+ */
+export function validateConfig(kind: NodeKind, config: NodeConfig): string | null {
+  return Object.values(fieldErrors(kind, config))[0] ?? null
 }
 
 export const defaultConfig = (kind: NodeKind): NodeConfig => {

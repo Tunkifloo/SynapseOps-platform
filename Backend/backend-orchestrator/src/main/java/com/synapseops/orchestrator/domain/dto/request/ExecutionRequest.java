@@ -67,8 +67,8 @@ public record ExecutionRequest(
         @Max(value = 50, message = "La paciencia máxima es 50.")
         Integer esPatience,
 
-        @Pattern(regexp = "(?i)(val_loss|val_accuracy)",
-                message = "Monitor no soportado (val_loss | val_accuracy).")
+        @Pattern(regexp = "(?i)(val_loss|val_accuracy|both)",
+                message = "Monitor no soportado (val_loss | val_accuracy | both).")
         String esMonitor,
 
         // ── Catálogo granular de Data Augmentation (JSON) + balanceo de clases ────

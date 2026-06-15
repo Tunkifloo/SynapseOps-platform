@@ -23,6 +23,7 @@ import {
 } from '@/shared/components/ui/select'
 import { notify } from '@/shared/notify'
 import { setDeployHandoff } from '@/features/pipelines/deployHandoff'
+import { groupMetricsBySplit } from '@/features/executions/metricsGroups'
 import type { MlflowModelVersion, ModelStage } from '../api'
 import { DeleteVersionDialog } from './DeleteVersionDialog'
 
@@ -312,12 +313,16 @@ export function VersionCard({ api, modelName, version, onAuthError, onChanged }:
                     entries={Object.entries(details?.params ?? {})}
                     format={(v) => String(v)}
                   />
-                  <DetailGrid
-                    title="Métricas"
-                    entries={Object.entries(details?.metrics ?? {})}
-                    format={(v) => (typeof v === 'number' ? v.toFixed(4) : String(v))}
-                    valueClass="text-success-strong"
-                  />
+                  {/* Métricas agrupadas por split (Train/Val/Test/Drift) con color semántico. */}
+                  {groupMetricsBySplit(details?.metrics ?? {}).map((g) => (
+                    <DetailGrid
+                      key={g.key}
+                      title={g.title}
+                      entries={g.entries}
+                      format={(v) => (typeof v === 'number' ? v.toFixed(4) : String(v))}
+                      valueClass={g.valueClass}
+                    />
+                  ))}
                   <QualityReport metrics={details?.metrics ?? {}} />
                   {details?.confusionMatrix && <ConfusionMatrixView cm={details.confusionMatrix} />}
                   {(!details ||

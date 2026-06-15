@@ -217,7 +217,7 @@ class PyTorchStrategy(TrainingStrategy):
         history = {"accuracy": [], "loss": [], "val_accuracy": [], "val_loss": []}
         if epochs <= 0:
             return history
-        best_metric = best_state = None
+        best_loss = best_acc = best_state = None
         no_improve = 0
         for epoch in range(epochs):
             model.train()
@@ -255,12 +255,16 @@ class PyTorchStrategy(TrainingStrategy):
                 on_epoch(offset + epoch + 1, total, m)
 
             if hp.early_stopping:
-                monitor_val = vacc if hp.es_monitor == "val_accuracy" else vloss
-                improved = (best_metric is None) or (
-                    monitor_val > best_metric if hp.es_monitor == "val_accuracy"
-                    else monitor_val < best_metric)
-                if improved:
-                    best_metric = monitor_val
+                # "both": mejora si val_loss baja O val_accuracy sube (resetea paciencia);
+                # para solo cuando NINGUNA mejora. val_loss/val_accuracy: una sola métrica.
+                mode = hp.es_monitor
+                imp_loss = (mode in ("val_loss", "both")) and (best_loss is None or vloss < best_loss)
+                imp_acc = (mode in ("val_accuracy", "both")) and (best_acc is None or vacc > best_acc)
+                if imp_loss:
+                    best_loss = vloss
+                if imp_acc:
+                    best_acc = vacc
+                if imp_loss or imp_acc:
                     best_state = {k: v.detach().clone() for k, v in model.state_dict().items()}
                     no_improve = 0
                 else:
