@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Callable, Optional, Tuple
 import numpy as np
 
@@ -21,7 +21,10 @@ class HyperParams:
     early_stopping:   bool = False
     es_patience:      int  = 3
     es_monitor:       str  = "val_loss"  # val_loss | val_accuracy
-    data_augmentation: bool = False      # aug. en el entrenamiento (img)
+    data_augmentation: bool = False      # toggle maestro de augmentation (img)
+    # Catálogo granular de augmentation ya normalizado (clave→{param:valor}).
+    # Vacío + data_augmentation=True → las estrategias aplican el preset retrocompatible.
+    augmentation_config: dict = field(default_factory=dict)
 
 
 @dataclass
