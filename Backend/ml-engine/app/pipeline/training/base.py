@@ -58,6 +58,8 @@ class TrainingResult:
     test_true:  Optional[np.ndarray] = None
     test_pred:  Optional[np.ndarray] = None
     test_proba: Optional[np.ndarray] = None
+    # Galería de interpretabilidad Score-CAM (PNG local), si se pudo generar.
+    interpretability_path: Optional[str] = None
 
 
 class TrainingStrategy(ABC):
@@ -79,5 +81,6 @@ class TrainingStrategy(ABC):
         X_test:  Optional[np.ndarray] = None,
         y_test:  Optional[np.ndarray] = None,
         on_epoch: Optional[EpochCallback] = None,
+        class_names: Optional[list] = None,
     ) -> TrainingResult:
         pass

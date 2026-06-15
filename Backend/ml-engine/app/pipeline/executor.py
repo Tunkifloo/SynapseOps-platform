@@ -346,7 +346,8 @@ class PipelineExecutor:
 
         result: TrainingResult = strategy.train(
             X_train, y_train, X_val, y_val, hp, output_dir,
-            X_test=bundle.X_test, y_test=bundle.y_test, on_epoch=on_epoch)
+            X_test=bundle.X_test, y_test=bundle.y_test, on_epoch=on_epoch,
+            class_names=bundle.class_names)
         # TEL-01 · t_fin_entrenamiento: fin del entrenamiento (antes del registro en MLflow).
         t_fin_entrenamiento = datetime.now().isoformat(timespec="milliseconds")
 
@@ -397,6 +398,16 @@ class PipelineExecutor:
 
         # ── Data drift (calidad del split + re-entrenamiento) ─────────────────
         drift_summary = self._compute_drift(job, bundle, output_dir)
+
+        # ── Interpretabilidad: galería Score-CAM como artefacto MLflow ────────
+        if result.interpretability_path:
+            try:
+                mlflow.log_artifact(result.interpretability_path,
+                                    artifact_path="interpretability")
+                self._emit(job.execution_id,
+                           "Interpretabilidad: galería Score-CAM generada (ver artefactos del run).")
+            except Exception as e:  # noqa: BLE001
+                log.debug("No se pudo registrar la galería Score-CAM: %s", e)
 
         # Metadatos del modelo (tamaño/canales/clases reales) junto al artefacto.
         # El model-service los lee con prioridad sobre las env vars del orquestador,

@@ -8,7 +8,7 @@ from typing import Optional
 
 import numpy as np
 
-from app.pipeline.training import augmentation
+from app.pipeline.training import augmentation, scorecam
 from app.pipeline.training.base import EpochCallback, HyperParams, TrainingResult, TrainingStrategy
 
 log = logging.getLogger(__name__)
@@ -33,6 +33,7 @@ class PyTorchStrategy(TrainingStrategy):
         X_test: Optional[np.ndarray] = None,
         y_test: Optional[np.ndarray] = None,
         on_epoch: Optional[EpochCallback] = None,
+        class_names: Optional[list] = None,
     ) -> TrainingResult:
         import torch
         import torch.nn as nn
@@ -118,6 +119,12 @@ class PyTorchStrategy(TrainingStrategy):
             test_true = np.asarray(y_test)
             log.info("Evaluación en test — loss=%.4f acc=%.4f", test_loss, test_accuracy)
 
+        # Interpretabilidad Score-CAM (best-effort) ANTES de mover el modelo a CPU.
+        cam_X, cam_y = ((X_test, y_test) if X_test is not None and len(X_test) > 0
+                        else (X_val, y_val))
+        gallery = scorecam.generate("pytorch", model, np.asarray(cam_X), np.asarray(cam_y),
+                                    class_names, output_dir, device=device)
+
         # ── Serialización como TorchScript (TA-007 · Sprint 3) ────────────────
         # El model-service carga el artefacto con torch.jit.load, que NO requiere
         # el código fuente de la clase CNN. Por eso se guarda TorchScript
@@ -147,6 +154,7 @@ class PyTorchStrategy(TrainingStrategy):
             train_true=train_true, train_pred=train_pred, train_proba=train_proba,
             val_true=np.asarray(y_val), val_pred=val_pred, val_proba=val_proba,
             test_true=test_true, test_pred=test_pred, test_proba=test_proba,
+            interpretability_path=gallery,
         )
 
     def _build_aug(self, hp: HyperParams):
