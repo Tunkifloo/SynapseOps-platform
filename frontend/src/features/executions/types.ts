@@ -32,6 +32,19 @@ export interface ExecutionRequest {
     earlyStopping?: boolean
     esPatience?: number
     esMonitor?: string
+    // Catálogo de Data Augmentation (JSON-string) + balanceo de clases.
+    augmentationConfig?: string
+    classBalancing?: string
+    balanceThreshold?: number
+    // Regularización.
+    dropout?: number
+    l2?: number
+    // Transfer Learning (2 fases).
+    featureExtractionEpochs?: number
+    featureExtractionLr?: number
+    finetuningEpochs?: number
+    finetuningLr?: number
+    unfreezeLayers?: number
 }
 
 export interface ExecutionFormData {

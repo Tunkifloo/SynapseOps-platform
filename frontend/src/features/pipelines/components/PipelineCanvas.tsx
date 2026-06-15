@@ -20,7 +20,7 @@ import { launchExecution, getExecution } from '@/features/executions/api'
 import { deployModel } from '@/features/deployments/api'
 import type { ExecutionRequest } from '@/features/executions/types'
 import { NODE_KIND_MAP, type NodeKind } from '@/features/pipelines/nodeKinds'
-import { defaultConfig, validateConfig, type NodeConfig } from '@/features/pipelines/nodeConfig'
+import { buildAugmentationConfig, defaultConfig, validateConfig, type NodeConfig } from '@/features/pipelines/nodeConfig'
 import { loadCanvas, saveCanvas } from '@/features/pipelines/canvasApi'
 import { PipelineNode, type PipelineNodeData, type PipelineNodeStatus } from './PipelineNode'
 import { NodePalette } from './NodePalette'
@@ -32,6 +32,49 @@ const nodeTypes = { pipelineNode: PipelineNode }
 
 let idCounter = 0
 const nextId = () => `n_${Date.now().toString(36)}_${idCounter++}`
+
+/**
+ * Campos de entrenamiento del payload a partir del config del nodo `train`.
+ * CNN → epochs/learningRate propios. Transfer Learning → epochs/LR por fase
+ * (el `epochs`/`learningRate` base se derivan para satisfacer la validación REST).
+ */
+function buildTrainFields(cfg: NodeConfig): {
+  architecture: string
+  optimizer: string
+  dropout: number
+  l2: number
+  epochs: number
+  learningRate: number
+  featureExtractionEpochs?: number
+  featureExtractionLr?: number
+  finetuningEpochs?: number
+  finetuningLr?: number
+  unfreezeLayers?: number
+} {
+  const arch = String(cfg.architecture ?? 'cnn')
+  const pretrained = arch !== 'cnn'
+  const feEpochs = Number(cfg.featureExtractionEpochs) || 5
+  const ftEpochs = Number.isFinite(Number(cfg.finetuningEpochs)) ? Number(cfg.finetuningEpochs) : 10
+  return {
+    architecture: arch,
+    optimizer: String(cfg.optimizer ?? 'adam'),
+    dropout: Number(cfg.dropout ?? 0.4),
+    l2: Number(cfg.l2 ?? 0),
+    // En TL el ML Engine ignora este `epochs` (usa fe+ft); se capea a 100 solo para
+    // satisfacer la validación REST del orquestador.
+    epochs: pretrained ? Math.min(feEpochs + ftEpochs, 100) : Number(cfg.epochs) || 5,
+    learningRate: pretrained ? Number(cfg.featureExtractionLr) || 0.001 : Number(cfg.learningRate) || 0.001,
+    ...(pretrained
+      ? {
+          featureExtractionEpochs: feEpochs,
+          featureExtractionLr: Number(cfg.featureExtractionLr) || 0.001,
+          finetuningEpochs: ftEpochs,
+          finetuningLr: Number(cfg.finetuningLr) || 0.00001,
+          unfreezeLayers: Number(cfg.unfreezeLayers) || 10,
+        }
+      : {}),
+  }
+}
 
 /**
  * ¿Agregar la arista source→target cerraría un ciclo?
@@ -236,12 +279,14 @@ export function PipelineCanvas({
 
       const payload: ExecutionRequest = {
         framework: (cfg.framework as 'tensorflow' | 'pytorch') ?? 'tensorflow',
-        architecture: 'cnn',
-        epochs: Number(cfg.epochs) || 5,
         batchSize: Number(cfg.batchSize) || 32,
-        learningRate: Number(cfg.learningRate) || 0.001,
         numClasses: 10, // el ml-engine autodetecta el real
         modelName: String(cfg.modelName || 'modelo'),
+        batchNorm: cfg.batchNorm === 'true',
+        earlyStopping: cfg.earlyStopping === 'true',
+        esPatience: Number(cfg.esPatience) || undefined,
+        esMonitor: String(cfg.esMonitor ?? 'val_loss'),
+        ...buildTrainFields(cfg),
       }
 
       void (async () => {
@@ -421,20 +466,22 @@ export function PipelineCanvas({
 
     const payload: ExecutionRequest = {
       framework: (cfg.framework as 'tensorflow' | 'pytorch') ?? 'tensorflow',
-      architecture: 'cnn',
-      epochs: Number(cfg.epochs) || 5,
       batchSize: Number(cfg.batchSize) || 32,
-      learningRate: Number(cfg.learningRate) || 0.001,
       numClasses: 10, // autodetectado por el ml-engine; placeholder ignorado
       modelName: String(cfg.modelName || 'modelo'),
-      optimizer: String(cfg.optimizer ?? 'adam'),
       batchNorm: cfg.batchNorm === 'true',
       earlyStopping: cfg.earlyStopping === 'true',
       esPatience: Number(cfg.esPatience) || undefined,
       esMonitor: String(cfg.esMonitor ?? 'val_loss'),
+      ...buildTrainFields(cfg),
       // Nodos Preprocesamiento y Split (parametrización real en el ml-engine).
       normalization: preprocessNode ? String(preCfg.normalization ?? 'minmax') : undefined,
       dataAugmentation: preprocessNode ? preCfg.dataAugmentation === 'true' : undefined,
+      augmentationConfig: preprocessNode
+        ? JSON.stringify(buildAugmentationConfig(preCfg))
+        : undefined,
+      classBalancing: preprocessNode ? String(preCfg.classBalancing ?? 'off') : undefined,
+      balanceThreshold: preprocessNode ? Number(preCfg.balanceThreshold) || undefined : undefined,
       imageSize: preprocessNode ? Number(preCfg.imageSize) || undefined : undefined,
       trainRatio: splitNode ? Number(splitCfg.trainRatio) || undefined : undefined,
     }

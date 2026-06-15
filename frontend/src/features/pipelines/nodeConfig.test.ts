@@ -11,6 +11,8 @@ const fullTrainConfig = {
   epochs: 5,
   batchSize: '32',
   learningRate: '0.001',
+  dropout: 0.4,
+  l2: 0,
   batchNorm: 'false',
   earlyStopping: 'false',
   modelMode: 'new',
