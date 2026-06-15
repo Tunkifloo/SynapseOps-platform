@@ -66,11 +66,14 @@ def load_dataset(
     image_size: Optional[int] = None,
     train_ratio: Optional[int] = None,
     normalization: Optional[str] = None,
+    max_images: Optional[int] = None,
 ) -> DatasetBundle:
     """
     image_size    → tamaño de entrada (px) para datasets propios (nodo Preprocesamiento).
     train_ratio   → % de entrenamiento (50–90) para datasets sin splits explícitos (nodo Split).
     normalization → minmax [0,1] (default) | zscore (media/σ del train) | rescale [-1,1].
+    max_images    → tope de imágenes a materializar (default MAX_IMAGES). Transfer Learning
+                    pasa un tope menor porque 224px consume ~12x más memoria que 64px.
     Los datasets built-in (keras://) usan su forma y split predefinidos.
     """
     if not dataset_path or not dataset_path.strip():
@@ -78,21 +81,22 @@ def load_dataset(
 
     size = _resolve_image_size(image_size)
     ratio = _resolve_train_ratio(train_ratio)
+    cap = int(max_images) if max_images else MAX_IMAGES
 
     if dataset_path.startswith("keras://"):
         bundle = _load_keras_builtin(dataset_path.replace("keras://", "").strip().lower())
     elif dataset_path.startswith("http://") or dataset_path.startswith("https://"):
         extracted = _download_archive(dataset_path, workspace_id, execution_id)
-        bundle = _load_image_dataset(Path(extracted), size, ratio)
+        bundle = _load_image_dataset(Path(extracted), size, ratio, cap)
     else:
         local_path = Path(dataset_path)
         if not local_path.exists():
             raise FileNotFoundError(f"Dataset no encontrado: {dataset_path}")
         if local_path.suffix.lower() == ".zip":
             extracted = _extract_zip(local_path, workspace_id, execution_id)
-            bundle = _load_image_dataset(Path(extracted), size, ratio)
+            bundle = _load_image_dataset(Path(extracted), size, ratio, cap)
         elif local_path.is_dir():
-            bundle = _load_image_dataset(local_path, size, ratio)
+            bundle = _load_image_dataset(local_path, size, ratio, cap)
         else:
             raise ValueError(
                 f"Formato de dataset no soportado: {dataset_path}. "
@@ -228,7 +232,8 @@ def _load_fashion_mnist_numpy() -> DatasetBundle:
 
 
 # ── Datasets propios de imágenes (PIL, sin TensorFlow) ──────────────────────────
-def _load_image_dataset(root: Path, size: Tuple[int, int], ratio: float) -> DatasetBundle:
+def _load_image_dataset(root: Path, size: Tuple[int, int], ratio: float,
+                        cap: int = MAX_IMAGES) -> DatasetBundle:
     root = _normalize_root(root)
 
     train_dir = _resolve_split_dir(root, "train")
@@ -237,21 +242,22 @@ def _load_image_dataset(root: Path, size: Tuple[int, int], ratio: float) -> Data
 
     if train_dir and val_dir:
         log.info("Layout detectado: splits explícitos en %s (tamaño=%s)", root, size)
-        return _load_explicit_splits(train_dir, val_dir, test_dir, size)
+        return _load_explicit_splits(train_dir, val_dir, test_dir, size, cap)
 
     # Solo 'train' (sin val): NO es una clase llamada "train" — se trata su contenido
     # como carpetas-clase planas y se auto-divide en 3 vías.
     if train_dir and not val_dir:
         log.info("Layout detectado: solo split 'train' → auto-split 3-vías sobre sus clases.")
-        return _load_flat_with_autosplit(train_dir, size, ratio)
+        return _load_flat_with_autosplit(train_dir, size, ratio, cap)
 
     log.info("Layout detectado: carpetas-clase planas en %s (auto-split %d/%d, tamaño=%s)",
              root, int(ratio * 100), int((1 - ratio) * 100), size)
-    return _load_flat_with_autosplit(root, size, ratio)
+    return _load_flat_with_autosplit(root, size, ratio, cap)
 
 
 def _load_explicit_splits(train_dir: Path, val_dir: Path,
-                          test_dir: Optional[Path], size: Tuple[int, int]) -> DatasetBundle:
+                          test_dir: Optional[Path], size: Tuple[int, int],
+                          cap: int = MAX_IMAGES) -> DatasetBundle:
     train_g = _gather_class_files(train_dir)
     val_g   = _gather_class_files(val_dir)
     test_g  = _gather_class_files(test_dir) if test_dir else {}
@@ -271,8 +277,8 @@ def _load_explicit_splits(train_dir: Path, val_dir: Path,
     total = _count(train_g) + _count(val_g) + _count(test_g)
     _validate_count(total)
     # Fallback: si excede el tope de memoria, recorta cada split proporcionalmente.
-    if total > MAX_IMAGES:
-        factor = MAX_IMAGES / total
+    if total > cap:
+        factor = cap / total
         train_g = _cap_to_limit(train_g, max(1, int(_count(train_g) * factor)))
         val_g = _cap_to_limit(val_g, max(1, int(_count(val_g) * factor)))
         if test_g:
@@ -297,12 +303,13 @@ def _load_explicit_splits(train_dir: Path, val_dir: Path,
                          len(class_names), class_names, X_test, y_test)
 
 
-def _load_flat_with_autosplit(root: Path, size: Tuple[int, int], ratio: float) -> DatasetBundle:
+def _load_flat_with_autosplit(root: Path, size: Tuple[int, int], ratio: float,
+                              cap: int = MAX_IMAGES) -> DatasetBundle:
     gathered = _gather_class_files(root)
     class_names = sorted(gathered)
     _validate_classes(class_names)
     _validate_count(_count(gathered))
-    gathered = _cap_to_limit(gathered, MAX_IMAGES)   # fallback: recorta al tope de memoria
+    gathered = _cap_to_limit(gathered, cap)   # fallback: recorta al tope de memoria
     class_to_idx = {c: i for i, c in enumerate(class_names)}
 
     # Split 3-vías estratificado por clase (semilla fija → determinista).

@@ -56,85 +56,50 @@ class PyTorchStrategy(TrainingStrategy):
         loader    = DataLoader(
             TensorDataset(Xtr, ytr),
             batch_size=hyperparams.batch_size, shuffle=True)
-        model     = self._build_cnn(hyperparams).to(device)
-        optimizer = self._build_optimizer(model, hyperparams)
         criterion = nn.CrossEntropyLoss()
-
         # Augmentation in-graph (torchvision.transforms.v2 + ruido custom), construida
         # desde el mismo catálogo normalizado. None si no hay técnicas activas.
         augment = self._build_aug(hyperparams)
         if augment is not None:
             log.info("Augmentation in-graph (PyTorch) activa.")
 
-        history = {"accuracy": [], "loss": [], "val_accuracy": [], "val_loss": []}
-        # Early Stopping manual (item 6).
-        best_metric = None
-        best_state = None
-        epochs_no_improve = 0
+        arch = (hyperparams.architecture or "cnn").lower()
+        if arch == "cnn":
+            model = self._build_cnn(hyperparams).to(device)
+            optimizer = self._build_optimizer(model, hyperparams)
+            history = self._train_loop(
+                model, loader, Xv, yv, optimizer, criterion, augment, device,
+                hyperparams, hyperparams.epochs, 0, hyperparams.epochs, None, on_epoch)
+        else:
+            # Transfer Learning en 2 fases: Feature Extraction → Fine-Tuning.
+            model, _head = self._build_pretrained(arch, hyperparams)
+            model = model.to(device)
+            total = hyperparams.feature_extraction_epochs + hyperparams.finetuning_epochs
+            log.info("TL %s — FE %d ep (lr=%.0e) → FT %d ep (lr=%.0e, descongela %d capas)",
+                     arch, hyperparams.feature_extraction_epochs, hyperparams.feature_extraction_lr,
+                     hyperparams.finetuning_epochs, hyperparams.finetuning_lr,
+                     hyperparams.unfreeze_layers)
+            opt1 = self._build_optimizer(model, hyperparams, hyperparams.feature_extraction_lr)
+            h1 = self._train_loop(
+                model, loader, Xv, yv, opt1, criterion, augment, device,
+                hyperparams, hyperparams.feature_extraction_epochs, 0, total, "FE", on_epoch)
+            h2 = {}
+            if hyperparams.finetuning_epochs > 0:
+                self._unfreeze_torch(model, arch, hyperparams.unfreeze_layers)
+                opt2 = self._build_optimizer(model, hyperparams, hyperparams.finetuning_lr)
+                h2 = self._train_loop(
+                    model, loader, Xv, yv, opt2, criterion, augment, device,
+                    hyperparams, hyperparams.finetuning_epochs,
+                    hyperparams.feature_extraction_epochs, total, "FT", on_epoch)
+            history = {k: list(h1.get(k, [])) + list(h2.get(k, []))
+                       for k in set(h1) | set(h2)}
 
-        for epoch in range(hyperparams.epochs):
-            model.train()
-            ep_loss, correct, total = 0.0, 0, 0
-            for xb, yb in loader:
-                if augment is not None:
-                    xb = augment(xb)
-                optimizer.zero_grad()
-                out  = model(xb)
-                loss = criterion(out, yb)
-                loss.backward()
-                optimizer.step()
-                ep_loss  += loss.item() * len(yb)
-                correct  += (out.argmax(1) == yb).sum().item()
-                total    += len(yb)
-
-            acc      = correct / total
-            avg_loss = ep_loss  / total
-
-            model.eval()
-            with torch.no_grad():
-                vo    = model(Xv)
-                vloss = criterion(vo, yv).item()
-                vacc  = (vo.argmax(1) == yv).float().mean().item()
-
-            history["accuracy"].append(acc)
-            history["loss"].append(avg_loss)
-            history["val_accuracy"].append(vacc)
-            history["val_loss"].append(vloss)
-
-            log.info("Epoch %d/%d loss=%.4f acc=%.4f val_acc=%.4f",
-                     epoch + 1, hyperparams.epochs, avg_loss, acc, vacc)
-
-            if on_epoch is not None:
-                on_epoch(epoch + 1, hyperparams.epochs, {
-                    "loss": avg_loss, "accuracy": acc,
-                    "val_loss": vloss, "val_accuracy": vacc,
-                })
-
-            # Early Stopping (item 6): monitor val_loss (min) o val_accuracy (max).
-            if hyperparams.early_stopping:
-                monitor_val = vacc if hyperparams.es_monitor == "val_accuracy" else vloss
-                improved = (best_metric is None) or (
-                    monitor_val > best_metric if hyperparams.es_monitor == "val_accuracy"
-                    else monitor_val < best_metric)
-                if improved:
-                    best_metric = monitor_val
-                    best_state = {k: v.detach().clone() for k, v in model.state_dict().items()}
-                    epochs_no_improve = 0
-                else:
-                    epochs_no_improve += 1
-                    if epochs_no_improve >= max(1, hyperparams.es_patience):
-                        log.info("EarlyStopping en epoch %d (monitor=%s)", epoch + 1, hyperparams.es_monitor)
-                        break
-
-        # Restaura los mejores pesos si hubo early stopping.
-        if best_state is not None:
-            model.load_state_dict(best_state)
-
-        # Predicciones de validación para métricas avanzadas (item 7).
+        # Predicciones de train y validación para métricas avanzadas (item 7).
         model.eval()
-        with torch.no_grad():
-            val_logits = model(Xv)
-            val_proba = torch.softmax(val_logits, dim=1).cpu().numpy()
+        train_proba = self._predict_proba(model, Xtr, hyperparams.batch_size)
+        train_pred = train_proba.argmax(axis=1)
+        train_true = np.asarray(y_train)
+        val_proba = self._predict_proba(model, Xv, hyperparams.batch_size)
         val_pred = val_proba.argmax(axis=1)
 
         # Evaluación final sobre el split de test (si lo hay).
@@ -179,6 +144,7 @@ class PyTorchStrategy(TrainingStrategy):
             final_loss=history.get("val_loss", history.get("loss", [0]))[-1],
             test_accuracy=test_accuracy,
             test_loss=test_loss,
+            train_true=train_true, train_pred=train_pred, train_proba=train_proba,
             val_true=np.asarray(y_val), val_pred=val_pred, val_proba=val_proba,
             test_true=test_true, test_pred=test_pred, test_proba=test_proba,
         )
@@ -234,17 +200,140 @@ class PyTorchStrategy(TrainingStrategy):
 
         return apply
 
-    def _build_optimizer(self, model, hp: HyperParams):
+    def _train_loop(self, model, loader, Xv, yv, optimizer, criterion, augment, device,
+                    hp: HyperParams, epochs: int, offset: int, total: int,
+                    phase: "str | None", on_epoch) -> dict:
+        """Bucle de entrenamiento de una fase. Devuelve history; restaura los mejores
+        pesos si hay early stopping. Reporta epochs continuas (offset/total) y fase."""
         import torch
-        lr = hp.learning_rate
+        history = {"accuracy": [], "loss": [], "val_accuracy": [], "val_loss": []}
+        if epochs <= 0:
+            return history
+        best_metric = best_state = None
+        no_improve = 0
+        for epoch in range(epochs):
+            model.train()
+            ep_loss, correct, total_n = 0.0, 0, 0
+            for xb, yb in loader:
+                if augment is not None:
+                    xb = augment(xb)
+                optimizer.zero_grad()
+                out = model(xb)
+                loss = criterion(out, yb)
+                loss.backward()
+                optimizer.step()
+                ep_loss += loss.item() * len(yb)
+                correct += (out.argmax(1) == yb).sum().item()
+                total_n += len(yb)
+            acc, avg_loss = correct / total_n, ep_loss / total_n
+
+            model.eval()
+            with torch.no_grad():
+                vo = model(Xv)
+                vloss = criterion(vo, yv).item()
+                vacc = (vo.argmax(1) == yv).float().mean().item()
+
+            history["accuracy"].append(acc)
+            history["loss"].append(avg_loss)
+            history["val_accuracy"].append(vacc)
+            history["val_loss"].append(vloss)
+            tag = f" [{phase}]" if phase else ""
+            log.info("Epoch %d/%d%s loss=%.4f acc=%.4f val_acc=%.4f",
+                     offset + epoch + 1, total, tag, avg_loss, acc, vacc)
+            if on_epoch is not None:
+                m = {"loss": avg_loss, "accuracy": acc, "val_loss": vloss, "val_accuracy": vacc}
+                if phase:
+                    m["phase"] = phase
+                on_epoch(offset + epoch + 1, total, m)
+
+            if hp.early_stopping:
+                monitor_val = vacc if hp.es_monitor == "val_accuracy" else vloss
+                improved = (best_metric is None) or (
+                    monitor_val > best_metric if hp.es_monitor == "val_accuracy"
+                    else monitor_val < best_metric)
+                if improved:
+                    best_metric = monitor_val
+                    best_state = {k: v.detach().clone() for k, v in model.state_dict().items()}
+                    no_improve = 0
+                else:
+                    no_improve += 1
+                    if no_improve >= max(1, hp.es_patience):
+                        log.info("EarlyStopping en epoch %d (monitor=%s)",
+                                 offset + epoch + 1, hp.es_monitor)
+                        break
+        if best_state is not None:
+            model.load_state_dict(best_state)
+        return history
+
+    def _predict_proba(self, model, X, batch_size: int) -> np.ndarray:
+        """Softmax por lotes sobre un tensor ya en device (evita OOM con 224px)."""
+        import torch
+        model.eval()
+        outs = []
+        with torch.no_grad():
+            for i in range(0, len(X), max(1, batch_size)):
+                logits = model(X[i:i + batch_size])
+                outs.append(torch.softmax(logits, dim=1).cpu().numpy())
+        return np.concatenate(outs) if outs else np.empty((0,))
+
+    def _build_pretrained(self, arch: str, hp: HyperParams):
+        """Backbone ImageNet de torchvision con cabeza nueva. Devuelve (model, head).
+        El backbone arranca congelado (solo la cabeza entrena en feature extraction)."""
+        import torch.nn as nn
+        import torchvision.models as models
+        name = arch.lower()
+        drop = hp.dropout
+
+        def head(in_f):
+            return nn.Sequential(
+                nn.Dropout(drop), nn.Linear(in_f, 256), nn.ReLU(inplace=True),
+                nn.Dropout(max(0.0, drop * 0.75)), nn.Linear(256, hp.num_classes))
+
+        if name == "efficientnet":
+            m = models.efficientnet_b0(weights=models.EfficientNet_B0_Weights.IMAGENET1K_V1)
+            m.classifier = head(m.classifier[1].in_features); head_mod = m.classifier
+        elif name == "mobilenet":
+            m = models.mobilenet_v2(weights=models.MobileNet_V2_Weights.IMAGENET1K_V1)
+            m.classifier = head(m.classifier[1].in_features); head_mod = m.classifier
+        elif name == "resnet":
+            m = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V1)
+            m.fc = head(m.fc.in_features); head_mod = m.fc
+        else:
+            raise ValueError(f"Backbone no soportado: {arch}")
+
+        for p in m.parameters():
+            p.requires_grad = False
+        for p in head_mod.parameters():
+            p.requires_grad = True
+        log.info("Backbone %s instanciado (params=%d).",
+                 name, sum(p.numel() for p in m.parameters()))
+        return m, head_mod
+
+    def _unfreeze_torch(self, model, arch: str, n: int) -> None:
+        """Descongela las últimas `n` etapas del backbone para el fine-tuning."""
+        name = arch.lower()
+        if name in ("efficientnet", "mobilenet"):
+            stages = list(model.features)
+        else:  # resnet
+            stages = [model.conv1, model.bn1, model.layer1,
+                      model.layer2, model.layer3, model.layer4]
+        for stage in stages[-max(1, n):]:
+            for p in stage.parameters():
+                p.requires_grad = True
+
+    def _build_optimizer(self, model, hp: HyperParams, lr: "float | None" = None):
+        import torch
+        lr = lr if lr is not None else hp.learning_rate
+        wd = hp.l2 if hp.l2 and hp.l2 > 0 else 0.0
+        params = filter(lambda p: p.requires_grad, model.parameters())
         opt = (hp.optimizer or "adam").lower()
         if opt == "adamw":
-            return torch.optim.AdamW(model.parameters(), lr=lr)
+            return torch.optim.AdamW(params, lr=lr, weight_decay=wd)
         if opt == "sgd":
-            return torch.optim.SGD(model.parameters(), lr=lr, momentum=0.9)
+            return torch.optim.SGD(params, lr=lr, momentum=0.9, weight_decay=wd)
         if opt == "rmsprop":
-            return torch.optim.RMSprop(model.parameters(), lr=lr)
-        return torch.optim.Adam(model.parameters(), lr=lr)
+            return torch.optim.RMSprop(params, lr=lr, weight_decay=wd)
+        return torch.optim.Adam(params, lr=lr, weight_decay=wd)
 
     def _build_cnn(self, hp: HyperParams):
         import torch.nn as nn
@@ -273,7 +362,7 @@ class PyTorchStrategy(TrainingStrategy):
                 self.classifier = nn.Sequential(
                     nn.Flatten(),
                     nn.Linear(feat, 256), nn.ReLU(),
-                    nn.Dropout(0.4),
+                    nn.Dropout(hp.dropout),
                     nn.Linear(256, hp.num_classes),
                 )
 
