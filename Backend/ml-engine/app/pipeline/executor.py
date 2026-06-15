@@ -6,7 +6,7 @@ No conoce detalles de carga, preproceso ni frameworks.
 import json
 import logging
 import shutil
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
@@ -17,6 +17,7 @@ from app.config import settings
 from app.infra.mlflow_client import MLflowFacade
 from app.kafka.producer import LogProducer
 from app.pipeline import drift
+from app.pipeline.training import augmentation, balancing
 from app.pipeline.training.ingestion import load_dataset
 from app.pipeline.training.base import HyperParams, TrainingResult
 from app.pipeline.training.metrics import (
@@ -75,6 +76,11 @@ class PipelineJob:
     # ── Preprocesamiento / Entrenamiento avanzado (item 6) ───────────────────
     normalization:     str  = "minmax"   # minmax | zscore | rescale
     data_augmentation: bool = False
+    # Catálogo granular de augmentation (anidado). Viaja como JSON-string o dict.
+    augmentation_config: dict = field(default_factory=dict)
+    # Balanceo de clases (nodo Preprocesamiento).
+    class_balancing:   str  = "off"       # off | oversample | undersample | hybrid
+    balance_threshold: int  = 40          # % de desbalance tolerado (10–80)
     optimizer:         str  = "adam"      # adam | adamw | sgd | rmsprop
     batch_norm:        bool = False
     early_stopping:    bool = False
@@ -88,6 +94,18 @@ class PipelineJob:
 
         def _flag(value) -> bool:
             return str(value).lower() in ("true", "1", "yes")
+
+        def _aug_config(value) -> dict:
+            """Acepta el catálogo como dict ya parseado o como JSON-string."""
+            if isinstance(value, dict):
+                return value
+            if isinstance(value, str) and value.strip():
+                try:
+                    parsed = json.loads(value)
+                    return parsed if isinstance(parsed, dict) else {}
+                except (ValueError, TypeError):
+                    return {}
+            return {}
 
         return PipelineJob(
             execution_id=data["executionId"],
@@ -107,6 +125,9 @@ class PipelineJob:
             train_ratio =_opt_int(data.get("trainRatio")),
             normalization=(data.get("normalization") or "minmax").lower(),
             data_augmentation=_flag(data.get("dataAugmentation")),
+            augmentation_config=_aug_config(data.get("augmentationConfig")),
+            class_balancing=(data.get("classBalancing") or "off").lower(),
+            balance_threshold=int(data.get("balanceThreshold", 40) or 40),
             optimizer   =(data.get("optimizer") or "adam").lower(),
             batch_norm  =_flag(data.get("batchNorm")),
             early_stopping=_flag(data.get("earlyStopping")),
@@ -177,11 +198,22 @@ class PipelineExecutor:
         self._emit(job.execution_id,
                    f"Ingesta: dataset listo — {num_classes} clases · shape {input_shape}")
 
-        # ── Nodo Preprocesamiento: normalización + augmentation ───────────────
-        aug = "data augmentation ON" if job.data_augmentation else "sin augmentation"
+        # ── Nodo Preprocesamiento: normalización + augmentation + balanceo ────
+        # Catálogo de augmentation ya saneado (compartido por balanceo y estrategias).
+        aug_cfg = augmentation.normalize_config(job.augmentation_config, job.data_augmentation)
+        aug = f"augmentation [{augmentation.summarize(aug_cfg)}]" if aug_cfg else "sin augmentation"
         self._emit(job.execution_id,
                    f"Preprocesamiento: normalización={job.normalization} · {aug} · "
                    f"entrada {input_shape[0]}x{input_shape[1]}")
+
+        # Balanceo de clases: opera SOLO sobre el train (copias locales). El bundle
+        # original queda intacto para el cálculo de drift y la referencia del proyecto.
+        balance_report = None
+        if job.class_balancing != "off":
+            X_train, y_train, balance_report = balancing.balance_dataset(
+                X_train, y_train, job.class_balancing, job.balance_threshold,
+                bundle.class_names, augmentation_cfg=aug_cfg)
+            self._emit_balancing(job, balance_report)
 
         # ── Nodo Split: train / validación / test ─────────────────────────────
         test_n = 0 if bundle.X_test is None else len(bundle.X_test)
@@ -206,6 +238,9 @@ class PipelineExecutor:
             "dataset":       job.dataset_path,
             "normalization": job.normalization,
             "data_augmentation": job.data_augmentation,
+            "augmentation":  augmentation.summarize(aug_cfg),
+            "class_balancing": job.class_balancing,
+            "balance_threshold": job.balance_threshold if job.class_balancing != "off" else "—",
             "optimizer":     job.optimizer,
             "batch_norm":    job.batch_norm,
             "early_stopping": job.early_stopping,
@@ -227,6 +262,7 @@ class PipelineExecutor:
             es_patience=job.es_patience,
             es_monitor=job.es_monitor,
             data_augmentation=job.data_augmentation,
+            augmentation_config=aug_cfg,
         )
         output_dir = self._prepare_output_dir(job)
         strategy   = self._select_strategy(job.framework)
@@ -344,6 +380,8 @@ class PipelineExecutor:
             "confusion_matrix": confusion,
             # Data drift (calidad del split + cambio del dataset vs corrida anterior).
             "drift": drift_summary,
+            # Balanceo de clases aplicado (distribución antes→después), si lo hubo.
+            "balancing": balance_report,
         }
 
     def _select_strategy(self, framework: str) -> object:
@@ -429,6 +467,21 @@ class PipelineExecutor:
             mlflow.log_artifact(path, artifact_path="drift")
         except Exception as e:  # noqa: BLE001
             log.debug("No se pudo loguear el artefacto de drift: %s", e)
+
+    def _emit_balancing(self, job: PipelineJob, report: "dict | None") -> None:
+        if not report:
+            return
+        if report.get("skipped"):
+            self._emit(job.execution_id,
+                       f"Balanceo: omitido — {report.get('reason', 'dataset balanceado')}.")
+            return
+        before, after = report.get("before", {}), report.get("after", {})
+        cambios = " · ".join(
+            f"{c}: {before.get(c, 0)}→{after.get(c, 0)}" for c in after)
+        cap = " (recortado al tope de memoria)" if report.get("capped") else ""
+        self._emit(job.execution_id,
+                   f"Balanceo ({report['strategy']}, umbral {report['threshold']}%): "
+                   f"{cambios}{cap}.")
 
     def _emit_drift(self, job: PipelineJob, summary: dict) -> None:
         s, r = summary.get("split"), summary.get("retraining")
