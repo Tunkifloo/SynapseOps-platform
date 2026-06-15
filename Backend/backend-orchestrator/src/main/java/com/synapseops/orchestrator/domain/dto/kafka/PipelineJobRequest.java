@@ -21,5 +21,18 @@ public record PipelineJobRequest(
         Boolean batchNorm,
         Boolean earlyStopping,
         Integer esPatience,
-        String esMonitor
+        String esMonitor,
+        // ── Catálogo de augmentation (JSON-string) + balanceo de clases ───────
+        String  augmentationConfig,
+        String  classBalancing,
+        Integer balanceThreshold,
+        // ── Regularización ───────────────────────────────────────────────────
+        Double  dropout,
+        Double  l2,
+        // ── Transfer Learning (2 fases) ──────────────────────────────────────
+        Integer featureExtractionEpochs,
+        Double  featureExtractionLr,
+        Integer finetuningEpochs,
+        Double  finetuningLr,
+        Integer unfreezeLayers
 ) {}

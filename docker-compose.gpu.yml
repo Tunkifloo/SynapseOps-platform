@@ -23,6 +23,9 @@ services:
     build:
       args:
         REQUIREMENTS: requirements-gpu.txt
+        # Hornea los pesos ImageNet en la imagen GPU → Transfer Learning funciona
+        # OFFLINE en los labs (docker save/load incluye los pesos). Ver Dockerfile.
+        PRECACHE_WEIGHTS: "true"
     environment:
       # Asegura que CUDA sea visible dentro del contenedor.
       NVIDIA_VISIBLE_DEVICES: all
