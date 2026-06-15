@@ -42,6 +42,11 @@ CLASS_NAMES: List[str] = [c for c in os.environ.get("CLASS_NAMES", "").split(","
 # junto al artefacto del modelo. Se compara contra las imágenes que llegan a /predict.
 REFERENCE_PATH = os.environ.get(
     "REFERENCE_PATH", os.path.join(os.path.dirname(MODEL_PATH), "train_reference.json"))
+# Metadatos del modelo escritos por el ml-engine junto al artefacto. Tienen PRIORIDAD
+# sobre INPUT_SIZE/CHANNELS/CLASS_NAMES del orquestador: imprescindible cuando el ml-engine
+# forzó el tamaño internamente (p. ej. 224 en Transfer Learning) y el orquestador no lo sabe.
+META_PATH = os.environ.get(
+    "MODEL_META_PATH", os.path.join(os.path.dirname(MODEL_PATH), "model_meta.json"))
 _DRIFT_BUFFER_SIZE = 500     # imágenes recientes de /predict a retener
 _MIN_DRIFT_SAMPLES = 30      # mínimo para calcular drift con sentido
 _PSI_SIGNIFICANT = 0.25
@@ -101,8 +106,29 @@ def _detect_framework(path: str) -> str:
     raise RuntimeError(f"Extensión de artefacto no soportada: {path}")
 
 
+def _apply_model_meta() -> None:
+    """Ajusta INPUT_SIZE/CHANNELS/CLASS_NAMES desde model_meta.json si existe."""
+    global INPUT_SIZE, CHANNELS, CLASS_NAMES
+    try:
+        if not os.path.exists(META_PATH):
+            return
+        with open(META_PATH, "r", encoding="utf-8") as f:
+            meta = json.load(f)
+        if meta.get("input_size"):
+            INPUT_SIZE = int(meta["input_size"])
+        if meta.get("channels"):
+            CHANNELS = int(meta["channels"])
+        if meta.get("class_names"):
+            CLASS_NAMES = list(meta["class_names"])
+        print(f"[model-service] meta aplicada: input_size={INPUT_SIZE} channels={CHANNELS} "
+              f"classes={len(CLASS_NAMES)}", flush=True)
+    except Exception as exc:  # noqa: BLE001 — metadato no crítico
+        print(f"[model-service] no se pudo leer model_meta.json: {exc}", flush=True)
+
+
 @app.on_event("startup")
 def load_model() -> None:
+    _apply_model_meta()
     framework = _detect_framework(MODEL_PATH)
     _state["framework"] = framework
     if framework == "tensorflow":

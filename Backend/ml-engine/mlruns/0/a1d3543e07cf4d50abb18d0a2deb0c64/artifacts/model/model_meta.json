@@ -1,0 +1,1 @@
+{"input_size": 28, "channels": 1, "num_classes": 2, "class_names": ["x", "y"], "architecture": "cnn"}
