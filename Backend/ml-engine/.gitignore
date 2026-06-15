@@ -1,7 +1,16 @@
 # Python
-ml-engine/.venv/
-ml-engine/__pycache__/
-ml-engine/*.pyc
-ml-engine/.env
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.env
 
-# Environment
+# Generado por ejecución/tests del ml-engine (NO versionar)
+mlruns/
+mlartifacts/
+storage-dev/
+storage/
+downloads/
+extracted/

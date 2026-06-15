@@ -7,36 +7,52 @@ capa de escritura del contenedor. Si los pesos se descargaran al entrenar, vivir
 esa capa efímera y NO viajarían en el tar de distribución. Horneándolos aquí quedan en
 una capa permanente de la imagen.
 
-Se ejecuta como el usuario `mlengine` (mismo HOME que en runtime → el cache de
-~/.keras y ~/.cache/torch coincide). Best-effort por framework: si uno no está
-instalado en este perfil de requirements, se omite sin fallar el build.
+CADA modelo se construye en su PROPIO subproceso:
+  - Memoria fresca por modelo → evita el Segmentation fault por memoria acumulada al
+    instanciar los 3 backbones (sobre todo ResNet50) en un mismo proceso, observado con
+    tensorflow[and-cuda] en el contenedor de build.
+  - La descarga del .h5 ocurre ANTES de construir el grafo, así que aunque un subproceso
+    caiga tras descargar, el peso ya queda cacheado en ~/.keras/models y el build sigue.
+Se fuerza CPU (no hay GPU en el build). Best-effort: nunca rompe el build.
 """
+import os
+import subprocess
 import sys
 
+# Forzar CPU antes de cualquier import de TF en los subprocesos (sin GPU en build).
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "3")
 
-def _cache_tensorflow() -> None:
-    import tensorflow as tf  # noqa: import diferido
-    # include_top=False = exactamente como los instancia tensorflow_strategy._build_pretrained.
-    tf.keras.applications.EfficientNetB0(weights="imagenet", include_top=False)
-    tf.keras.applications.MobileNetV2(weights="imagenet", include_top=False)
-    tf.keras.applications.ResNet50(weights="imagenet", include_top=False)
-    print("[precache] pesos TensorFlow (EfficientNetB0/MobileNetV2/ResNet50) en caché.")
-
-
-def _cache_torch() -> None:
-    import torchvision.models as m  # noqa: import diferido
-    m.efficientnet_b0(weights=m.EfficientNet_B0_Weights.IMAGENET1K_V1)
-    m.mobilenet_v2(weights=m.MobileNet_V2_Weights.IMAGENET1K_V1)
-    m.resnet50(weights=m.ResNet50_Weights.IMAGENET1K_V1)
-    print("[precache] pesos PyTorch/torchvision (efficientnet_b0/mobilenet_v2/resnet50) en caché.")
+# (etiqueta, código a ejecutar en un subproceso aislado)
+_JOBS = [
+    ("TF EfficientNetB0",
+     "import tensorflow as tf; tf.keras.applications.EfficientNetB0(weights='imagenet', include_top=False)"),
+    ("TF MobileNetV2",
+     "import tensorflow as tf; tf.keras.applications.MobileNetV2(weights='imagenet', include_top=False)"),
+    ("TF ResNet50",
+     "import tensorflow as tf; tf.keras.applications.ResNet50(weights='imagenet', include_top=False)"),
+    ("torch efficientnet_b0",
+     "import torchvision.models as m; m.efficientnet_b0(weights=m.EfficientNet_B0_Weights.IMAGENET1K_V1)"),
+    ("torch mobilenet_v2",
+     "import torchvision.models as m; m.mobilenet_v2(weights=m.MobileNet_V2_Weights.IMAGENET1K_V1)"),
+    ("torch resnet50",
+     "import torchvision.models as m; m.resnet50(weights=m.ResNet50_Weights.IMAGENET1K_V1)"),
+]
 
 
 def main() -> int:
-    for name, fn in (("tensorflow", _cache_tensorflow), ("torch", _cache_torch)):
+    for label, code in _JOBS:
         try:
-            fn()
-        except Exception as exc:  # noqa: BLE001 — no romper el build por un framework ausente
-            print(f"[precache] {name} omitido: {exc}")
+            result = subprocess.run([sys.executable, "-c", code], env=dict(os.environ))
+            if result.returncode == 0:
+                print(f"[precache] {label}: OK")
+            else:
+                # Código != 0 (p. ej. 139 segfault al construir el grafo): el peso ya se
+                # descargó antes de construir, así que queda cacheado. No rompemos el build.
+                print(f"[precache] {label}: subproceso código {result.returncode} "
+                      f"(peso cacheado si la descarga concluyó)")
+        except Exception as exc:  # noqa: BLE001
+            print(f"[precache] {label}: omitido ({exc})")
     return 0
 
 

@@ -164,10 +164,13 @@ class TensorFlowStrategy(TrainingStrategy):
                 on_epoch_end=lambda e, logs: on_epoch(
                     offset + e + 1, total, {**(logs or {}), **extra})))
         if hp.early_stopping:
-            monitor = "val_accuracy" if hp.es_monitor == "val_accuracy" else "val_loss"
-            cbs.append(tf.keras.callbacks.EarlyStopping(
-                monitor=monitor, patience=max(1, hp.es_patience),
-                restore_best_weights=True, verbose=1))
+            if hp.es_monitor == "both":
+                cbs.append(self._dual_early_stopping(max(1, hp.es_patience)))
+            else:
+                monitor = "val_accuracy" if hp.es_monitor == "val_accuracy" else "val_loss"
+                cbs.append(tf.keras.callbacks.EarlyStopping(
+                    monitor=monitor, patience=max(1, hp.es_patience),
+                    restore_best_weights=True, verbose=1))
         if train_ds is not None:
             h = model.fit(train_ds, validation_data=(X_val, y_val),
                           epochs=epochs, verbose=1, callbacks=cbs)
@@ -175,6 +178,45 @@ class TensorFlowStrategy(TrainingStrategy):
             h = model.fit(X_train, y_train, validation_data=(X_val, y_val),
                           epochs=epochs, batch_size=hp.batch_size, verbose=1, callbacks=cbs)
         return h.history
+
+    def _dual_early_stopping(self, patience: int):
+        """EarlyStopping que vigila val_loss (mín) Y val_accuracy (máx) a la vez:
+        cuenta como mejora si CUALQUIERA mejora; para solo cuando NINGUNA mejora
+        durante `patience` épocas. Restaura los mejores pesos al terminar."""
+        import tensorflow as tf
+
+        class _Dual(tf.keras.callbacks.Callback):
+            def __init__(self, patience):
+                super().__init__()
+                self.patience = patience
+                self.best_loss = None
+                self.best_acc = None
+                self.wait = 0
+                self.best_w = None
+
+            def on_epoch_end(self, epoch, logs=None):
+                logs = logs or {}
+                vl, va = logs.get("val_loss"), logs.get("val_accuracy")
+                improved = False
+                if vl is not None and (self.best_loss is None or vl < self.best_loss):
+                    self.best_loss = vl
+                    improved = True
+                if va is not None and (self.best_acc is None or va > self.best_acc):
+                    self.best_acc = va
+                    improved = True
+                if improved:
+                    self.wait = 0
+                    self.best_w = self.model.get_weights()
+                else:
+                    self.wait += 1
+                    if self.wait >= self.patience:
+                        self.model.stop_training = True
+
+            def on_train_end(self, logs=None):
+                if self.best_w is not None:
+                    self.model.set_weights(self.best_w)
+
+        return _Dual(patience)
 
     def _build_pretrained(self, arch: str, hp: HyperParams):
         """Backbone ImageNet (include_top=False) + cabeza nueva. Devuelve (model, base).
