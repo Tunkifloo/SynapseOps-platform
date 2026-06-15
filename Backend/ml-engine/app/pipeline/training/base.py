@@ -25,6 +25,15 @@ class HyperParams:
     # Catálogo granular de augmentation ya normalizado (clave→{param:valor}).
     # Vacío + data_augmentation=True → las estrategias aplican el preset retrocompatible.
     augmentation_config: dict = field(default_factory=dict)
+    # ── Regularización (configurable; aplica a la CNN adaptativa y a las cabezas TL) ──
+    dropout: float = 0.4                 # dropout de la cabeza densa
+    l2:      float = 0.0                 # regularización L2 / weight decay
+    # ── Transfer Learning (2 fases: feature-extraction → fine-tuning) ─────────
+    feature_extraction_epochs: int   = 5
+    feature_extraction_lr:     float = 1e-3
+    finetuning_epochs:         int   = 10
+    finetuning_lr:             float = 1e-5
+    unfreeze_layers:           int   = 10
 
 
 @dataclass
@@ -39,6 +48,10 @@ class TrainingResult:
     test_loss:      Optional[float] = None
     # ── Predicciones para métricas avanzadas (item 7) ────────────────────────
     # El executor calcula precision/recall/f1/roc_auc + matriz de confusión.
+    # Se incluye train para comparar simétricamente los tres splits.
+    train_true:  Optional[np.ndarray] = None
+    train_pred:  Optional[np.ndarray] = None
+    train_proba: Optional[np.ndarray] = None
     val_true:   Optional[np.ndarray] = None
     val_pred:   Optional[np.ndarray] = None
     val_proba:  Optional[np.ndarray] = None

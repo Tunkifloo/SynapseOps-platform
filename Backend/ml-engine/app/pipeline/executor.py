@@ -86,6 +86,14 @@ class PipelineJob:
     early_stopping:    bool = False
     es_patience:       int  = 3
     es_monitor:        str  = "val_loss"  # val_loss | val_accuracy
+    # ── Regularización + Transfer Learning ────────────────────────────────────
+    dropout:           float = 0.4
+    l2:                float = 0.0
+    feature_extraction_epochs: int   = 5
+    feature_extraction_lr:     float = 1e-3
+    finetuning_epochs:         int   = 10
+    finetuning_lr:             float = 1e-5
+    unfreeze_layers:           int   = 10
 
     @staticmethod
     def from_dict(data: dict) -> "PipelineJob":
@@ -128,6 +136,13 @@ class PipelineJob:
             augmentation_config=_aug_config(data.get("augmentationConfig")),
             class_balancing=(data.get("classBalancing") or "off").lower(),
             balance_threshold=int(data.get("balanceThreshold", 40) or 40),
+            dropout     =float(data.get("dropout", 0.4) or 0.4),
+            l2          =float(data.get("l2", 0.0) or 0.0),
+            feature_extraction_epochs=int(data.get("featureExtractionEpochs", 5) or 5),
+            feature_extraction_lr=float(data.get("featureExtractionLr", 0.001) or 0.001),
+            finetuning_epochs=int(data.get("finetuningEpochs", 10) or 10),
+            finetuning_lr=float(data.get("finetuningLr", 0.00001) or 0.00001),
+            unfreeze_layers=int(data.get("unfreezeLayers", 10) or 10),
             optimizer   =(data.get("optimizer") or "adam").lower(),
             batch_norm  =_flag(data.get("batchNorm")),
             early_stopping=_flag(data.get("earlyStopping")),
@@ -142,6 +157,8 @@ class PipelineExecutor:
     Orquesta: load → train → register.
     No implementa ningún paso — delega en ingestion y strategies.
     """
+
+    SUPPORTED_ARCHS = ("cnn", "efficientnet", "mobilenet", "resnet")
 
     def __init__(self) -> None:
         self._mlflow = MLflowFacade()
@@ -168,11 +185,30 @@ class PipelineExecutor:
             }
 
     def _run(self, job: PipelineJob) -> dict:
-        # ── Paso 0: Validar arquitectura (solo CNN soportada por ahora) ───────
-        if job.architecture.lower() != "cnn":
+        # ── Paso 0: Validar arquitectura ──────────────────────────────────────
+        arch = (job.architecture or "cnn").lower()
+        if arch not in self.SUPPORTED_ARCHS:
             raise ValueError(
                 f"Arquitectura '{job.architecture}' no soportada. "
-                f"Actualmente solo está disponible 'cnn'.")
+                f"Disponibles: {', '.join(self.SUPPORTED_ARCHS)}.")
+        pretrained = arch != "cnn"
+
+        # Transfer Learning: los backbones ImageNet exigen ≥224px. Se fuerza el tamaño
+        # y se acota batch + nº de imágenes para caber en el contenedor de 8 GB.
+        max_images = None
+        if pretrained:
+            if not job.image_size or job.image_size < 224:
+                job.image_size = 224
+                self._emit(job.execution_id,
+                           "Preprocesamiento: tamaño ajustado a 224×224 "
+                           "(mínimo requerido por el backbone preentrenado).")
+            if job.batch_size > 16:
+                self._emit(job.execution_id,
+                           f"Entrenamiento: batch reducido a 16 (era {job.batch_size}) "
+                           f"para entrenar con 224px dentro de 8 GB.")
+                job.batch_size = 16
+            size = job.image_size or 224
+            max_images = max(500, int(3_000_000_000 / (size * size * 3 * 4)))  # ~3 GB
 
         # ── Nodo Ingesta: cargar dataset (delegado a ingestion) ───────────────
         # TEL-01 · t_inicio_ingesta: marca de tiempo del inicio del ciclo (Process Tracker).
@@ -181,7 +217,7 @@ class PipelineExecutor:
         bundle = load_dataset(
             job.dataset_path, job.workspace_id, job.execution_id,
             image_size=job.image_size, train_ratio=job.train_ratio,
-            normalization=job.normalization)
+            normalization=job.normalization, max_images=max_images)
         X_train, y_train = bundle.X_train, bundle.y_train
         X_val,   y_val   = bundle.X_val,   bundle.y_val
         input_shape, num_classes = bundle.input_shape, bundle.num_classes
@@ -227,9 +263,10 @@ class PipelineExecutor:
             experiment_id=experiment_id,
             run_name=f"exec_{job.execution_id}",
         )
+        arch_label = "cnn_adaptive" if arch == "cnn" else arch
         self._mlflow.log_params({
             "framework":     job.framework,
-            "architecture":  "cnn_adaptive",
+            "architecture":  arch_label,
             "epochs":        job.epochs,
             "batch_size":    job.batch_size,
             "learning_rate": job.learning_rate,
@@ -241,12 +278,23 @@ class PipelineExecutor:
             "augmentation":  augmentation.summarize(aug_cfg),
             "class_balancing": job.class_balancing,
             "balance_threshold": job.balance_threshold if job.class_balancing != "off" else "—",
+            "dropout":       job.dropout,
+            "l2":            job.l2,
             "optimizer":     job.optimizer,
             "batch_norm":    job.batch_norm,
             "early_stopping": job.early_stopping,
             "es_monitor":    job.es_monitor if job.early_stopping else "—",
             "train_ratio":   job.train_ratio if job.train_ratio is not None else "auto(80)",
         })
+        if pretrained:
+            self._mlflow.log_params({
+                "pretrained_backbone":       arch,
+                "feature_extraction_epochs": job.feature_extraction_epochs,
+                "feature_extraction_lr":     job.feature_extraction_lr,
+                "finetuning_epochs":         job.finetuning_epochs,
+                "finetuning_lr":             job.finetuning_lr,
+                "unfreeze_layers":           job.unfreeze_layers,
+            })
 
         # ── Paso 3: Entrenar (delegado a Strategy) ────────────────────────────
         hp = HyperParams(
@@ -263,14 +311,29 @@ class PipelineExecutor:
             es_monitor=job.es_monitor,
             data_augmentation=job.data_augmentation,
             augmentation_config=aug_cfg,
+            dropout=job.dropout,
+            l2=job.l2,
+            feature_extraction_epochs=job.feature_extraction_epochs,
+            feature_extraction_lr=job.feature_extraction_lr,
+            finetuning_epochs=job.finetuning_epochs,
+            finetuning_lr=job.finetuning_lr,
+            unfreeze_layers=job.unfreeze_layers,
         )
         output_dir = self._prepare_output_dir(job)
         strategy   = self._select_strategy(job.framework)
-        self._emit(job.execution_id,
-                   f"Entrenamiento: entrenando con {job.framework} · {job.epochs} epochs (batch {job.batch_size})…")
+        if pretrained:
+            self._emit(job.execution_id,
+                       f"Entrenamiento ({arch}, 2 fases): Feature Extraction "
+                       f"{job.feature_extraction_epochs} ep · LR={job.feature_extraction_lr:g} → "
+                       f"Fine-Tuning {job.finetuning_epochs} ep · LR={job.finetuning_lr:g} "
+                       f"(descongela {job.unfreeze_layers} capas) · batch {job.batch_size}…")
+        else:
+            self._emit(job.execution_id,
+                       f"Entrenamiento: {job.framework} · {job.epochs} epochs (batch {job.batch_size})…")
 
         def on_epoch(epoch: int, total: int, metrics: dict) -> None:
-            parts = [f"Epoch {epoch}/{total}"]
+            phase = metrics.get("phase")
+            parts = [f"Epoch {epoch}/{total}" + (f" [{phase}]" if phase else "")]
             if "loss" in metrics:
                 parts.append(f"loss={metrics['loss']:.4f}")
             if "accuracy" in metrics:
@@ -308,6 +371,10 @@ class PipelineExecutor:
         # ── Métricas avanzadas + matriz de confusión (item 7) ─────────────────
         advanced: dict = {}
         confusion = None
+        # Train: mismas métricas que val/test para comparar simétricamente los splits.
+        if result.train_pred is not None and result.train_true is not None:
+            advanced.update(compute_classification_metrics(
+                result.train_true, result.train_pred, result.train_proba, num_classes, "train"))
         if result.val_pred is not None and result.val_true is not None:
             advanced.update(compute_classification_metrics(
                 result.val_true, result.val_pred, result.val_proba, num_classes, "val"))
@@ -331,6 +398,12 @@ class PipelineExecutor:
         # ── Data drift (calidad del split + re-entrenamiento) ─────────────────
         drift_summary = self._compute_drift(job, bundle, output_dir)
 
+        # Metadatos del modelo (tamaño/canales/clases reales) junto al artefacto.
+        # El model-service los lee con prioridad sobre las env vars del orquestador,
+        # imprescindible cuando el tamaño se forzó internamente (p. ej. 224 en TL).
+        self._write_model_meta(output_dir, input_shape, num_classes,
+                               bundle.class_names, job.architecture)
+
         # ── Nodo Registro: registrar artefacto en MLflow ──────────────────────
         self._emit(job.execution_id, "Registro: registrando modelo en el Model Registry de MLflow…")
         mlflow.log_artifact(result.artifact_path, artifact_path="model")
@@ -353,8 +426,9 @@ class PipelineExecutor:
             "t_fin_entrenamiento": t_fin_entrenamiento,
             "hyperparameters": {
                 "framework":     result.framework,
-                "architecture":  "cnn_adaptive",
-                "epochs":        job.epochs,
+                "architecture":  arch_label,
+                "epochs":        (job.feature_extraction_epochs + job.finetuning_epochs)
+                                 if pretrained else job.epochs,
                 "batch_size":    job.batch_size,
                 "learning_rate": job.learning_rate,
                 "num_classes":   num_classes,
@@ -395,6 +469,29 @@ class PipelineExecutor:
                 job.workspace_id / "models" / job.execution_id)
         path.mkdir(parents=True, exist_ok=True)
         return str(path)
+
+    def _write_model_meta(self, output_dir: str, input_shape, num_classes: int,
+                          class_names: list, architecture: str) -> None:
+        """Guarda model_meta.json junto al artefacto: tamaño/canales/clases reales con
+        que se entrenó. El model-service lo prefiere sobre INPUT_SIZE/CHANNELS/CLASS_NAMES
+        del orquestador (clave cuando el tamaño se fuerza internamente, p. ej. TL 224px)."""
+        try:
+            meta = {
+                "input_size": int(input_shape[0]),
+                "channels":   int(input_shape[2]) if len(input_shape) > 2 else 1,
+                "num_classes": int(num_classes),
+                "class_names": list(class_names),
+                "architecture": architecture,
+            }
+            path = Path(output_dir) / "model_meta.json"
+            path.write_text(json.dumps(meta), encoding="utf-8")
+            try:
+                mlflow.log_artifact(str(path), artifact_path="model")
+            except Exception:  # noqa: BLE001
+                pass
+            log.info("model_meta.json escrito: %s", meta)
+        except Exception as e:  # noqa: BLE001 — metadato no crítico
+            log.warning("No se pudo escribir model_meta.json: %s", e)
 
     def _cleanup_ingestion_artifacts(self, job: PipelineJob) -> None:
         """Elimina el disco transitorio de la ingesta del workspace (extracted/ y
