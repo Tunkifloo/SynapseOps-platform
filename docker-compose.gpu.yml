@@ -3,9 +3,12 @@
 # PC SIN GPU (laboratorio estándar): el código hace fallback automático a CPU.
 #   docker compose up -d
 #
-# PC CON GPU NVIDIA (driver + NVIDIA Container Toolkit instalados):
+# PC CON GPU NVIDIA (driver instalado) — DESCARGAR la imagen GPU ya publicada:
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml pull
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --no-build
+#
+# PC CON GPU para CONSTRUIR la imagen localmente (solo si quieres recompilar):
 #   docker compose -f docker-compose.yml -f docker-compose.gpu.yml build ml-engine
-#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
 #
 # El build-arg compila el ml-engine con TensorFlow[and-cuda] + PyTorch CUDA;
 # `deploy.resources` expone la GPU al contenedor. El executor autodetecta la GPU
@@ -13,10 +16,10 @@
 
 services:
   ml-engine:
-    # Nombre LOCAL propio (distinto del CD en GHCR, que es CPU). Así compose usa
-    # esta imagen GPU si existe y la construye si falta — nunca hace pull del CD.
-    # No se ve afectado por REGISTRY/APP_VERSION del .env.
-    image: synapseops/ml-engine:gpu
+    # Imagen GPU publicada en GHCR (distinta del CD del CI, que es CPU). Los labs
+    # solo hacen `pull` de esta ruta; el bloque `build` queda como fallback para
+    # quien quiera recompilarla localmente. No usa REGISTRY/APP_VERSION del .env.
+    image: ghcr.io/tunkifloo/ml-engine:gpu
     build:
       args:
         REQUIREMENTS: requirements-gpu.txt
