@@ -1,25 +1,8 @@
 import { Spinner } from '@/shared/components/ui/spinner'
 import { parseMetrics, parseQualitySignals } from '@/features/executions/types'
+import { groupMetricsBySplit, formatMetric } from '@/features/executions/metricsGroups'
 import type { PipelineNodeStatus } from './PipelineNode'
 import { QualitySignals } from './QualitySignals'
-
-// Claves meta que NO son métricas para el grid (se muestran de otra forma).
-const META_KEYS = new Set(['primary_accuracy'])
-
-const LABELS: Record<string, string> = {
-  final_accuracy: 'Accuracy (final)',
-  final_loss: 'Loss (final)',
-  val_accuracy: 'Val accuracy',
-  val_loss: 'Val loss',
-  test_accuracy: 'Test accuracy',
-  test_loss: 'Test loss',
-  accuracy: 'Accuracy',
-  loss: 'Loss',
-}
-
-const labelFor = (key: string) => LABELS[key] ?? key
-const formatValue = (key: string, value: number) =>
-  /acc/i.test(key) ? `${(value * 100).toFixed(1)}%` : value.toFixed(4)
 
 interface TrainMetricsProps {
   status?: PipelineNodeStatus
@@ -53,29 +36,35 @@ export function TrainMetrics({ status, metrics, runId }: TrainMetricsProps) {
 
   const metricsStr = typeof metrics === 'string' ? metrics : null
   const parsed = parseMetrics(metricsStr)
-  const entries = Object.entries(parsed).filter(
-    ([k, v]) => !META_KEYS.has(k) && typeof v === 'number' && Number.isFinite(v)
-  )
+  const groups = groupMetricsBySplit(parsed)
   const signals = parseQualitySignals(metricsStr)
 
-  if (status !== 'success' || entries.length === 0) return null
+  if (status !== 'success' || groups.length === 0) return null
 
   return (
     <div className="space-y-2">
-      <div className="space-y-2 rounded-xl border border-success/30 bg-success/5 p-3">
-        <p className="text-xs font-semibold tracking-[0.1em] text-success-strong uppercase">
+      <div className="space-y-3 rounded-xl border border-border bg-card/40 p-3">
+        <p className="text-xs font-semibold tracking-[0.1em] text-muted-foreground uppercase">
           Métricas del último Run
         </p>
-        <div className="grid grid-cols-2 gap-2">
-          {entries.map(([key, value]) => (
-            <div key={key} className="rounded-lg border border-border bg-card/60 p-2">
-              <p className="text-[11px] text-muted-foreground">{labelFor(key)}</p>
-              <p className="font-mono text-base font-semibold text-foreground">
-                {formatValue(key, value)}
-              </p>
+        {/* Agrupadas por split con color semántico (Train/Val/Test/Drift) — Ticket UX-3. */}
+        {groups.map((g) => (
+          <div key={g.key} className="space-y-1.5">
+            <p className="text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
+              {g.title}
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              {g.entries.map(([label, value]) => (
+                <div key={label} className="rounded-lg border border-border bg-card/60 p-2">
+                  <p className="truncate text-[11px] text-muted-foreground" title={label}>{label}</p>
+                  <p className={`font-mono text-base font-semibold ${g.valueClass}`}>
+                    {formatMetric(label, value)}
+                  </p>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          </div>
+        ))}
         {runId && (
           <p className="truncate text-[11px] text-muted-foreground">
             Run: <span className="font-mono">{String(runId)}</span>

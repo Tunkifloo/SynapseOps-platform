@@ -62,8 +62,14 @@ PRODUCT.md
 /design-system
 skills-lock.json
 
-# Storage
+# Storage (volumen de datos en dev/test — se crea al ejecutar el ml-engine; NO versionar).
+# Recursivo: el ml-engine lo crea en Backend/ml-engine/storage-dev según storage_base_path.
 /storage-dev
+**/storage-dev/
+
+# MLflow tracking local (se crea al ejecutar/test cuando no hay servidor MLflow). NO versionar.
+**/mlruns/
+**/mlartifacts/
 
 # Load-test outputs (resultados de corrida — no versionar; el fixture test_image.png sí se versiona)
 /infra/load-tests/summary.json

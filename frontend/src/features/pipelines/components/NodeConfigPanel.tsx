@@ -16,6 +16,7 @@ import { NODE_KIND_MAP, type NodeKind } from '@/features/pipelines/nodeKinds'
 import {
   NODE_FIELDS,
   defaultConfig,
+  fieldErrors,
   validateConfig,
   type FieldDef,
   type NodeConfig,
@@ -117,6 +118,11 @@ export function NodeConfigPanel({
     ...(data.config ?? {}),
   })
   const [validationError, setValidationError] = useState<string | null>(null)
+  // Validación en tiempo real (Ticket UX-2): errores por campo + control de cuándo
+  // mostrarlos (campo tocado o tras intentar guardar) para no abrumar al abrir el panel.
+  const [touched, setTouched] = useState<Set<string>>(new Set())
+  const [saveAttempted, setSaveAttempted] = useState(false)
+  const errors = useMemo(() => fieldErrors(data.kind, config), [data.kind, config])
 
   // Línea base para detectar cambios sin guardar (solo nombre + configuración;
   // el estado lo gobierna la ejecución y no es editable aquí).
@@ -136,6 +142,7 @@ export function NodeConfigPanel({
 
   const setField = (name: string, value: string | number) => {
     setValidationError(null)
+    setTouched((prev) => new Set(prev).add(name))
     setConfig((prev) => ({ ...prev, [name]: value }))
   }
 
@@ -145,6 +152,7 @@ export function NodeConfigPanel({
   }
 
   const handleSave = () => {
+    setSaveAttempted(true)
     const error = validateConfig(data.kind, config)
     if (error) {
       setValidationError(error)
@@ -160,13 +168,23 @@ export function NodeConfigPanel({
     if (field.showIf && !field.showIf(config)) return null
     const value = config[field.name] ?? ''
     const id = `cfg-${field.name}`
+    const err = errors[field.name]
+    const showErr = !!err && (touched.has(field.name) || saveAttempted)
+    const errId = `${id}-err`
+    const invalidRing =
+      'border-destructive focus-visible:ring-destructive/40 aria-[invalid=true]:border-destructive'
 
     return (
       <div key={field.name} className="space-y-1.5">
         <Label htmlFor={id}>{field.label}</Label>
         {field.type === 'select' ? (
           <Select value={String(value)} onValueChange={(v) => setField(field.name, v)}>
-            <SelectTrigger id={id}>
+            <SelectTrigger
+              id={id}
+              aria-invalid={showErr}
+              aria-describedby={showErr ? errId : undefined}
+              className={cn(showErr && invalidRing)}
+            >
               <SelectValue placeholder="Selecciona…" />
             </SelectTrigger>
             <SelectContent>
@@ -186,6 +204,9 @@ export function NodeConfigPanel({
             max={field.max}
             step={field.step}
             placeholder={field.placeholder}
+            aria-invalid={showErr}
+            aria-describedby={showErr ? errId : undefined}
+            className={cn(showErr && invalidRing)}
             onChange={(e) =>
               setField(
                 field.name,
@@ -198,7 +219,17 @@ export function NodeConfigPanel({
             }
           />
         )}
-        {field.help && <p className="text-[11px] text-muted-foreground">{field.help}</p>}
+        {showErr ? (
+          <p
+            id={errId}
+            role="alert"
+            className="text-[11px] font-medium text-destructive-strong motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-top-1 motion-safe:duration-150"
+          >
+            {err}
+          </p>
+        ) : (
+          field.help && <p className="text-[11px] text-muted-foreground">{field.help}</p>
+        )}
       </div>
     )
   }
