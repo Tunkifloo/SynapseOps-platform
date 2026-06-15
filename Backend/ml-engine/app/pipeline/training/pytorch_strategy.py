@@ -8,6 +8,7 @@ from typing import Optional
 
 import numpy as np
 
+from app.pipeline.training import augmentation
 from app.pipeline.training.base import EpochCallback, HyperParams, TrainingResult, TrainingStrategy
 
 log = logging.getLogger(__name__)
@@ -59,6 +60,12 @@ class PyTorchStrategy(TrainingStrategy):
         optimizer = self._build_optimizer(model, hyperparams)
         criterion = nn.CrossEntropyLoss()
 
+        # Augmentation in-graph (torchvision.transforms.v2 + ruido custom), construida
+        # desde el mismo catálogo normalizado. None si no hay técnicas activas.
+        augment = self._build_aug(hyperparams)
+        if augment is not None:
+            log.info("Augmentation in-graph (PyTorch) activa.")
+
         history = {"accuracy": [], "loss": [], "val_accuracy": [], "val_loss": []}
         # Early Stopping manual (item 6).
         best_metric = None
@@ -69,10 +76,8 @@ class PyTorchStrategy(TrainingStrategy):
             model.train()
             ep_loss, correct, total = 0.0, 0, 0
             for xb, yb in loader:
-                if hyperparams.data_augmentation:
-                    # Augmentation ligera: flip horizontal aleatorio del lote.
-                    if torch.rand(1).item() < 0.5:
-                        xb = torch.flip(xb, dims=[3])
+                if augment is not None:
+                    xb = augment(xb)
                 optimizer.zero_grad()
                 out  = model(xb)
                 loss = criterion(out, yb)
@@ -177,6 +182,57 @@ class PyTorchStrategy(TrainingStrategy):
             val_true=np.asarray(y_val), val_pred=val_pred, val_proba=val_proba,
             test_true=test_true, test_pred=test_pred, test_proba=test_proba,
         )
+
+    def _build_aug(self, hp: HyperParams):
+        """Callable que augmenta un batch (N,C,H,W) en [0,1], o None si no hay técnicas.
+
+        Paritario con TensorFlow: mismas técnicas y parámetros desde el catálogo
+        normalizado. El ruido gaussiano es una transformación custom (suma N(0,std)).
+        """
+        cfg = augmentation.normalize_config(hp.augmentation_config, hp.data_augmentation)
+        if not cfg:
+            return None
+        import torch
+        from torchvision.transforms import v2
+
+        channels = hp.input_shape[-1]
+        size = (hp.input_shape[0], hp.input_shape[1])
+        tfs = []
+        if "flipH" in cfg:
+            tfs.append(v2.RandomHorizontalFlip(p=cfg["flipH"]["prob"]))
+        if "flipV" in cfg:
+            tfs.append(v2.RandomVerticalFlip(p=cfg["flipV"]["prob"]))
+        if "rotation" in cfg:
+            tfs.append(v2.RandomRotation(degrees=cfg["rotation"]["maxDeg"]))
+        if "translation" in cfg:
+            f = cfg["translation"]["fraction"]
+            tfs.append(v2.RandomAffine(degrees=0, translate=(f, f)))
+        if "zoom" in cfg:
+            s = min(0.9, cfg["zoom"]["scale"])
+            tfs.append(v2.RandomResizedCrop(size=size, scale=(1.0 - s, 1.0), antialias=True))
+        cj = {}
+        if "brightness" in cfg:
+            cj["brightness"] = cfg["brightness"]["factor"]
+        if "contrast" in cfg:
+            cj["contrast"] = cfg["contrast"]["factor"]
+        if "saturation" in cfg and channels == 3:
+            cj["saturation"] = cfg["saturation"]["factor"]
+        if cj:
+            tfs.append(v2.ColorJitter(**cj))
+        if "sharpness" in cfg:
+            tfs.append(v2.RandomAdjustSharpness(
+                sharpness_factor=cfg["sharpness"]["intensity"], p=0.5))
+        compose = v2.Compose(tfs) if tfs else None
+        std = cfg.get("gaussianNoise", {}).get("std")
+
+        def apply(xb):
+            if compose is not None:
+                xb = compose(xb)
+            if std:
+                xb = torch.clamp(xb + torch.randn_like(xb) * std, 0.0, 1.0)
+            return xb
+
+        return apply
 
     def _build_optimizer(self, model, hp: HyperParams):
         import torch
