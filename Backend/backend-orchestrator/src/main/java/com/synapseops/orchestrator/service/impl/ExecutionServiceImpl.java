@@ -86,7 +86,19 @@ public class ExecutionServiceImpl implements ExecutionService {
                     request.batchNorm(),
                     request.earlyStopping(),
                     request.esPatience(),
-                    request.esMonitor() != null ? request.esMonitor() : "val_loss"
+                    request.esMonitor() != null ? request.esMonitor() : "val_loss",
+                    // Augmentation/balanceo y Transfer Learning (el ML Engine aplica
+                    // defaults ante null, así que se propagan tal cual).
+                    request.augmentationConfig(),
+                    request.classBalancing(),
+                    request.balanceThreshold(),
+                    request.dropout(),
+                    request.l2(),
+                    request.featureExtractionEpochs(),
+                    request.featureExtractionLr(),
+                    request.finetuningEpochs(),
+                    request.finetuningLr(),
+                    request.unfreezeLayers()
             );
 
             // Compensación síncrona (dual-write): la escritura en BD y la publicación a

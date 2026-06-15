@@ -36,6 +36,13 @@ RUN mkdir -p /storage && chown mlengine:mlengine /storage
 
 USER mlengine
 
+# Pre-cacheo de pesos ImageNet (Transfer Learning) para entrenar OFFLINE en los labs.
+# Se ejecuta como `mlengine` → el cache (~/.keras, ~/.cache/torch) coincide con runtime.
+# Desactivado por defecto (imagen CPU del CI queda ligera). La imagen GPU lo activa con
+#   docker build --build-arg PRECACHE_WEIGHTS=true …  (ver docker-compose.gpu.yml)
+ARG PRECACHE_WEIGHTS=false
+RUN if [ "$PRECACHE_WEIGHTS" = "true" ]; then python scripts/precache_weights.py; fi
+
 EXPOSE 8000
 
 HEALTHCHECK --interval=15s --timeout=10s --start-period=60s --retries=5 \
