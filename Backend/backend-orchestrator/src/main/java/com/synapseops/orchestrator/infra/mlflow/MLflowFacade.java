@@ -33,6 +33,10 @@ public class MLflowFacade {
         this.webClient    = WebClient.builder()
                 .baseUrl(mlflowUri)
                 .defaultHeader("Content-Type", MediaType.APPLICATION_JSON_VALUE)
+                // El buffer por defecto (256 KB) es insuficiente para descargar artifacts
+                // como la galería Score-CAM (~300-500 KB) → DataBufferLimitException y la
+                // imagen no llegaba al frontend. Se sube a 32 MB (también cubre runs grandes).
+                .codecs(c -> c.defaultCodecs().maxInMemorySize(32 * 1024 * 1024))
                 .build();
     }
 
@@ -269,11 +273,21 @@ public class MLflowFacade {
      */
     public Mono<String> downloadArtifactBase64(String runId, String relPath) {
         return getArtifactUri(runId).flatMap(uri -> {
-            if (uri == null || uri.isBlank() || !uri.startsWith("mlflow-artifacts:")) {
-                return Mono.<String>empty();   // runs antiguos (ruta local) no son servibles vía proxy
+            if (uri == null || uri.isBlank()) {
+                return Mono.<String>empty();
             }
-            String root = uri.replaceFirst("^mlflow-artifacts:/+", "").replaceFirst("^/+", "");
-            String fullPath = root + "/" + relPath;
+            // Ruta relativa al artifact-root para el proxy, tanto si el run usa el esquema
+            // proxied (mlflow-artifacts:/<exp>/<run>/artifacts) como una ruta local
+            // (/mlflow/artifacts/<exp>/<run>/artifacts) servida por --serve-artifacts.
+            String root;
+            if (uri.startsWith("mlflow-artifacts:")) {
+                root = uri.replaceFirst("^mlflow-artifacts:/+", "");
+            } else if (uri.contains("/mlflow/artifacts/")) {
+                root = uri.substring(uri.indexOf("/mlflow/artifacts/") + "/mlflow/artifacts/".length());
+            } else {
+                return Mono.<String>empty();
+            }
+            String fullPath = root.replaceFirst("^/+", "") + "/" + relPath;
             return webClient.get()
                     .uri("/api/2.0/mlflow-artifacts/artifacts/" + fullPath)
                     .accept(MediaType.ALL)

@@ -68,8 +68,10 @@ export function PipelineBuilderPage({ token, onAuthError }: PipelineBuilderPageP
         ? data.find((w) => w.idWorkspace === preferredId)
         : undefined
       if (!target) {
-        const lastName = localStorage.getItem(LAST_KEY)
-        target = lastName ? data.find((w) => w.name === lastName) : undefined
+        // Por ID (estable): si se usara el nombre, renombrar el workspace orfanaría esta
+        // memoria → al volver al lienzo se cargaba otro proyecto y se "perdían" el run/métricas.
+        const lastId = localStorage.getItem(LAST_KEY)
+        target = lastId ? data.find((w) => String(w.idWorkspace) === lastId) : undefined
       }
       setActiveWsId((prev) => target?.idWorkspace ?? prev ?? data[0]?.idWorkspace ?? null)
     } catch (err) {
@@ -117,10 +119,10 @@ export function PipelineBuilderPage({ token, onAuthError }: PipelineBuilderPageP
   const activePipeline = pipelines.find((p) => p.idPipeline === activePipelineId) ?? null
 
   useEffect(() => {
-    if (activeWorkspace?.name) {
-      localStorage.setItem(LAST_KEY, activeWorkspace.name)
+    if (activeWsId) {
+      localStorage.setItem(LAST_KEY, String(activeWsId))
     }
-  }, [activeWorkspace?.name, LAST_KEY])
+  }, [activeWsId, LAST_KEY])
 
   // Recuerda el pipeline activo por workspace para restaurarlo al volver.
   useEffect(() => {
