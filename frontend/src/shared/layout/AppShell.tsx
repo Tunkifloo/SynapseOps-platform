@@ -40,6 +40,7 @@ import { Input } from '@/shared/components/ui/input'
 import { Badge } from '@/shared/components/ui/badge'
 import { ConfirmDialog } from '@/shared/components/ConfirmDialog'
 import { getMlflowHealth } from '@/features/mlflow/api'
+import { OnboardingFlow } from '@/features/onboarding/OnboardingFlow'
 import { useTheme } from '@/shared/theme/useTheme'
 import { API_BASE_URL } from '@/shared/api/env'
 import { cn } from '@/lib/utils'
@@ -162,6 +163,7 @@ export function AppShell({
       return (
         <Button
           key={item.key}
+          data-tour={item.key === 'builder' ? 'nav-builder' : undefined}
           variant="ghost"
           onClick={() => navigate(item.path)}
           aria-current={active ? 'page' : undefined}
@@ -183,6 +185,8 @@ export function AppShell({
 
   return (
     <div className="flex h-[100svh] w-full overflow-hidden bg-background font-sans text-foreground">
+      {/* Onboarding guiado (Ticket UX-5): modal de bienvenida + tour del Lienzo. */}
+      {token && <OnboardingFlow token={token} />}
       {/* ── Sidebar (≥ lg) ─────────────────────────────────────────────── */}
       <aside
         style={{ width: asideWidth }}
@@ -344,6 +348,7 @@ export function AppShell({
               return (
                 <Button
                   key={item.key}
+                  data-tour={item.key === 'builder' ? 'nav-builder' : undefined}
                   variant={active ? 'secondary' : 'outline'}
                   size="sm"
                   onClick={() => navigate(item.path)}

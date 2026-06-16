@@ -15,13 +15,14 @@ interface NodePaletteProps {
 /** Paleta de nodos del lienzo (HU-001). Arrastrar o tocar para añadir. */
 export function NodePalette({ onAdd }: NodePaletteProps) {
   return (
-    <aside className="flex shrink-0 gap-2 overflow-auto rounded-2xl border border-border bg-card/40 p-3 md:w-56 md:flex-col">
+    <aside data-tour="nodes" className="flex shrink-0 gap-2 overflow-auto rounded-2xl border border-border bg-card/40 p-3 md:w-56 md:flex-col">
       <p className="hidden px-1 pb-1 text-[11px] font-semibold tracking-[0.12em] text-muted-foreground uppercase md:block">
         Nodos
       </p>
       {NODE_KINDS.map((node) => (
         <div
           key={node.kind}
+          data-tour={`node-${node.kind}`}
           draggable
           role="button"
           tabIndex={0}

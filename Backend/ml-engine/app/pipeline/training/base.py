@@ -5,6 +5,8 @@ import numpy as np
 
 # Callback de progreso por epoch: (epoch_actual, total_epochs, métricas) -> None
 EpochCallback = Callable[[int, int, dict], None]
+# Callback de inicio de fase (Transfer Learning): recibe un dict descriptivo de la fase.
+PhaseCallback = Callable[[dict], None]
 
 
 @dataclass
@@ -82,5 +84,6 @@ class TrainingStrategy(ABC):
         y_test:  Optional[np.ndarray] = None,
         on_epoch: Optional[EpochCallback] = None,
         class_names: Optional[list] = None,
+        on_phase: Optional[PhaseCallback] = None,
     ) -> TrainingResult:
         pass

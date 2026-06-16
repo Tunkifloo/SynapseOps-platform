@@ -31,19 +31,31 @@ export interface AugTechnique {
   max: number
   step: string
   default: number
+  /** Qué hace la técnica y cuándo conviene (ayuda contextual en el panel). */
+  help: string
 }
 
 export const AUG_TECHNIQUES: AugTechnique[] = [
-  { key: 'flipH', label: 'Flip horizontal', param: 'prob', paramLabel: 'Probabilidad', min: 0, max: 1, step: '0.05', default: 0.5 },
-  { key: 'flipV', label: 'Flip vertical', param: 'prob', paramLabel: 'Probabilidad', min: 0, max: 1, step: '0.05', default: 0.5 },
-  { key: 'rotation', label: 'Rotación', param: 'maxDeg', paramLabel: 'Ángulo máx. (°)', min: 0, max: 45, step: '1', default: 15 },
-  { key: 'brightness', label: 'Brillo', param: 'factor', paramLabel: 'Factor', min: 0, max: 1, step: '0.05', default: 0.2 },
-  { key: 'contrast', label: 'Contraste', param: 'factor', paramLabel: 'Factor', min: 0, max: 1, step: '0.05', default: 0.2 },
-  { key: 'saturation', label: 'Saturación', param: 'factor', paramLabel: 'Factor', min: 0, max: 1, step: '0.05', default: 0.3 },
-  { key: 'sharpness', label: 'Nitidez', param: 'intensity', paramLabel: 'Intensidad', min: 0, max: 2, step: '0.1', default: 1.0 },
-  { key: 'zoom', label: 'Zoom / Crop', param: 'scale', paramLabel: 'Escala', min: 0, max: 0.5, step: '0.05', default: 0.1 },
-  { key: 'gaussianNoise', label: 'Ruido gaussiano', param: 'std', paramLabel: 'Desv. estándar', min: 0, max: 0.1, step: '0.01', default: 0.02 },
-  { key: 'translation', label: 'Traslación', param: 'fraction', paramLabel: 'Fracción', min: 0, max: 0.3, step: '0.05', default: 0.1 },
+  { key: 'flipH', label: 'Flip horizontal', param: 'prob', paramLabel: 'Probabilidad', min: 0, max: 1, step: '0.05', default: 0.5,
+    help: 'Voltea la imagen de izquierda a derecha. Útil casi siempre; evítalo si la orientación importa (texto, señales).' },
+  { key: 'flipV', label: 'Flip vertical', param: 'prob', paramLabel: 'Probabilidad', min: 0, max: 1, step: '0.05', default: 0.5,
+    help: 'Voltea la imagen de arriba a abajo. Útil en imágenes aéreas/satelitales; perjudicial en rostros u objetos con “arriba/abajo” claro.' },
+  { key: 'rotation', label: 'Rotación', param: 'maxDeg', paramLabel: 'Ángulo máx. (°)', min: 0, max: 45, step: '1', default: 15,
+    help: 'Gira la imagen un ángulo aleatorio hasta ±este valor. Da robustez a la orientación; ángulos muy grandes pueden distorsionar.' },
+  { key: 'brightness', label: 'Brillo', param: 'factor', paramLabel: 'Factor', min: 0, max: 1, step: '0.05', default: 0.2,
+    help: 'Aclara u oscurece aleatoriamente. Simula distintas condiciones de luz.' },
+  { key: 'contrast', label: 'Contraste', param: 'factor', paramLabel: 'Factor', min: 0, max: 1, step: '0.05', default: 0.2,
+    help: 'Varía el contraste (diferencia entre claros y oscuros). Robustez ante cámaras/exposiciones distintas.' },
+  { key: 'saturation', label: 'Saturación', param: 'factor', paramLabel: 'Factor', min: 0, max: 1, step: '0.05', default: 0.3,
+    help: 'Varía la intensidad del color. Solo aplica a imágenes a color (3 canales); se omite en escala de grises.' },
+  { key: 'sharpness', label: 'Nitidez', param: 'intensity', paramLabel: 'Intensidad', min: 0, max: 2, step: '0.1', default: 1.0,
+    help: 'Enfoca (>1) o difumina (<1) la imagen. 1.0 = sin cambio.' },
+  { key: 'zoom', label: 'Zoom / Crop', param: 'scale', paramLabel: 'Escala', min: 0, max: 0.5, step: '0.05', default: 0.1,
+    help: 'Acerca y recorta una región aleatoria. Enseña al modelo a reconocer el objeto a distintas escalas/encuadres.' },
+  { key: 'gaussianNoise', label: 'Ruido gaussiano', param: 'std', paramLabel: 'Desv. estándar', min: 0, max: 0.1, step: '0.01', default: 0.02,
+    help: 'Añade ruido aleatorio leve. Robustez ante sensores ruidosos; valores altos degradan la imagen.' },
+  { key: 'translation', label: 'Traslación', param: 'fraction', paramLabel: 'Fracción', min: 0, max: 0.3, step: '0.05', default: 0.1,
+    help: 'Desplaza la imagen en X/Y una fracción de su tamaño. Robustez ante objetos no centrados.' },
 ]
 
 // Cada técnica → un toggle (on/off) + su parámetro (visible si está activa y el
@@ -57,6 +69,7 @@ const AUG_FIELDS: FieldDef[] = AUG_TECHNIQUES.flatMap((t): FieldDef[] => [
       { value: 'false', label: 'Desactivado' },
       { value: 'true', label: 'Activado' },
     ],
+    help: t.help,
     showIf: (c) => c.dataAugmentation === 'true',
   },
   {
@@ -66,6 +79,7 @@ const AUG_FIELDS: FieldDef[] = AUG_TECHNIQUES.flatMap((t): FieldDef[] => [
     min: t.min,
     max: t.max,
     step: t.step,
+    help: `Rango ${t.min}–${t.max} (recomendado ${t.default}).`,
     showIf: (c) => c.dataAugmentation === 'true' && c[`aug_${t.key}`] === 'true',
   },
 ])
@@ -151,7 +165,7 @@ export const NODE_FIELDS: Record<NodeKind, FieldDef[]> = {
         { value: 'undersample', label: 'Submuestreo' },
         { value: 'hybrid', label: 'Combinado (híbrido)' },
       ],
-      help: 'Corrige distribuciones de clase asimétricas (solo sobre el train).',
+      help: 'Corrige clases desbalanceadas (solo en el train). Sobremuestreo: genera variantes augmentadas de las clases minoritarias. Submuestreo: reduce las mayoritarias. Híbrido: ambas, hacia la media.',
     },
     {
       name: 'balanceThreshold',
@@ -201,7 +215,7 @@ export const NODE_FIELDS: Record<NodeKind, FieldDef[]> = {
         { value: 'mobilenet', label: 'MobileNetV2 (preentrenada)' },
         { value: 'resnet', label: 'ResNet50 (preentrenada)' },
       ],
-      help: 'CNN entrena desde cero; las preentrenadas usan Transfer Learning (ImageNet).',
+      help: 'CNN: red entrenada desde cero, ideal para datasets simples. EfficientNet/MobileNet/ResNet: preentrenadas en ImageNet (Transfer Learning), mejores para datasets reales pequeños o medianos.',
     },
     {
       name: 'optimizer',
@@ -227,6 +241,7 @@ export const NODE_FIELDS: Record<NodeKind, FieldDef[]> = {
     {
       name: 'featureExtractionLr', label: 'Feature Extraction · learning rate',
       type: 'text', placeholder: '0.001', showIf: isPretrained,
+      help: 'Learning rate de la Fase 1 (cabeza nueva sobre backbone congelado). Relativamente alto (p. ej. 0.001) para converger rápido.',
     },
     {
       name: 'finetuningEpochs', label: 'Fine-Tuning · epochs',
@@ -236,16 +251,20 @@ export const NODE_FIELDS: Record<NodeKind, FieldDef[]> = {
     {
       name: 'finetuningLr', label: 'Fine-Tuning · learning rate',
       type: 'text', placeholder: '0.00001',
+      help: 'Learning rate de la Fase 2 (fine-tuning). Muy bajo (p. ej. 0.00001) para no destruir lo aprendido en ImageNet.',
       showIf: (c) => isPretrained(c) && Number(c.finetuningEpochs) > 0,
     },
     {
       name: 'unfreezeLayers', label: 'Capas a descongelar',
       type: 'number', min: 1, max: 50,
+      help: 'Cuántas de las últimas capas del backbone se reentrenan en el fine-tuning. Más capas = más adaptación al dominio, pero más riesgo de sobreajuste.',
       showIf: (c) => isPretrained(c) && Number(c.finetuningEpochs) > 0,
     },
     // ── Regularización (aplica a la CNN y a las cabezas preentrenadas) ────────
-    { name: 'dropout', label: 'Dropout', type: 'number', min: 0, max: 0.9, step: '0.05' },
-    { name: 'l2', label: 'Regularización L2', type: 'number', min: 0, max: 0.1, step: '0.001' },
+    { name: 'dropout', label: 'Dropout', type: 'number', min: 0, max: 0.9, step: '0.05',
+      help: 'Apaga aleatoriamente una fracción de neuronas en cada paso para reducir el sobreajuste. Típico 0.3–0.5; 0 = desactivado.' },
+    { name: 'l2', label: 'Regularización L2', type: 'number', min: 0, max: 0.1, step: '0.001',
+      help: 'Penaliza pesos grandes (weight decay) para reducir el sobreajuste. Típico 0.0001–0.001; 0 = desactivado.' },
     {
       name: 'batchNorm',
       label: 'Batch Normalization',

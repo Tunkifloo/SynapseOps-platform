@@ -416,19 +416,29 @@ def _gather_class_files(split_dir: Path) -> Dict[str, List[Path]]:
 def _materialize(gathered: Dict[str, List[Path]],
                  class_to_idx: Dict[str, int],
                  size: Tuple[int, int]) -> Tuple[np.ndarray, np.ndarray]:
-    X: List[np.ndarray] = []
-    y: List[int] = []
+    # Memoria: se PREASIGNA el array final y se llena in-place. Antes se construía una
+    # lista de imágenes + np.asarray(), que DUPLICA el dataset en RAM (pico ~2×). Con
+    # preasignación el pico baja a ~1× → clave para datasets a 224px (Transfer Learning).
+    total = _count(gathered)
+    h, w = size
+    if total == 0:
+        return np.empty((0,)), np.empty((0,), dtype=np.int64)
+    X = np.empty((total, h, w, 3), dtype=np.float32)
+    y = np.empty((total,), dtype=np.int64)
+    n = 0
     for cname, files in gathered.items():
         idx = class_to_idx[cname]
         for f in files:
             try:
-                X.append(_load_image_file(f, size))
-                y.append(idx)
+                X[n] = _load_image_file(f, size)
+                y[n] = idx
+                n += 1
             except (UnidentifiedImageError, OSError) as e:
                 log.warning("Imagen ilegible, se omite: %s (%s)", f, e)
-    if not X:
+    if n == 0:
         return np.empty((0,)), np.empty((0,), dtype=np.int64)
-    return np.asarray(X, dtype=np.float32), np.asarray(y, dtype=np.int64)
+    # Vistas (no copias) → no re-duplica memoria si hubo imágenes ilegibles.
+    return X[:n], y[:n]
 
 
 def _load_image_file(path: Path, size: Tuple[int, int]) -> np.ndarray:

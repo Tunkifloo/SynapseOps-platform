@@ -313,7 +313,7 @@ export function PipelineBuilderPage({ token, onAuthError }: PipelineBuilderPageP
               {activeWorkspace?.name ? ` «${activeWorkspace.name}»` : ''}. Crea uno para diseñar y guardar tu flujo.
             </p>
             {pipelines.length === 0 && (
-              <Button variant="cta" loading={creating} onClick={() => void handleCreatePipeline()}>
+              <Button data-tour="create-pipeline" variant="cta" loading={creating} onClick={() => void handleCreatePipeline()}>
                 <Plus />
                 Crear pipeline
               </Button>
