@@ -11,6 +11,7 @@ import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -259,6 +260,31 @@ public class MLflowFacade {
                 })
                 .doOnSuccess(uri -> log.info("Artifact URI → runId={}: {}", runId, uri))
                 .doOnError(e  -> log.error("Error artifact URI runId={}: {}", runId, e.getMessage()));
+    }
+
+    /**
+     * Descarga un artifact del run vía el proxy de MLflow ({@code --serve-artifacts})
+     * y lo devuelve como data-URL base64 (image/png). Mono.empty() si no existe o el run
+     * usa un artifact-root antiguo no-proxied. Best-effort: nunca propaga error.
+     */
+    public Mono<String> downloadArtifactBase64(String runId, String relPath) {
+        return getArtifactUri(runId).flatMap(uri -> {
+            if (uri == null || uri.isBlank() || !uri.startsWith("mlflow-artifacts:")) {
+                return Mono.<String>empty();   // runs antiguos (ruta local) no son servibles vía proxy
+            }
+            String root = uri.replaceFirst("^mlflow-artifacts:/+", "").replaceFirst("^/+", "");
+            String fullPath = root + "/" + relPath;
+            return webClient.get()
+                    .uri("/api/2.0/mlflow-artifacts/artifacts/" + fullPath)
+                    .accept(MediaType.ALL)
+                    .retrieve()
+                    .bodyToMono(byte[].class)
+                    .map(bytes -> "data:image/png;base64," + Base64.getEncoder().encodeToString(bytes))
+                    .onErrorResume(e -> {
+                        log.debug("Artifact no disponible {} (run {}): {}", relPath, runId, e.getMessage());
+                        return Mono.empty();
+                    });
+        }).onErrorResume(e -> Mono.empty());
     }
 
     public Mono<MlflowRunMetrics> getRunMetrics(String runId) {
