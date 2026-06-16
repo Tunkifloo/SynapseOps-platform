@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.bind.support.WebExchangeBindException;
 import org.springframework.web.server.ServerWebExchange;
+import org.springframework.web.server.ServerWebInputException;
 
 import java.net.URI;
 import java.time.Instant;
@@ -32,6 +33,21 @@ public class GlobalExceptionHandler {
         problem.setType(URI.create("/errors/validation"));
         problem.setTitle("Error de validación");
         problem.setDetail(detail);
+        problem.setProperty("timestamp", Instant.now());
+        problem.setProperty("path", exchange.getRequest().getPath().value());
+        return problem;
+    }
+
+    @ExceptionHandler(ServerWebInputException.class)
+    public ProblemDetail handleMalformedInput(ServerWebInputException ex,
+                                              ServerWebExchange exchange) {
+        // Cuerpo JSON inválido/truncado (p. ej. "{"), tipo incompatible o body ausente.
+        // WebFlux lanza ServerWebInputException (incluye DecodingException); sin este
+        // handler caía al genérico → 500. La causa es del cliente → 400 Bad Request.
+        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.BAD_REQUEST);
+        problem.setType(URI.create("/errors/malformed-request"));
+        problem.setTitle("Solicitud mal formada");
+        problem.setDetail("El cuerpo de la solicitud no es un JSON válido o está incompleto.");
         problem.setProperty("timestamp", Instant.now());
         problem.setProperty("path", exchange.getRequest().getPath().value());
         return problem;

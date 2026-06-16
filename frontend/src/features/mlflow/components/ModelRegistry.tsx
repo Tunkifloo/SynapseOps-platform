@@ -48,6 +48,8 @@ export interface VersionDetails {
   params: Record<string, string>
   metrics: Record<string, number>
   confusionMatrix?: ConfusionMatrix | null
+  /** Galería Score-CAM (data-URL base64), si el run la generó. */
+  scorecam?: string | null
 }
 
 export interface RegistryApi {
@@ -325,6 +327,7 @@ export function VersionCard({ api, modelName, version, onAuthError, onChanged }:
                   ))}
                   <QualityReport metrics={details?.metrics ?? {}} />
                   {details?.confusionMatrix && <ConfusionMatrixView cm={details.confusionMatrix} />}
+                  {details?.scorecam && <ScoreCamView src={details.scorecam} />}
                   {(!details ||
                     (Object.keys(details.params).length === 0 &&
                       Object.keys(details.metrics).length === 0)) && (
@@ -402,6 +405,38 @@ export function ConfusionMatrixView({ cm }: { cm: ConfusionMatrix }) {
           </tbody>
         </table>
       </div>
+    </div>
+  )
+}
+
+/** Galería de interpretabilidad Score-CAM (imagen generada en el entrenamiento). */
+export function ScoreCamView({ src }: { src: string }) {
+  const [open, setOpen] = useState(true)
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center gap-1.5 text-[10px] font-semibold tracking-[0.14em] text-muted-foreground uppercase transition-colors duration-150 ease-out-quart hover:text-foreground"
+        aria-expanded={open}
+      >
+        {open ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
+        Interpretabilidad · Score-CAM
+      </button>
+      {open && (
+        <div className="mt-1.5 space-y-1.5">
+          <p className="text-[11px] leading-relaxed text-muted-foreground">
+            Mapas de calor sobre muestras del test: en qué regiones se fija el modelo para
+            decidir. Borde verde = acierto · rojo = error.
+          </p>
+          <img
+            src={src}
+            alt="Galería Score-CAM del modelo"
+            loading="lazy"
+            className="w-full rounded-lg border border-border bg-card"
+          />
+        </div>
+      )}
     </div>
   )
 }
