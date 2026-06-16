@@ -106,15 +106,23 @@ def load_dataset(
 
 
 def _apply_normalization(bundle: DatasetBundle, strategy: str) -> DatasetBundle:
-    """Las imágenes ya vienen en [0,1] (minmax). Aplica la variante elegida."""
+    """minmax (default): NO se materializa float; el dataset queda uint8 (o float[0,1] en
+    builtins) y las estrategias castean /255 por lote → 4× menos RAM. zscore/rescale: sí
+    requieren float, así que se convierte a [0,1] y se aplica la variante (caso menos común)."""
     if strategy == "minmax":
         return bundle
+    # Convierte a [0,1] respetando el dtype: uint8 → /255; float (builtins) → tal cual.
+    def to01(a):
+        if a is None or not a.size:
+            return a
+        return (a.astype(np.float32) / 255.0) if a.dtype == np.uint8 else a.astype(np.float32)
     if strategy == "rescale":
-        fn = lambda a: (a * 2.0 - 1.0).astype(np.float32) if a is not None and a.size else a
+        fn = lambda a: (to01(a) * 2.0 - 1.0).astype(np.float32) if a is not None and a.size else a
     elif strategy == "zscore":
-        mean = float(bundle.X_train.mean()) if bundle.X_train.size else 0.0
-        std = float(bundle.X_train.std()) or 1.0
-        fn = lambda a: ((a - mean) / std).astype(np.float32) if a is not None and a.size else a
+        t = to01(bundle.X_train)
+        mean = float(t.mean()) if t is not None and t.size else 0.0
+        std = (float(t.std()) if t is not None and t.size else 1.0) or 1.0
+        fn = lambda a: ((to01(a) - mean) / std).astype(np.float32) if a is not None and a.size else a
     else:
         log.warning("Normalización '%s' no reconocida; se usa minmax.", strategy)
         return bundle
@@ -423,7 +431,7 @@ def _materialize(gathered: Dict[str, List[Path]],
     h, w = size
     if total == 0:
         return np.empty((0,)), np.empty((0,), dtype=np.int64)
-    X = np.empty((total, h, w, 3), dtype=np.float32)
+    X = np.empty((total, h, w, 3), dtype=np.uint8)   # 4× menos RAM que float32
     y = np.empty((total,), dtype=np.int64)
     n = 0
     for cname, files in gathered.items():
@@ -444,7 +452,9 @@ def _materialize(gathered: Dict[str, List[Path]],
 def _load_image_file(path: Path, size: Tuple[int, int]) -> np.ndarray:
     with Image.open(path) as img:
         img = img.convert("RGB").resize(size, Image.BILINEAR)
-        return np.asarray(img, dtype=np.float32) / 255.0
+        # Se guarda uint8 (0-255), NO float32/255: 4× menos RAM. Las estrategias
+        # castean a float [0,1] por lote en el entrenamiento.
+        return np.asarray(img, dtype=np.uint8)
 
 
 def _count(gathered: Dict[str, List[Path]]) -> int:
