@@ -47,14 +47,19 @@ class PyTorchStrategy(TrainingStrategy):
                  torch.__version__, device,
                  hyperparams.input_shape, hyperparams.num_classes)
 
-        # numpy (N,H,W,C) → tensor (N,C,H,W)
-        Xtr = torch.tensor(
-            np.transpose(X_train, (0, 3, 1, 2)),
-            dtype=torch.float32).to(device)
+        # El dataset puede venir uint8 (0-255) para ahorrar RAM/VRAM (4×). El train se
+        # mantiene uint8 en device y el cast a float [0,1] se hace POR LOTE (scale=255);
+        # float (builtins/zscore) ya viene normalizado → scale=1. Val/test son pequeños:
+        # se castean a float [0,1] una sola vez.
+        scale = 255.0 if X_train.dtype == np.uint8 else 1.0
+        # numpy (N,H,W,C) → tensor (N,C,H,W), preservando dtype (uint8 o float32).
+        Xtr = torch.tensor(np.transpose(X_train, (0, 3, 1, 2)))
+        if Xtr.dtype != torch.uint8:
+            Xtr = Xtr.float()
+        Xtr = Xtr.to(device)
         ytr = torch.tensor(y_train, dtype=torch.long).to(device)
-        Xv  = torch.tensor(
-            np.transpose(X_val, (0, 3, 1, 2)),
-            dtype=torch.float32).to(device)
+        Xv  = (torch.tensor(np.transpose(X_val, (0, 3, 1, 2)), dtype=torch.float32)
+               / scale).to(device)
         yv  = torch.tensor(y_val, dtype=torch.long).to(device)
 
         loader    = DataLoader(
@@ -117,7 +122,8 @@ class PyTorchStrategy(TrainingStrategy):
         test_accuracy = test_loss = None
         test_true = test_pred = test_proba = None
         if X_test is not None and y_test is not None and len(X_test) > 0:
-            Xte = torch.tensor(np.transpose(X_test, (0, 3, 1, 2)), dtype=torch.float32).to(device)
+            Xte = (torch.tensor(np.transpose(X_test, (0, 3, 1, 2)), dtype=torch.float32)
+                   / scale).to(device)
             yte = torch.tensor(y_test, dtype=torch.long).to(device)
             model.eval()
             with torch.no_grad():
@@ -233,6 +239,8 @@ class PyTorchStrategy(TrainingStrategy):
             model.train()
             ep_loss, correct, total_n = 0.0, 0, 0
             for xb, yb in loader:
+                # Cast a float [0,1] por lote: uint8 (train en RAM/VRAM) → /255; float → tal cual.
+                xb = xb.float() / 255.0 if xb.dtype == torch.uint8 else xb.float()
                 if augment is not None:
                     xb = augment(xb)
                 optimizer.zero_grad()
@@ -294,7 +302,9 @@ class PyTorchStrategy(TrainingStrategy):
         outs = []
         with torch.no_grad():
             for i in range(0, len(X), max(1, batch_size)):
-                logits = model(X[i:i + batch_size])
+                xb = X[i:i + batch_size]
+                xb = xb.float() / 255.0 if xb.dtype == torch.uint8 else xb.float()
+                logits = model(xb)
                 outs.append(torch.softmax(logits, dim=1).cpu().numpy())
         return np.concatenate(outs) if outs else np.empty((0,))
 

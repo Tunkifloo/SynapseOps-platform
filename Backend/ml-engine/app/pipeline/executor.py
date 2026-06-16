@@ -208,7 +208,9 @@ class PipelineExecutor:
         used, limit = status
         avail = max(0.5, limit - used)              # GB disponibles
         size = job.image_size or 64
-        per_img_gb = (size * size * 3 * 4) / 1e9    # float32
+        # El dataset se materializa en uint8 (1 byte/canal); el cast a float ocurre por
+        # lote (pico pequeño, cubierto por el margen del 60% restante).
+        per_img_gb = (size * size * 3 * 1) / 1e9    # uint8
         if per_img_gb <= 0:
             return current
         safe = max(200, int(avail * 0.40 / per_img_gb))
@@ -539,6 +541,13 @@ class PipelineExecutor:
             self._emit(job.execution_id,
                        "Evaluación: " + " · ".join(f"{k}={v:.4f}" for k, v in advanced.items()))
 
+        # Overfitting (gap train/val): se emite a la consola para que el SSE COINCIDA con
+        # el panel del nodo y el detalle del modelo (antes solo se mostraba en el panel).
+        overfit_warning = _compute_overfit_warning(result, bundle)
+        if overfit_warning:
+            level = "WARN" if overfit_warning["severity"] in ("high", "moderate") else "INFO"
+            self._emit(job.execution_id, "Calidad: " + overfit_warning["message"], level)
+
         # ── Data drift (calidad del split + re-entrenamiento) ─────────────────
         drift_summary = self._compute_drift(job, bundle, output_dir)
 
@@ -604,7 +613,7 @@ class PipelineExecutor:
                 **advanced,
             },
             # Detección de overfitting: gap > 15% entre train y validation accuracy
-            "overfit_warning": _compute_overfit_warning(result, bundle),
+            "overfit_warning": overfit_warning,
             "confusion_matrix": confusion,
             # Data drift (calidad del split + cambio del dataset vs corrida anterior).
             "drift": drift_summary,
@@ -735,15 +744,32 @@ class PipelineExecutor:
                    f"{cambios}{cap}.")
 
     def _emit_drift(self, job: PipelineJob, summary: dict) -> None:
-        s, r = summary.get("split"), summary.get("retraining")
-        if s and s["drifted"]:
-            self._emit(job.execution_id,
-                       f"Drift ⚠ La validación difiere del train (severidad {s['severity']}, "
-                       f"PSI máx {s['max_psi']}). Revisa el balance/calidad del dataset.", "WARN")
-        if r and r["drifted"]:
-            self._emit(job.execution_id,
-                       f"Drift ⚠ Tu dataset cambió respecto al último entrenamiento "
-                       f"(severidad {r['severity']}, PSI máx {r['max_psi']}).", "WARN")
-        if (s or r) and not (s and s["drifted"]) and not (r and r["drifted"]):
+        # Coherencia con el panel del nodo y el detalle del modelo: se reporta por
+        # SEVERIDAD (none/moderate/significant), no solo el flag `drifted` (que es ≥0.25).
+        # Así un PSI 0.10–0.25 NO se anuncia como "estable" en el SSE mientras el panel
+        # lo marca "moderada".
+        items = (
+            ("split", "La validación difiere del entrenamiento", summary.get("split")),
+            ("retrain", "Tu dataset cambió respecto a la corrida anterior", summary.get("retraining")),
+        )
+        any_present = False
+        worst = "none"
+        for _tag, msg, item in items:
+            if not item:
+                continue
+            any_present = True
+            sev = item.get("severity", "none")
+            if sev == "significant":
+                worst = "significant"
+                self._emit(job.execution_id,
+                           f"Drift ⚠ {msg}: deriva SIGNIFICATIVA (PSI máx {item['max_psi']}). "
+                           f"Revisa el balance/calidad del dataset.", "WARN")
+            elif sev == "moderate":
+                if worst != "significant":
+                    worst = "moderate"
+                self._emit(job.execution_id,
+                           f"Drift: {msg}: deriva moderada (PSI máx {item['max_psi']}). "
+                           f"Conviene monitorearla.", "WARN")
+        if any_present and worst == "none":
             self._emit(job.execution_id,
                        "Drift: sin deriva relevante en los datos (distribuciones estables).")

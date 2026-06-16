@@ -52,14 +52,18 @@ class TensorFlowStrategy(TrainingStrategy):
             hyperparams.augmentation_config, hyperparams.data_augmentation)
         if aug_cfg:
             log.info("Augmentation in-graph (TF): %s", augmentation.summarize(aug_cfg))
-        train_ds = self._make_dataset(X_train, y_train, hyperparams, aug_cfg)
+        # El dataset puede venir uint8 (0-255) para ahorrar RAM. Se castea a float [0,1]
+        # POR LOTE en tf.data (scale=255); float (builtins/zscore) → tal cual (scale=1).
+        scale = 255.0 if X_train.dtype == np.uint8 else 1.0
+        train_ds = self._make_dataset(X_train, y_train, hyperparams, aug_cfg, scale)
+        Xv_f = X_val.astype(np.float32) / scale   # val a float (mucho menor que train)
         arch = (hyperparams.architecture or "cnn").lower()
 
         with tf.device(device):
             if arch == "cnn":
                 model = self._build_cnn(hyperparams)
                 hist = self._fit_phase(
-                    model, train_ds, X_train, y_train, X_val, y_val, hyperparams,
+                    model, train_ds, Xv_f, y_val, hyperparams,
                     hyperparams.learning_rate, hyperparams.epochs, 0,
                     hyperparams.epochs, None, on_epoch)
             else:
@@ -74,7 +78,7 @@ class TensorFlowStrategy(TrainingStrategy):
                     on_phase({"phase": "FE", "epochs": hyperparams.feature_extraction_epochs,
                               "lr": hyperparams.feature_extraction_lr})
                 h1 = self._fit_phase(
-                    model, train_ds, X_train, y_train, X_val, y_val, hyperparams,
+                    model, train_ds, Xv_f, y_val, hyperparams,
                     hyperparams.feature_extraction_lr, hyperparams.feature_extraction_epochs,
                     0, total, "FE", on_epoch)
                 h2 = {}
@@ -85,16 +89,18 @@ class TensorFlowStrategy(TrainingStrategy):
                                   "lr": hyperparams.finetuning_lr,
                                   "unfreeze": hyperparams.unfreeze_layers})
                     h2 = self._fit_phase(
-                        model, train_ds, X_train, y_train, X_val, y_val, hyperparams,
+                        model, train_ds, Xv_f, y_val, hyperparams,
                         hyperparams.finetuning_lr, hyperparams.finetuning_epochs,
                         hyperparams.feature_extraction_epochs, total, "FT", on_epoch)
                 hist = {k: list(h1.get(k, [])) + list(h2.get(k, []))
                         for k in set(h1) | set(h2)}
 
-        # Predicciones para métricas avanzadas (item 7) — train y val.
+        # Predicciones para métricas avanzadas (item 7). Train vía tf.data (cast por lote,
+        # no materializa todo el train en float); val ya es float; test se castea (es chico).
         with tf.device(device):
-            train_proba = model.predict(X_train, verbose=0)
-            val_proba = model.predict(X_val, verbose=0)
+            train_proba = model.predict(
+                self._predict_ds(X_train, hyperparams.batch_size, scale), verbose=0)
+            val_proba = model.predict(Xv_f, verbose=0)
         train_pred = train_proba.argmax(axis=1)
         train_true = np.asarray(y_train)
         val_pred = val_proba.argmax(axis=1)
@@ -102,9 +108,10 @@ class TensorFlowStrategy(TrainingStrategy):
         test_accuracy = test_loss = None
         test_true = test_pred = test_proba = None
         if X_test is not None and y_test is not None and len(X_test) > 0:
+            Xte_f = X_test.astype(np.float32) / scale
             with tf.device(device):
-                tl, ta = model.evaluate(X_test, y_test, verbose=0)
-                test_proba = model.predict(X_test, verbose=0)
+                tl, ta = model.evaluate(Xte_f, y_test, verbose=0)
+                test_proba = model.predict(Xte_f, verbose=0)
             test_pred = test_proba.argmax(axis=1)
             test_true = np.asarray(y_test)
             test_loss, test_accuracy = float(tl), float(ta)
@@ -140,25 +147,40 @@ class TensorFlowStrategy(TrainingStrategy):
             interpretability_path=gallery,
         )
 
-    def _make_dataset(self, X_train, y_train, hp: HyperParams, aug_cfg: dict):
-        """tf.data con augmentation aplicada en map; None si no hay técnicas activas."""
-        if not aug_cfg:
-            return None
+    def _make_dataset(self, X_train, y_train, hp: HyperParams, aug_cfg: dict, scale: float):
+        """tf.data de entrenamiento: castea uint8→[0,1] POR LOTE (scale=255; float→1) y, si
+        hay catálogo, aplica augmentation. Siempre devuelve un dataset (el cast es necesario
+        aunque no haya augmentation) → el train grande nunca se materializa en float."""
         import tensorflow as tf
-        return (
+        inv = 1.0 / scale
+        ds = (
             tf.data.Dataset.from_tensor_slices((X_train, y_train))
             .shuffle(min(len(X_train), 10_000))
             .batch(hp.batch_size)
-            .map(self._augment_fn(aug_cfg, hp.input_shape[-1]),
+            .map(lambda x, yy: (tf.cast(x, tf.float32) * inv, yy),
                  num_parallel_calls=tf.data.AUTOTUNE)
+        )
+        if aug_cfg:
+            ds = ds.map(self._augment_fn(aug_cfg, hp.input_shape[-1]),
+                        num_parallel_calls=tf.data.AUTOTUNE)
+        return ds.prefetch(tf.data.AUTOTUNE)
+
+    def _predict_ds(self, X, batch: int, scale: float):
+        """tf.data para inferencia (sin shuffle/labels): castea uint8→[0,1] por lote."""
+        import tensorflow as tf
+        inv = 1.0 / scale
+        return (
+            tf.data.Dataset.from_tensor_slices(X)
+            .batch(batch)
+            .map(lambda x: tf.cast(x, tf.float32) * inv, num_parallel_calls=tf.data.AUTOTUNE)
             .prefetch(tf.data.AUTOTUNE)
         )
 
-    def _fit_phase(self, model, train_ds, X_train, y_train, X_val, y_val,
+    def _fit_phase(self, model, train_ds, Xv_f, y_val,
                    hp: HyperParams, lr: float, epochs: int, offset: int,
                    total: int, phase: "str | None", on_epoch) -> dict:
-        """Compila con `lr` y entrena `epochs`. Reporta epochs continuas (offset/total)
-        y la fase (FE/FT) en el callback. Devuelve el history como dict plano."""
+        """Compila con `lr` y entrena `epochs` desde el tf.data (cast por lote). Reporta
+        epochs continuas (offset/total) y la fase (FE/FT). `Xv_f` = validación ya en float."""
         import tensorflow as tf
         if epochs <= 0:
             return {}
@@ -181,12 +203,8 @@ class TensorFlowStrategy(TrainingStrategy):
                 cbs.append(tf.keras.callbacks.EarlyStopping(
                     monitor=monitor, patience=max(1, hp.es_patience),
                     restore_best_weights=True, verbose=1))
-        if train_ds is not None:
-            h = model.fit(train_ds, validation_data=(X_val, y_val),
-                          epochs=epochs, verbose=1, callbacks=cbs)
-        else:
-            h = model.fit(X_train, y_train, validation_data=(X_val, y_val),
-                          epochs=epochs, batch_size=hp.batch_size, verbose=1, callbacks=cbs)
+        h = model.fit(train_ds, validation_data=(Xv_f, y_val),
+                      epochs=epochs, verbose=1, callbacks=cbs)
         return h.history
 
     def _dual_early_stopping(self, patience: int):
