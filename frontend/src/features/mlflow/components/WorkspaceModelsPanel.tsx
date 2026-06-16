@@ -31,7 +31,7 @@ export function WorkspaceModelsPanel({ token, workspaceId, onAuthError }: Worksp
       transitionWorkspaceModelStage(token, workspaceId, name, version, stage),
     getDetails: async (name, version) => {
       const s = await getWorkspaceModelVersionDetails(token, workspaceId, name, version)
-      return { params: s.params ?? {}, metrics: s.metrics ?? {}, confusionMatrix: parseConfusion(s.tags) }
+      return { params: s.params ?? {}, metrics: s.metrics ?? {}, confusionMatrix: parseConfusion(s.tags), scorecam: s.scorecam ?? null }
     },
     allowDeploy: true,
     deploy: (runId) => deployModel(token, runId),

@@ -127,8 +127,23 @@ public class WorkspaceModelServiceImpl implements WorkspaceModelService {
                             return mlflowFacade.getRunIdForVersion(modelName, version)
                                     .flatMap(runId -> (runId == null || runId.isBlank())
                                             ? Mono.just(Map.<String, Object>of())
-                                            : mlflowFacade.getRunSummary(runId));
+                                            : enrichWithInterpretability(runId));
                         }));
+    }
+
+    /**
+     * Resumen del run + galería Score-CAM (si existe) embebida como data-URL base64
+     * en la clave "scorecam", para mostrarla en el detalle del modelo (Ticket UX-4 /
+     * interpretabilidad). Best-effort: si no hay galería, devuelve el resumen sin ella.
+     */
+    private Mono<Map<String, Object>> enrichWithInterpretability(String runId) {
+        return mlflowFacade.getRunSummary(runId).flatMap(summary ->
+                mlflowFacade.downloadArtifactBase64(runId, "interpretability/scorecam_gallery.png")
+                        .map(img -> {
+                            summary.put("scorecam", img);
+                            return summary;
+                        })
+                        .defaultIfEmpty(summary));
     }
 
     @Override

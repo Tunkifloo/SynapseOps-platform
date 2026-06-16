@@ -67,7 +67,7 @@ export function MyModelsPage({ token, searchQuery, onAuthError }: MyModelsPagePr
         transitionWorkspaceModelStage(token, wsId, name, version, stage),
       getDetails: async (name, version) => {
         const s = await getWorkspaceModelVersionDetails(token, wsId, name, version)
-        return { params: s.params ?? {}, metrics: s.metrics ?? {}, confusionMatrix: parseConfusion(s.tags) }
+        return { params: s.params ?? {}, metrics: s.metrics ?? {}, confusionMatrix: parseConfusion(s.tags), scorecam: s.scorecam ?? null }
       },
       allowDeploy: true,
       deploy: (runId) => deployModel(token, runId),
