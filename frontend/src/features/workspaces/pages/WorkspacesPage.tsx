@@ -271,7 +271,7 @@ export function WorkspacesPage({ token, searchQuery, onAuthError }: WorkspacesPa
         title="Espacios de trabajo"
         subtitle="Crea y administra tus proyectos. El dataset, los pipelines y su ejecución se gestionan en el Lienzo."
         actions={
-          <Button variant="cta" size="lg" onClick={openCreate} className="shrink-0">
+          <Button data-tour="create-workspace" variant="cta" size="lg" onClick={openCreate} className="shrink-0">
             <FolderPlus />
             Crear nuevo espacio
           </Button>
@@ -316,6 +316,7 @@ export function WorkspacesPage({ token, searchQuery, onAuthError }: WorkspacesPa
           {visible.map((ws) => (
             <div
               key={ws.idWorkspace}
+              data-tour="workspace-item"
               role="button"
               tabIndex={0}
               onClick={() => openDetail(ws)}

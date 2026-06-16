@@ -9,7 +9,9 @@ from typing import Optional
 import numpy as np
 
 from app.pipeline.training import augmentation, scorecam
-from app.pipeline.training.base import EpochCallback, HyperParams, TrainingResult, TrainingStrategy
+from app.pipeline.training.base import (
+    EpochCallback, HyperParams, PhaseCallback, TrainingResult, TrainingStrategy,
+)
 
 log = logging.getLogger(__name__)
 
@@ -34,6 +36,7 @@ class PyTorchStrategy(TrainingStrategy):
         y_test: Optional[np.ndarray] = None,
         on_epoch: Optional[EpochCallback] = None,
         class_names: Optional[list] = None,
+        on_phase: Optional[PhaseCallback] = None,
     ) -> TrainingResult:
         import torch
         import torch.nn as nn
@@ -81,12 +84,19 @@ class PyTorchStrategy(TrainingStrategy):
                      hyperparams.finetuning_epochs, hyperparams.finetuning_lr,
                      hyperparams.unfreeze_layers)
             opt1 = self._build_optimizer(model, hyperparams, hyperparams.feature_extraction_lr)
+            if on_phase is not None:
+                on_phase({"phase": "FE", "epochs": hyperparams.feature_extraction_epochs,
+                          "lr": hyperparams.feature_extraction_lr})
             h1 = self._train_loop(
                 model, loader, Xv, yv, opt1, criterion, augment, device,
                 hyperparams, hyperparams.feature_extraction_epochs, 0, total, "FE", on_epoch)
             h2 = {}
             if hyperparams.finetuning_epochs > 0:
                 self._unfreeze_torch(model, arch, hyperparams.unfreeze_layers)
+                if on_phase is not None:
+                    on_phase({"phase": "FT", "epochs": hyperparams.finetuning_epochs,
+                              "lr": hyperparams.finetuning_lr,
+                              "unfreeze": hyperparams.unfreeze_layers})
                 opt2 = self._build_optimizer(model, hyperparams, hyperparams.finetuning_lr)
                 h2 = self._train_loop(
                     model, loader, Xv, yv, opt2, criterion, augment, device,
