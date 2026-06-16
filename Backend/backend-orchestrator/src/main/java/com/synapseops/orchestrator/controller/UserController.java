@@ -4,6 +4,7 @@ import com.synapseops.orchestrator.domain.dto.request.PasswordUpdateRequest;
 import com.synapseops.orchestrator.domain.dto.request.UserProfileUpdateRequest;
 import com.synapseops.orchestrator.domain.dto.request.UserStatusUpdateRequest;
 import com.synapseops.orchestrator.domain.dto.request.UserUpdateRequest;
+import com.synapseops.orchestrator.domain.dto.response.OnboardingStatusResponse;
 import com.synapseops.orchestrator.domain.dto.response.UserResponse;
 import com.synapseops.orchestrator.domain.entity.Role;
 import com.synapseops.orchestrator.service.UserService;
@@ -112,6 +113,22 @@ public class UserController {
             @Valid @RequestBody UserProfileUpdateRequest request) {
         return principal.flatMap(p ->
                         userService.updateMyProfile(p.getName(), request))
+                .map(ResponseEntity::ok);
+    }
+
+    @Operation(summary = "Estado del onboarding del usuario autenticado")
+    @ApiResponse(responseCode = "200", description = "Estado del onboarding")
+    @GetMapping("/me/onboarding")
+    public Mono<ResponseEntity<OnboardingStatusResponse>> getMyOnboarding(Mono<Principal> principal) {
+        return principal.flatMap(p -> userService.getOnboardingStatus(p.getName()))
+                .map(ResponseEntity::ok);
+    }
+
+    @Operation(summary = "Marcar mi onboarding como completado/omitido")
+    @ApiResponse(responseCode = "200", description = "Onboarding marcado como completado")
+    @PatchMapping("/me/onboarding")
+    public Mono<ResponseEntity<OnboardingStatusResponse>> completeMyOnboarding(Mono<Principal> principal) {
+        return principal.flatMap(p -> userService.completeOnboarding(p.getName()))
                 .map(ResponseEntity::ok);
     }
 

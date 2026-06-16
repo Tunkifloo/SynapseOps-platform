@@ -3,6 +3,7 @@ package com.synapseops.orchestrator.service.impl;
 import com.synapseops.orchestrator.domain.dto.request.PasswordUpdateRequest;
 import com.synapseops.orchestrator.domain.dto.request.UserProfileUpdateRequest;
 import com.synapseops.orchestrator.domain.dto.request.UserUpdateRequest;
+import com.synapseops.orchestrator.domain.dto.response.OnboardingStatusResponse;
 import com.synapseops.orchestrator.domain.dto.response.UserResponse;
 import com.synapseops.orchestrator.domain.entity.Role;
 import com.synapseops.orchestrator.domain.entity.User;
@@ -126,6 +127,28 @@ public class UserServiceImpl implements UserService {
             UserResponse response = userMapper.toResponse(userRepository.save(user));
             log.info("Usuario ID={} → enabled={}", id, enabled);
             return response;
+        }).subscribeOn(Schedulers.boundedElastic());
+    }
+
+    @Override
+    public Mono<OnboardingStatusResponse> getOnboardingStatus(String username) {
+        return Mono.fromCallable(() ->
+                new OnboardingStatusResponse(userRepository.findByUsername(username)
+                        .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado: " + username))
+                        .isOnboardingCompleted())
+        ).subscribeOn(Schedulers.boundedElastic());
+    }
+
+    @Override
+    public Mono<OnboardingStatusResponse> completeOnboarding(String username) {
+        return Mono.fromCallable(() -> {
+            User user = userRepository.findByUsername(username)
+                    .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado: " + username));
+            if (!user.isOnboardingCompleted()) {
+                user.setOnboardingCompleted(true);
+                userRepository.save(user);
+            }
+            return new OnboardingStatusResponse(true);
         }).subscribeOn(Schedulers.boundedElastic());
     }
 

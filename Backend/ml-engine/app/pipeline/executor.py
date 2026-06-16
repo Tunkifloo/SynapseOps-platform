@@ -3,9 +3,11 @@ Responsabilidad única: orquestar el pipeline MLOps.
 Template Method — define los pasos fijos, delega en estrategias.
 No conoce detalles de carga, preproceso ni frameworks.
 """
+import gc
 import json
 import logging
 import shutil
+import sys
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -183,6 +185,120 @@ class PipelineExecutor:
                 "status":       "FAILED",
                 "error":        str(e),
             }
+        finally:
+            # Limpieza de disco transitorio incluso si el run FALLÓ (un OOM en ingesta
+            # dejaba extracted/ sin borrar → se acumulaba en la siguiente corrida).
+            try:
+                self._cleanup_ingestion_artifacts(job)
+            except Exception:  # noqa: BLE001
+                pass
+            # El ml-engine es un proceso persistente que procesa jobs en SERIE. Sin
+            # liberar el grafo de TF/torch y los arrays del run, la memoria se acumula
+            # entre ejecuciones y satura la RAM (segundo run se apila sobre el primero).
+            self._free_memory()
+
+    def _safe_max_images(self, job: PipelineJob, current: "int | None") -> "int | None":
+        """Tope de imágenes según la memoria DISPONIBLE y el tamaño de imagen, para que
+        el dataset materializado quepa en RAM (presupuesto ~40% de lo disponible; deja
+        margen para el pico de carga, el modelo y el framework). Devuelve el mínimo entre
+        este tope y `current`. Si no se puede leer la memoria, deja `current`."""
+        status = self._memory_status()
+        if not status:
+            return current
+        used, limit = status
+        avail = max(0.5, limit - used)              # GB disponibles
+        size = job.image_size or 64
+        per_img_gb = (size * size * 3 * 4) / 1e9    # float32
+        if per_img_gb <= 0:
+            return current
+        safe = max(200, int(avail * 0.40 / per_img_gb))
+        capped = safe if current is None else min(safe, current)
+        # Informa solo cuando la memoria es el límite efectivo (cap realmente bajo).
+        if capped < 20_000:
+            self._emit(job.execution_id,
+                       f"Memoria disponible ~{avail:.1f} GB: si el dataset supera ~{capped} "
+                       f"imágenes a {size}px, se submuestrea para evitar fallos por memoria.")
+        return capped
+
+    def _emit_device(self, job: PipelineJob) -> None:
+        """Informa al usuario si el entrenamiento usará GPU o CPU (visibilidad del acelerador)."""
+        try:
+            if job.framework == "pytorch":
+                import torch
+                dev = "GPU NVIDIA (CUDA)" if torch.cuda.is_available() else "CPU"
+            else:
+                import tensorflow as tf
+                dev = "GPU NVIDIA" if tf.config.list_physical_devices("GPU") else "CPU"
+            self._emit(job.execution_id, f"Acelerador: {dev}.")
+        except Exception as e:  # noqa: BLE001
+            log.debug("No se pudo detectar el acelerador: %s", e)
+
+    def _memory_status(self) -> "tuple | None":
+        """(usado_gb, limite_gb) del contenedor o, si no hay límite de cgroup, de la VM
+        (/proc/meminfo). Devuelve el más restrictivo. None si no se puede leer (no-Linux)."""
+        sys_used = sys_limit = None
+        try:
+            info = {}
+            with open("/proc/meminfo", encoding="utf-8") as f:
+                for line in f:
+                    key, _, val = line.partition(":")
+                    info[key.strip()] = val.strip()
+            total = int(info["MemTotal"].split()[0]) * 1024
+            avail = int(info["MemAvailable"].split()[0]) * 1024
+            sys_used, sys_limit = total - avail, total
+        except Exception:  # noqa: BLE001 — no-Linux o formato inesperado
+            pass
+        cg = None
+        try:
+            with open("/sys/fs/cgroup/memory.max", encoding="utf-8") as f:
+                raw = f.read().strip()
+            if raw != "max":
+                limit = int(raw)
+                with open("/sys/fs/cgroup/memory.current", encoding="utf-8") as f:
+                    cg = (int(f.read()), limit)
+        except Exception:  # noqa: BLE001 — cgroup v1 o sin límite
+            pass
+        if cg and (sys_limit is None or cg[1] <= sys_limit):
+            return cg[0] / 1e9, cg[1] / 1e9
+        if sys_limit:
+            return sys_used / 1e9, sys_limit / 1e9
+        return None
+
+    def _warn_memory(self, job: PipelineJob, stage: str) -> None:
+        """Emite un aviso si la memoria usada supera los umbrales (75% / 90%). No bloquea."""
+        status = self._memory_status()
+        if not status:
+            return
+        used, limit = status
+        pct = used / limit * 100 if limit else 0
+        if pct >= 90:
+            self._emit(job.execution_id,
+                       f"⚠ Memoria al {pct:.0f}% ({used:.1f}/{limit:.1f} GB) en «{stage}». "
+                       f"Riesgo ALTO de fallo por memoria (OOM). Reduce el batch size, el "
+                       f"tamaño de imagen o el dataset, o cierra otras apps.", "WARN")
+        elif pct >= 75:
+            self._emit(job.execution_id,
+                       f"Aviso: memoria al {pct:.0f}% ({used:.1f}/{limit:.1f} GB) en «{stage}». "
+                       f"Si sigue subiendo puede haber lentitud o fallos; considera reducir "
+                       f"el batch o el tamaño de imagen.", "WARN")
+
+    def _free_memory(self) -> None:
+        """Libera la memoria del run anterior (grafo TF, caché torch, arrays) para que
+        no se acumule entre ejecuciones serializadas. Best-effort; no importa frameworks
+        que no estén ya cargados."""
+        try:
+            tf = sys.modules.get("tensorflow")
+            if tf is not None:
+                tf.keras.backend.clear_session()
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            torch = sys.modules.get("torch")
+            if torch is not None and torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except Exception:  # noqa: BLE001
+            pass
+        gc.collect()
 
     def _run(self, job: PipelineJob) -> dict:
         # ── Paso 0: Validar arquitectura ──────────────────────────────────────
@@ -193,8 +309,10 @@ class PipelineExecutor:
                 f"Disponibles: {', '.join(self.SUPPORTED_ARCHS)}.")
         pretrained = arch != "cnn"
 
-        # Transfer Learning: los backbones ImageNet exigen ≥224px. Se fuerza el tamaño
-        # y se acota batch + nº de imágenes para caber en el contenedor de 8 GB.
+        # Transfer Learning: los backbones ImageNet exigen ≥224px → se fuerza el tamaño
+        # (correctitud, no es una restricción). NO se reduce el batch ni se capa el dataset
+        # (los equipos tienen ≥16 GB); en su lugar se ADVIERTE si la config es pesada y
+        # podría causar lentitud u OOM. El guardrail estándar de ingestion sigue vigente.
         max_images = None
         if pretrained:
             if not job.image_size or job.image_size < 224:
@@ -202,13 +320,18 @@ class PipelineExecutor:
                 self._emit(job.execution_id,
                            "Preprocesamiento: tamaño ajustado a 224×224 "
                            "(mínimo requerido por el backbone preentrenado).")
-            if job.batch_size > 16:
+            if job.batch_size > 64:
                 self._emit(job.execution_id,
-                           f"Entrenamiento: batch reducido a 16 (era {job.batch_size}) "
-                           f"para entrenar con 224px dentro de 8 GB.")
-                job.batch_size = 16
-            size = job.image_size or 224
-            max_images = max(500, int(3_000_000_000 / (size * size * 3 * 4)))  # ~3 GB
+                           f"Aviso: batch grande ({job.batch_size}) con imágenes de 224px "
+                           f"consume bastante memoria; si el entrenamiento falla por memoria "
+                           f"(OOM) o va lento, reduce el batch size.", "WARN")
+
+        # Pre-limpieza: borra disco transitorio (extracted/, downloads/) que un crash
+        # duro anterior pudo dejar sin limpiar, antes de extraer este dataset.
+        self._cleanup_ingestion_artifacts(job)
+        # Cap por memoria DISPONIBLE: nunca materializar más imágenes de las que caben en
+        # RAM (evita el OOM en ingesta, sobre todo a 224px). Más restrictivo que MAX_IMAGES.
+        max_images = self._safe_max_images(job, max_images)
 
         # ── Nodo Ingesta: cargar dataset (delegado a ingestion) ───────────────
         # TEL-01 · t_inicio_ingesta: marca de tiempo del inicio del ciclo (Process Tracker).
@@ -255,6 +378,10 @@ class PipelineExecutor:
         test_n = 0 if bundle.X_test is None else len(bundle.X_test)
         self._emit(job.execution_id,
                    f"Split: train={len(X_train)} · validación={len(X_val)} · test={test_n}")
+
+        # Umbral de memoria real del contenedor/VM tras materializar el dataset (el punto
+        # de mayor consumo antes de entrenar). No restringe; avisa con thresholds claros.
+        self._warn_memory(job, "carga del dataset")
 
         # ── Paso 2: Iniciar MLflow run ────────────────────────────────────────
         experiment_id = self._mlflow.get_or_create_experiment(
@@ -321,6 +448,7 @@ class PipelineExecutor:
         )
         output_dir = self._prepare_output_dir(job)
         strategy   = self._select_strategy(job.framework)
+        self._emit_device(job)
         if pretrained:
             self._emit(job.execution_id,
                        f"Entrenamiento ({arch}, 2 fases): Feature Extraction "
@@ -344,12 +472,27 @@ class PipelineExecutor:
                 parts.append(f"val_acc={metrics['val_accuracy']:.4f}")
             self._emit(job.execution_id, " — ".join(parts))
 
+        # Encabezado descriptivo al INICIO REAL de cada fase de Transfer Learning, para
+        # que el usuario entienda el salto de numeración de épocas (FE→FT) y qué ocurre.
+        def on_phase(info: dict) -> None:
+            if info.get("phase") == "FE":
+                self._emit(job.execution_id,
+                           f"Fase 1/2 · Feature Extraction — backbone congelado (solo se "
+                           f"entrena la cabeza de clasificación): {info['epochs']} epochs · "
+                           f"LR={info['lr']:g}.")
+            elif info.get("phase") == "FT":
+                self._emit(job.execution_id,
+                           f"Fase 2/2 · Fine-Tuning — descongeladas las últimas "
+                           f"{info['unfreeze']} capas del backbone: {info['epochs']} epochs · "
+                           f"LR={info['lr']:g} (más bajo para no destruir lo aprendido).")
+
         result: TrainingResult = strategy.train(
             X_train, y_train, X_val, y_val, hp, output_dir,
             X_test=bundle.X_test, y_test=bundle.y_test, on_epoch=on_epoch,
-            class_names=bundle.class_names)
+            class_names=bundle.class_names, on_phase=on_phase)
         # TEL-01 · t_fin_entrenamiento: fin del entrenamiento (antes del registro en MLflow).
         t_fin_entrenamiento = datetime.now().isoformat(timespec="milliseconds")
+        self._warn_memory(job, "fin del entrenamiento")
 
         # ── Paso 4: Loguear métricas en MLflow ────────────────────────────────
         for step, (acc, loss) in enumerate(

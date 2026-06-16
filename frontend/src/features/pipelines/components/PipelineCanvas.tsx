@@ -1000,6 +1000,7 @@ export function PipelineCanvas({
       <div className="flex min-h-0 flex-1 flex-col gap-3 md:flex-row">
         <NodePalette onAdd={addNode} />
         <div
+          data-tour="canvas"
           className="relative min-h-0 flex-1 overflow-hidden rounded-2xl border border-border bg-card/20"
           onDrop={onDrop}
           onDragOver={onDragOver}
