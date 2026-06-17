@@ -47,24 +47,25 @@ class PyTorchStrategy(TrainingStrategy):
                  torch.__version__, device,
                  hyperparams.input_shape, hyperparams.num_classes)
 
-        # El dataset puede venir uint8 (0-255) para ahorrar RAM/VRAM (4×). El train se
-        # mantiene uint8 en device y el cast a float [0,1] se hace POR LOTE (scale=255);
-        # float (builtins/zscore) ya viene normalizado → scale=1. Val/test son pequeños:
-        # se castean a float [0,1] una sola vez.
-        scale = 255.0 if X_train.dtype == np.uint8 else 1.0
-        # numpy (N,H,W,C) → tensor (N,C,H,W), preservando dtype (uint8 o float32).
-        Xtr = torch.tensor(np.transpose(X_train, (0, 3, 1, 2)))
-        if Xtr.dtype != torch.uint8:
-            Xtr = Xtr.float()
-        Xtr = Xtr.to(device)
-        ytr = torch.tensor(y_train, dtype=torch.long).to(device)
-        Xv  = (torch.tensor(np.transpose(X_val, (0, 3, 1, 2)), dtype=torch.float32)
-               / scale).to(device)
-        yv  = torch.tensor(y_val, dtype=torch.long).to(device)
+        # Datos en CPU (uint8 si aplica para ahorrar RAM 4×). CLAVE: el dataset NO se sube
+        # entero a la VRAM — a 224px eran varios GB → OOM en GPUs de lab. El DataLoader mueve
+        # cada LOTE a `device` (pin_memory acelera la copia en CUDA) y el cast a float [0,1]
+        # se hace por lote (uint8→/255; float builtins/zscore → tal cual). Val/test se
+        # evalúan también por lotes (_evaluate), sin materializarse en VRAM.
+        use_cuda = device.type == "cuda"
+
+        def _to_cpu_tensor(arr):
+            t = torch.tensor(np.transpose(arr, (0, 3, 1, 2)))
+            return t if t.dtype == torch.uint8 else t.float()
+
+        Xtr = _to_cpu_tensor(X_train)
+        ytr = torch.tensor(y_train, dtype=torch.long)
+        Xv  = _to_cpu_tensor(X_val)
+        yv  = torch.tensor(y_val, dtype=torch.long)
 
         loader    = DataLoader(
             TensorDataset(Xtr, ytr),
-            batch_size=hyperparams.batch_size, shuffle=True)
+            batch_size=hyperparams.batch_size, shuffle=True, pin_memory=use_cuda)
         criterion = nn.CrossEntropyLoss()
         # Augmentation in-graph (torchvision.transforms.v2 + ruido custom), construida
         # desde el mismo catálogo normalizado. None si no hay técnicas activas.
@@ -81,56 +82,70 @@ class PyTorchStrategy(TrainingStrategy):
                 hyperparams, hyperparams.epochs, 0, hyperparams.epochs, None, on_epoch)
         else:
             # Transfer Learning en 2 fases: Feature Extraction → Fine-Tuning.
-            model, _head = self._build_pretrained(arch, hyperparams)
+            model, head = self._build_pretrained(arch, hyperparams)
             model = model.to(device)
-            total = hyperparams.feature_extraction_epochs + hyperparams.finetuning_epochs
+            fe_ep = hyperparams.feature_extraction_epochs
+            ft_ep = hyperparams.finetuning_epochs
+            total = fe_ep + ft_ep
             log.info("TL %s — FE %d ep (lr=%.0e) → FT %d ep (lr=%.0e, descongela %d capas)",
-                     arch, hyperparams.feature_extraction_epochs, hyperparams.feature_extraction_lr,
-                     hyperparams.finetuning_epochs, hyperparams.finetuning_lr,
-                     hyperparams.unfreeze_layers)
-            opt1 = self._build_optimizer(model, hyperparams, hyperparams.feature_extraction_lr)
+                     arch, fe_ep, hyperparams.feature_extraction_lr,
+                     ft_ep, hyperparams.finetuning_lr, hyperparams.unfreeze_layers)
             if on_phase is not None:
-                on_phase({"phase": "FE", "epochs": hyperparams.feature_extraction_epochs,
+                on_phase({"phase": "FE", "epochs": fe_ep,
                           "lr": hyperparams.feature_extraction_lr})
-            h1 = self._train_loop(
-                model, loader, Xv, yv, opt1, criterion, augment, device,
-                hyperparams, hyperparams.feature_extraction_epochs, 0, total, "FE", on_epoch)
+            # ── FE: caché de embeddings (solo sin augmentation) ──────────────────
+            # Backbone congelado → embeddings deterministas: se calculan UNA vez y se entrena
+            # solo la cabeza (se reusa _train_loop con la cabeza como "modelo"). Con
+            # augmentation las imágenes cambian por época → FE corre sobre imágenes.
+            if fe_ep <= 0:
+                h1 = {}
+            elif augment is None:
+                emb_train = self._extract_embeddings(model, arch, Xtr, device, hyperparams.batch_size)
+                emb_val = self._extract_embeddings(model, arch, Xv, device, hyperparams.batch_size)
+                emb_loader = DataLoader(
+                    TensorDataset(emb_train, ytr),
+                    batch_size=hyperparams.batch_size, shuffle=True, pin_memory=use_cuda)
+                opt1 = self._build_optimizer(head, hyperparams, hyperparams.feature_extraction_lr)
+                log.info("FE con caché de embeddings (dim=%d; backbone no se re-ejecuta).",
+                         emb_train.shape[1])
+                h1 = self._train_loop(head, emb_loader, emb_val, yv, opt1, criterion, None,
+                                      device, hyperparams, fe_ep, 0, total, "FE", on_epoch)
+                del emb_train, emb_val, emb_loader
+            else:
+                opt1 = self._build_optimizer(model, hyperparams, hyperparams.feature_extraction_lr)
+                h1 = self._train_loop(model, loader, Xv, yv, opt1, criterion, augment, device,
+                                      hyperparams, fe_ep, 0, total, "FE", on_epoch)
+            # ── FT: imágenes crudas (los gradientes fluyen por el backbone) ──────
             h2 = {}
-            if hyperparams.finetuning_epochs > 0:
+            if ft_ep > 0:
                 self._unfreeze_torch(model, arch, hyperparams.unfreeze_layers)
                 if on_phase is not None:
-                    on_phase({"phase": "FT", "epochs": hyperparams.finetuning_epochs,
+                    on_phase({"phase": "FT", "epochs": ft_ep,
                               "lr": hyperparams.finetuning_lr,
                               "unfreeze": hyperparams.unfreeze_layers})
                 opt2 = self._build_optimizer(model, hyperparams, hyperparams.finetuning_lr)
-                h2 = self._train_loop(
-                    model, loader, Xv, yv, opt2, criterion, augment, device,
-                    hyperparams, hyperparams.finetuning_epochs,
-                    hyperparams.feature_extraction_epochs, total, "FT", on_epoch)
+                h2 = self._train_loop(model, loader, Xv, yv, opt2, criterion, augment, device,
+                                      hyperparams, ft_ep, fe_ep, total, "FT", on_epoch)
             history = {k: list(h1.get(k, [])) + list(h2.get(k, []))
                        for k in set(h1) | set(h2)}
 
-        # Predicciones de train y validación para métricas avanzadas (item 7).
+        # Predicciones de train y validación para métricas avanzadas (item 7). Por lotes
+        # (datos en CPU → cada lote a device); nunca materializa el train entero en VRAM.
         model.eval()
-        train_proba = self._predict_proba(model, Xtr, hyperparams.batch_size)
+        train_proba = self._predict_proba(model, Xtr, hyperparams.batch_size, device)
         train_pred = train_proba.argmax(axis=1)
         train_true = np.asarray(y_train)
-        val_proba = self._predict_proba(model, Xv, hyperparams.batch_size)
+        val_proba = self._predict_proba(model, Xv, hyperparams.batch_size, device)
         val_pred = val_proba.argmax(axis=1)
 
-        # Evaluación final sobre el split de test (si lo hay).
+        # Evaluación final sobre el split de test (si lo hay), también por lotes.
         test_accuracy = test_loss = None
         test_true = test_pred = test_proba = None
         if X_test is not None and y_test is not None and len(X_test) > 0:
-            Xte = (torch.tensor(np.transpose(X_test, (0, 3, 1, 2)), dtype=torch.float32)
-                   / scale).to(device)
-            yte = torch.tensor(y_test, dtype=torch.long).to(device)
-            model.eval()
-            with torch.no_grad():
-                out = model(Xte)
-                test_loss = float(criterion(out, yte).item())
-                test_accuracy = float((out.argmax(1) == yte).float().mean().item())
-                test_proba = torch.softmax(out, dim=1).cpu().numpy()
+            Xte = _to_cpu_tensor(X_test)
+            yte = torch.tensor(y_test, dtype=torch.long)
+            test_loss, test_accuracy, test_proba = self._evaluate(
+                model, Xte, yte, criterion, device, hyperparams.batch_size)
             test_pred = test_proba.argmax(axis=1)
             test_true = np.asarray(y_test)
             log.info("Evaluación en test — loss=%.4f acc=%.4f", test_loss, test_accuracy)
@@ -239,7 +254,10 @@ class PyTorchStrategy(TrainingStrategy):
             model.train()
             ep_loss, correct, total_n = 0.0, 0, 0
             for xb, yb in loader:
-                # Cast a float [0,1] por lote: uint8 (train en RAM/VRAM) → /255; float → tal cual.
+                # Lote CPU → device (los datos residen en CPU; solo el lote ocupa VRAM).
+                xb = xb.to(device, non_blocking=True)
+                yb = yb.to(device, non_blocking=True)
+                # Cast a float [0,1] por lote: uint8 → /255; float (zscore/builtins) → tal cual.
                 xb = xb.float() / 255.0 if xb.dtype == torch.uint8 else xb.float()
                 if augment is not None:
                     xb = augment(xb)
@@ -253,11 +271,8 @@ class PyTorchStrategy(TrainingStrategy):
                 total_n += len(yb)
             acc, avg_loss = correct / total_n, ep_loss / total_n
 
-            model.eval()
-            with torch.no_grad():
-                vo = model(Xv)
-                vloss = criterion(vo, yv).item()
-                vacc = (vo.argmax(1) == yv).float().mean().item()
+            # Validación por lotes (Xv/yv en CPU → cada lote a device): no ocupa VRAM extra.
+            vloss, vacc, _ = self._evaluate(model, Xv, yv, criterion, device, hp.batch_size)
 
             history["accuracy"].append(acc)
             history["loss"].append(avg_loss)
@@ -295,18 +310,70 @@ class PyTorchStrategy(TrainingStrategy):
             model.load_state_dict(best_state)
         return history
 
-    def _predict_proba(self, model, X, batch_size: int) -> np.ndarray:
-        """Softmax por lotes sobre un tensor ya en device (evita OOM con 224px)."""
+    def _predict_proba(self, model, X, batch_size: int, device) -> np.ndarray:
+        """Softmax por lotes. X reside en CPU; cada lote se mueve a `device` y se castea a
+        float [0,1] (uint8→/255). Evita materializar todo el split en VRAM (clave a 224px)."""
         import torch
         model.eval()
         outs = []
+        bs = max(1, batch_size)
         with torch.no_grad():
-            for i in range(0, len(X), max(1, batch_size)):
-                xb = X[i:i + batch_size]
+            for i in range(0, len(X), bs):
+                xb = X[i:i + bs].to(device, non_blocking=True)
                 xb = xb.float() / 255.0 if xb.dtype == torch.uint8 else xb.float()
-                logits = model(xb)
-                outs.append(torch.softmax(logits, dim=1).cpu().numpy())
+                outs.append(torch.softmax(model(xb), dim=1).cpu().numpy())
         return np.concatenate(outs) if outs else np.empty((0,))
+
+    def _evaluate(self, model, X, y, criterion, device, batch_size: int):
+        """Evalúa (loss, accuracy, probas) por lotes moviendo cada lote CPU→device. No
+        materializa el split entero en VRAM. Devuelve (loss_media, acc, proba np.ndarray)."""
+        import torch
+        model.eval()
+        bs = max(1, batch_size)
+        tot_loss, correct, n = 0.0, 0, 0
+        outs = []
+        with torch.no_grad():
+            for i in range(0, len(X), bs):
+                xb = X[i:i + bs].to(device, non_blocking=True)
+                yb = y[i:i + bs].to(device, non_blocking=True)
+                xb = xb.float() / 255.0 if xb.dtype == torch.uint8 else xb.float()
+                out = model(xb)
+                tot_loss += float(criterion(out, yb).item()) * len(yb)
+                correct += int((out.argmax(1) == yb).sum().item())
+                n += len(yb)
+                outs.append(torch.softmax(out, dim=1).cpu().numpy())
+        loss = tot_loss / max(1, n)
+        acc = correct / max(1, n)
+        return loss, acc, (np.concatenate(outs) if outs else np.empty((0,)))
+
+    def _extract_embeddings(self, model, arch: str, X, device, batch_size: int):
+        """Backbone congelado → embeddings (N, D) en CPU, por lotes (no ocupa VRAM).
+        Reemplaza temporalmente la cabeza por Identity → la salida del modelo ES el
+        embedding pooled; restaura la cabeza al terminar (sus pesos siguen intactos)."""
+        import torch
+        import torch.nn as nn
+        is_resnet = arch.lower() == "resnet"
+        head = model.fc if is_resnet else model.classifier
+        ident = nn.Identity()
+        if is_resnet:
+            model.fc = ident
+        else:
+            model.classifier = ident
+        model.eval()
+        outs = []
+        bs = max(1, batch_size)
+        try:
+            with torch.no_grad():
+                for i in range(0, len(X), bs):
+                    xb = X[i:i + bs].to(device, non_blocking=True)
+                    xb = xb.float() / 255.0 if xb.dtype == torch.uint8 else xb.float()
+                    outs.append(model(xb).detach().cpu())
+        finally:
+            if is_resnet:
+                model.fc = head
+            else:
+                model.classifier = head
+        return torch.cat(outs) if outs else torch.empty((0,))
 
     def _build_pretrained(self, arch: str, hp: HyperParams):
         """Backbone ImageNet de torchvision con cabeza nueva. Devuelve (model, head).

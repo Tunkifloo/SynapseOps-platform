@@ -182,7 +182,9 @@ export const NODE_FIELDS: Record<NodeKind, FieldDef[]> = {
       type: 'number',
       min: 16,
       max: 512,
-      help: 'Solo para datasets propios; los built-in usan su tamaño nativo. Transfer Learning fuerza 224.',
+      help: 'Resolución de entrada (solo datasets propios; los built-in usan su tamaño nativo). '
+        + 'Transfer Learning admite 96–224: 224 = máxima calidad, 160 ≈ mitad de memoria (punto '
+        + 'equilibrado), 128 = más ligero. Valores < 96 con backbone usan 224 automáticamente.',
     },
   ],
   split: [

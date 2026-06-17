@@ -286,7 +286,7 @@ docker compose -f docker-compose.yml -f docker-compose.gpu.yml build ml-engine
 docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
 ```
 
-> El override GPU usa `requirements-gpu.txt` (TensorFlow[and-cuda] + PyTorch CUDA) y reserva la GPU. ⚠️ La imagen GPU es grande — asegura disco libre.
+> El override GPU compila la capa de frameworks con `requirements-frameworks-gpu.txt` (TensorFlow[and-cuda] + PyTorch CUDA) y reserva la GPU. ⚠️ La imagen GPU es grande — asegura disco libre.
 
 ### 4. Verificar y acceder
 

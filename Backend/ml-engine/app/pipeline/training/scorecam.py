@@ -38,6 +38,9 @@ def generate(framework: str, model, X: np.ndarray, y_true, class_names: Optional
             return None
         pool = min(len(X), _POOL)
         Xs = np.asarray(X[:pool], dtype=np.float32)
+        # Dataset en RAM como uint8 → llevar a [0,1] (lo que espera el modelo y el render).
+        if X.dtype == np.uint8:
+            Xs = Xs / 255.0
         ys = np.asarray(y_true[:pool])
 
         if framework == "tensorflow":
