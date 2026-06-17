@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2, TrendingUp, ShieldCheck } from 'lucide-react'
+import { CheckCircle2, TrendingUp, ShieldCheck } from 'lucide-react'
 
 import type { DriftItem, QualitySignals as QS } from '@/features/executions/types'
 
@@ -90,12 +90,8 @@ export function QualitySignals({ signals }: QualitySignalsProps) {
           hint="Tu dataset cambió respecto al último entrenamiento de este proyecto."
         />
       )}
-
-      {hasDrift && !driftSplit?.drifted && !driftRetraining?.drifted && (
-        <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-          <AlertTriangle className="size-3 shrink-0 text-success-strong" /> Distribuciones de datos estables.
-        </p>
-      )}
+      {/* El estado (estable/moderada/significativa) lo indica CADA fila por su color y
+          etiqueta. Se eliminó el pie "estable" global que contradecía una fila moderada. */}
     </div>
   )
 }

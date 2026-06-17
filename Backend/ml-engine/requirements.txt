@@ -1,37 +1,8 @@
-# ── API ───────────────────────────────────────────────────
-fastapi
-uvicorn[standard]
-pydantic-settings
-
-# ── Kafka ─────────────────────────────────────────────────
-confluent-kafka
-
-# ── ML Frameworks (CPU) ───────────────────────────────────
-# IMPORTANTE: `tensorflow-cpu` (NO `tensorflow`): el paquete `tensorflow`
-# arrastra ~6-8 GB de librerías CUDA aunque no haya GPU. Para entrenar en GPU
-# usa requirements-gpu.txt (tensorflow[and-cuda]) con docker-compose.gpu.yml.
-tensorflow-cpu
-torch
-torchvision
-grpcio>=1.48.2
-
-# ── MLflow ────────────────────────────────────────────────
-mlflow
-protobuf>=4.25,<6
-
-# ── Evidently AI ──────────────────────────────────────────
-evidently
-
-# ── Data / Preprocesamiento ───────────────────────────────
-numpy
-pandas
-scikit-learn
-Pillow
-
-# ── Observabilidad ────────────────────────────────────────
-prometheus-client
-
-# ── Testing ───────────────────────────────────────────────
-pytest
-
---extra-index-url https://download.pytorch.org/whl/cpu
+# Lista COMPLETA CPU para desarrollo local:  pip install -r requirements.txt
+#
+# Se compone de dos archivos para que el Dockerfile pueda instalar por CAPAS separadas
+# (frameworks pesados + deps de app ligeras) y cachear mejor. No edites pins aquí:
+#   - frameworks (TF/Torch CPU) → requirements-frameworks.txt
+#   - deps de app compartidas    → requirements-core.txt
+-r requirements-frameworks.txt
+-r requirements-core.txt

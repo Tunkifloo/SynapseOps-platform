@@ -114,9 +114,10 @@ def balance_dataset(
         log.warning("Balanceo: resultado %d > tope %d → submuestreo a %d.",
                     len(X_parts) and sum(len(p) for p in y_parts), max_images, max_images)
 
-    # Mezcla final determinista.
+    # Mezcla final determinista. Preserva el dtype de entrada (uint8 → ahorro de RAM;
+    # el cast a float [0,1] lo hace la strategy por lote).
     perm = rng.permutation(len(X_bal))
-    X_bal, y_bal = X_bal[perm].astype(np.float32), y_bal[perm]
+    X_bal, y_bal = X_bal[perm], y_bal[perm]
 
     after_counts = np.bincount(y_bal, minlength=len(class_names))
     report = {
@@ -128,11 +129,12 @@ def balance_dataset(
 
 
 def _generate(imgs: np.ndarray, k: int, cfg: dict, rng: np.random.Generator) -> np.ndarray:
-    """Genera `k` variantes augmentadas tomando imágenes fuente al azar de la clase."""
+    """Genera `k` variantes augmentadas tomando imágenes fuente al azar de la clase.
+    Preserva el dtype de origen (augment_image conserva uint8/float)."""
     if k <= 0:
-        return np.empty((0, *imgs.shape[1:]), dtype=np.float32)
+        return np.empty((0, *imgs.shape[1:]), dtype=imgs.dtype)
     src = rng.integers(0, len(imgs), size=k)
-    return np.stack([aug.augment_image(imgs[s], cfg, rng) for s in src]).astype(np.float32)
+    return np.stack([aug.augment_image(imgs[s], cfg, rng) for s in src])
 
 
 def _dist(counts: np.ndarray, class_names: list) -> Dict[str, int]:

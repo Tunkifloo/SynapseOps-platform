@@ -1,0 +1,17 @@
+# Frameworks ML — variante GPU/CUDA (capa Docker "pesada/estable"). Úsala con:
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml build ml-engine
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+# Requiere: driver NVIDIA + NVIDIA Container Toolkit en el host.
+
+# TensorFlow con librerías CUDA empaquetadas (cuDNN/cuBLAS, etc.)
+tensorflow[and-cuda]
+# PyTorch + torchvision CUDA 12.1. Se FIJA el sufijo +cu121: ese "local version" solo
+# existe en el índice de PyTorch → fuerza la build CUDA. Con `torch` a secas, pip suele
+# instalar la build CPU de PyPI (más nueva) → la GPU no se usa. (Validar en el build; si
+# el par no estuviera disponible, ajustar a una versión cu121 publicada.)
+torch==2.3.1+cu121
+torchvision==0.18.1+cu121
+grpcio>=1.48.2
+
+# Ruedas CUDA 12.1 de PyTorch (RTX serie 20/30/40 → cu121 OK)
+--extra-index-url https://download.pytorch.org/whl/cu121

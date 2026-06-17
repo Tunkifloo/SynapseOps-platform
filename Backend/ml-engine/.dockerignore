@@ -15,8 +15,15 @@ __pycache__/
 .ruff_cache/
 .ipynb_checkpoints/
 
-# Datos / artefactos locales (se montan como volúmenes, no van en la imagen)
+# Datos / artefactos locales (se montan como volúmenes, no van en la imagen).
+# Estos además se generan/cambian en cada ejecución local → si entran al contexto,
+# invalidan la capa `COPY . .` en cada build y engordan la imagen.
 storage/
+storage-dev/
+mlruns/
+mlartifacts/
+downloads/
+extracted/
 .cache/
 *.keras
 *.pt

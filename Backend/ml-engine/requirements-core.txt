@@ -1,0 +1,32 @@
+# Dependencias COMPARTIDAS CPU/GPU del ml-engine.
+#
+# En el Dockerfile esto es la capa "ligera/volátil": cambiar una de estas deps NO
+# reinstala TensorFlow/PyTorch (que viven en requirements-frameworks*.txt, capa
+# pesada y estable). Así dejas de re-descargar los frameworks en cada build.
+
+# ── API ───────────────────────────────────────────────────
+fastapi
+uvicorn[standard]
+pydantic-settings
+
+# ── Kafka ─────────────────────────────────────────────────
+confluent-kafka
+
+# ── MLflow ────────────────────────────────────────────────
+mlflow
+protobuf>=4.25,<6
+
+# ── Evidently AI ──────────────────────────────────────────
+evidently
+
+# ── Data / Preprocesamiento ───────────────────────────────
+numpy
+pandas
+scikit-learn
+Pillow
+
+# ── Observabilidad ────────────────────────────────────────
+prometheus-client
+
+# ── Testing ───────────────────────────────────────────────
+pytest

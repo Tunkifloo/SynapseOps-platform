@@ -20,7 +20,7 @@ from app.infra.mlflow_client import MLflowFacade
 from app.kafka.producer import LogProducer
 from app.pipeline import drift
 from app.pipeline.training import augmentation, balancing
-from app.pipeline.training.ingestion import load_dataset
+from app.pipeline.training.ingestion import load_dataset, MAX_IMAGES
 from app.pipeline.training.base import HyperParams, TrainingResult
 from app.pipeline.training.metrics import (
     compute_classification_metrics, confusion_matrix_payload,
@@ -161,6 +161,10 @@ class PipelineExecutor:
     """
 
     SUPPORTED_ARCHS = ("cnn", "efficientnet", "mobilenet", "resnet")
+    # Rango de resolución para backbones preentrenados (aceptan tamaño variable):
+    # piso donde aún extraen features útiles y techo = resolución de los pesos ImageNet.
+    MIN_PRETRAINED_SIZE = 96
+    MAX_PRETRAINED_SIZE = 224
 
     def __init__(self) -> None:
         self._mlflow = MLflowFacade()
@@ -221,6 +225,49 @@ class PipelineExecutor:
                        f"Memoria disponible ~{avail:.1f} GB: si el dataset supera ~{capped} "
                        f"imágenes a {size}px, se submuestrea para evitar fallos por memoria.")
         return capped
+
+    # Reserva fija estimada (GB) para el framework (import TF/torch + grafo + transientes).
+    _FRAMEWORK_RESERVE_GB = 2.0
+
+    def _emit_training_plan(self, job: PipelineJob, n_train: int, n_val: int,
+                            n_test: int, size: int, pretrained: bool) -> None:
+        """Antes de entrenar: informa la huella de memoria esperada y ADVIERTE (sin bloquear)
+        si la configuración es pesada (riesgo de OOM) o larga (tardará mucho, sobre todo en
+        CPU). Complementa el cap funcional de ingesta (_safe_max_images) y los avisos en vivo
+        (_warn_memory). Objetivo: que el usuario ajuste antes de un fallo, no después."""
+        total = n_train + n_val + n_test
+        per_img_gb = (size * size * 3) / 1e9                 # uint8 residente por imagen
+        dataset_gb = total * per_img_gb
+        self._emit(job.execution_id,
+                   f"Plan: {total} imágenes a {size}px ≈ {dataset_gb:.1f} GB en memoria (uint8) · "
+                   f"{job.framework} · {job.architecture}.")
+
+        status = self._memory_status()
+        if status:
+            _used, limit = status
+            # Pico aproximado: dataset uint8 + (TF mantiene la validación en float) + reserva.
+            val_float = (n_val * per_img_gb * 4) if job.framework != "pytorch" else 0.0
+            peak = dataset_gb + val_float + self._FRAMEWORK_RESERVE_GB
+            if peak >= limit * 0.85:
+                self._emit(job.execution_id,
+                           f"⚠ Configuración PESADA: pico de memoria estimado ≈ {peak:.1f} GB de "
+                           f"{limit:.1f} GB → ALTO riesgo de fallo (OOM). Reduce el tamaño de "
+                           f"imagen, el dataset o el batch size para asegurar que termine.", "WARN")
+            elif peak >= limit * 0.70:
+                self._emit(job.execution_id,
+                           f"Aviso: pico de memoria estimado ≈ {peak:.1f} GB de {limit:.1f} GB; "
+                           f"debería caber, pero con margen ajustado.", "WARN")
+
+        # Advertencia de DURACIÓN para configs largas (backbones, imágenes grandes, datasets
+        # grandes). En CPU pueden tardar mucho; con GPU es mucho más rápido.
+        epochs = (job.feature_extraction_epochs + job.finetuning_epochs) if pretrained else job.epochs
+        steps = max(1, (n_train + job.batch_size - 1) // job.batch_size) * max(1, epochs)
+        heavy = pretrained or size >= 160 or n_train >= 15_000
+        if heavy and steps >= 8_000:
+            self._emit(job.execution_id,
+                       f"Aviso: entrenamiento largo (~{steps} pasos · {epochs} epochs). En CPU "
+                       f"puede tardar bastante; con GPU es mucho más rápido. Para solo validar el "
+                       f"flujo, baja epochs o el tamaño del dataset.")
 
     def _emit_device(self, job: PipelineJob) -> None:
         """Informa al usuario si el entrenamiento usará GPU o CPU (visibilidad del acelerador)."""
@@ -311,22 +358,38 @@ class PipelineExecutor:
                 f"Disponibles: {', '.join(self.SUPPORTED_ARCHS)}.")
         pretrained = arch != "cnn"
 
-        # Transfer Learning: los backbones ImageNet exigen ≥224px → se fuerza el tamaño
-        # (correctitud, no es una restricción). NO se reduce el batch ni se capa el dataset
-        # (los equipos tienen ≥16 GB); en su lugar se ADVIERTE si la config es pesada y
-        # podría causar lentitud u OOM. El guardrail estándar de ingestion sigue vigente.
+        # Transfer Learning: los backbones (conv + GlobalAveragePooling) aceptan resolución
+        # VARIABLE con los pesos ImageNet. Se permite un rango [96, 224] como "punto
+        # equilibrado" de memoria/calidad: 224 = máxima calidad (default si no se elige);
+        # 160 ≈ mitad de memoria con buena calidad; 96 = piso (debajo el mapa de features
+        # colapsa). NO se reduce batch ni dataset (equipos ≥16 GB); se ADVIERTE si es pesado.
         max_images = None
         if pretrained:
-            if not job.image_size or job.image_size < 224:
-                job.image_size = 224
+            requested = job.image_size or self.MAX_PRETRAINED_SIZE
+            if requested < self.MIN_PRETRAINED_SIZE:
+                # Tamaño muy bajo para un backbone (p. ej. el default 64 del nodo, pensado para
+                # CNN) → máxima calidad (224). Solo [96,224] se trata como elección deliberada.
+                size = self.MAX_PRETRAINED_SIZE
                 self._emit(job.execution_id,
-                           "Preprocesamiento: tamaño ajustado a 224×224 "
-                           "(mínimo requerido por el backbone preentrenado).")
+                           f"Preprocesamiento: {requested}px es muy bajo para un backbone → se usa "
+                           f"{size}×{size}px (máxima calidad). Para ahorrar memoria elige entre "
+                           f"{self.MIN_PRETRAINED_SIZE} y {self.MAX_PRETRAINED_SIZE}px en el nodo "
+                           f"de Preprocesamiento (p. ej. 160px ≈ mitad de memoria).")
+            elif requested > self.MAX_PRETRAINED_SIZE:
+                size = self.MAX_PRETRAINED_SIZE
+                self._emit(job.execution_id,
+                           f"Preprocesamiento: {requested}px ajustado a {size}px "
+                           f"(resolución de los pesos ImageNet).")
+            else:
+                size = requested
+                self._emit(job.execution_id,
+                           f"Preprocesamiento: backbone a {size}×{size}px.")
+            job.image_size = size
             if job.batch_size > 64:
                 self._emit(job.execution_id,
-                           f"Aviso: batch grande ({job.batch_size}) con imágenes de 224px "
-                           f"consume bastante memoria; si el entrenamiento falla por memoria "
-                           f"(OOM) o va lento, reduce el batch size.", "WARN")
+                           f"Aviso: batch grande ({job.batch_size}) a {size}px consume bastante "
+                           f"memoria; si el entrenamiento falla por memoria (OOM) o va lento, "
+                           f"reduce el batch size.", "WARN")
 
         # Pre-limpieza: borra disco transitorio (extracted/, downloads/) que un crash
         # duro anterior pudo dejar sin limpiar, antes de extraer este dataset.
@@ -371,9 +434,13 @@ class PipelineExecutor:
         # original queda intacto para el cálculo de drift y la referencia del proyecto.
         balance_report = None
         if job.class_balancing != "off":
+            # El oversampling genera imágenes sintéticas → puede CRECER el train. Se acota
+            # al MISMO cap de memoria que la ingesta (no a MAX_IMAGES) para no desbordar la
+            # RAM tras balancear. `max_images` puede ser None (sin lectura de memoria) → cap por defecto.
             X_train, y_train, balance_report = balancing.balance_dataset(
                 X_train, y_train, job.class_balancing, job.balance_threshold,
-                bundle.class_names, augmentation_cfg=aug_cfg)
+                bundle.class_names, augmentation_cfg=aug_cfg,
+                max_images=max_images or MAX_IMAGES)
             self._emit_balancing(job, balance_report)
 
         # ── Nodo Split: train / validación / test ─────────────────────────────
@@ -381,6 +448,9 @@ class PipelineExecutor:
         self._emit(job.execution_id,
                    f"Split: train={len(X_train)} · validación={len(X_val)} · test={test_n}")
 
+        # Estimación de huella + advertencias ANTES de entrenar (config pesada/larga).
+        self._emit_training_plan(job, len(X_train), len(X_val), test_n,
+                                 input_shape[0], pretrained)
         # Umbral de memoria real del contenedor/VM tras materializar el dataset (el punto
         # de mayor consumo antes de entrenar). No restringe; avisa con thresholds claros.
         self._warn_memory(job, "carga del dataset")
