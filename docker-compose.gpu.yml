@@ -22,7 +22,8 @@ services:
     image: ghcr.io/tunkifloo/ml-engine:gpu
     build:
       args:
-        REQUIREMENTS: requirements-gpu.txt
+        # Solo la capa de frameworks cambia entre CPU/GPU (las deps de app son comunes).
+        FRAMEWORKS: requirements-frameworks-gpu.txt
         # Hornea los pesos ImageNet en la imagen GPU → Transfer Learning funciona
         # OFFLINE en los labs (docker save/load incluye los pesos). Ver Dockerfile.
         PRECACHE_WEIGHTS: "true"

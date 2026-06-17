@@ -68,30 +68,50 @@ class TensorFlowStrategy(TrainingStrategy):
                     hyperparams.epochs, None, on_epoch)
             else:
                 # Transfer Learning en 2 fases: Feature Extraction → Fine-Tuning.
-                model, base = self._build_pretrained(arch, hyperparams)
-                total = hyperparams.feature_extraction_epochs + hyperparams.finetuning_epochs
+                model, base, extractor, head_model = self._build_pretrained(arch, hyperparams)
+                fe_ep = hyperparams.feature_extraction_epochs
+                ft_ep = hyperparams.finetuning_epochs
+                total = fe_ep + ft_ep
                 log.info("TL %s — FE %d ep (lr=%.0e) → FT %d ep (lr=%.0e, descongela %d capas)",
-                         arch, hyperparams.feature_extraction_epochs, hyperparams.feature_extraction_lr,
-                         hyperparams.finetuning_epochs, hyperparams.finetuning_lr,
-                         hyperparams.unfreeze_layers)
+                         arch, fe_ep, hyperparams.feature_extraction_lr,
+                         ft_ep, hyperparams.finetuning_lr, hyperparams.unfreeze_layers)
                 if on_phase is not None:
-                    on_phase({"phase": "FE", "epochs": hyperparams.feature_extraction_epochs,
+                    on_phase({"phase": "FE", "epochs": fe_ep,
                               "lr": hyperparams.feature_extraction_lr})
-                h1 = self._fit_phase(
-                    model, train_ds, Xv_f, y_val, hyperparams,
-                    hyperparams.feature_extraction_lr, hyperparams.feature_extraction_epochs,
-                    0, total, "FE", on_epoch)
+                # ── FE: caché de embeddings (solo sin augmentation) ──────────────
+                # Backbone congelado → los embeddings son deterministas: se calculan UNA vez
+                # (no por época) y se entrena solo la cabeza → mucho menos cómputo/memoria.
+                # Con augmentation las imágenes cambian por época → no se pueden cachear.
+                if fe_ep <= 0:
+                    h1 = {}
+                elif not aug_cfg:
+                    emb_train = extractor.predict(
+                        self._predict_ds(X_train, hyperparams.batch_size, scale), verbose=0)
+                    emb_val = extractor.predict(Xv_f, verbose=0)
+                    emb_ds = (tf.data.Dataset.from_tensor_slices((emb_train, y_train))
+                              .shuffle(min(len(emb_train), 10_000))
+                              .batch(hyperparams.batch_size).prefetch(tf.data.AUTOTUNE))
+                    log.info("FE con caché de embeddings (dim=%d; backbone no se re-ejecuta).",
+                             emb_train.shape[-1])
+                    h1 = self._fit_phase(head_model, emb_ds, emb_val, y_val, hyperparams,
+                                         hyperparams.feature_extraction_lr, fe_ep, 0, total,
+                                         "FE", on_epoch)
+                    del emb_train, emb_val, emb_ds
+                else:
+                    h1 = self._fit_phase(model, train_ds, Xv_f, y_val, hyperparams,
+                                         hyperparams.feature_extraction_lr, fe_ep, 0, total,
+                                         "FE", on_epoch)
+                # ── FT: imágenes crudas (los gradientes fluyen por el backbone) ──
                 h2 = {}
-                if hyperparams.finetuning_epochs > 0:
+                if ft_ep > 0:
                     self._unfreeze_tf(base, hyperparams.unfreeze_layers)
                     if on_phase is not None:
-                        on_phase({"phase": "FT", "epochs": hyperparams.finetuning_epochs,
+                        on_phase({"phase": "FT", "epochs": ft_ep,
                                   "lr": hyperparams.finetuning_lr,
                                   "unfreeze": hyperparams.unfreeze_layers})
-                    h2 = self._fit_phase(
-                        model, train_ds, Xv_f, y_val, hyperparams,
-                        hyperparams.finetuning_lr, hyperparams.finetuning_epochs,
-                        hyperparams.feature_extraction_epochs, total, "FT", on_epoch)
+                    h2 = self._fit_phase(model, train_ds, Xv_f, y_val, hyperparams,
+                                         hyperparams.finetuning_lr, ft_ep, fe_ep, total,
+                                         "FT", on_epoch)
                 hist = {k: list(h1.get(k, [])) + list(h2.get(k, []))
                         for k in set(h1) | set(h2)}
 
@@ -247,10 +267,16 @@ class TensorFlowStrategy(TrainingStrategy):
         return _Dual(patience)
 
     def _build_pretrained(self, arch: str, hp: HyperParams):
-        """Backbone ImageNet (include_top=False) + cabeza nueva. Devuelve (model, base).
-        El backbone arranca congelado (feature extraction). Entrada en [0,1]; cada
-        familia recibe el reescalado serializable que espera (capas Rescaling nativas
-        → el .keras carga sin código custom en el model-service)."""
+        """Backbone ImageNet (include_top=False) + cabeza nueva.
+        Devuelve (full, base, extractor, head_model):
+          - full      : modelo completo imágenes → softmax (para Fine-Tuning).
+          - base      : el backbone (para descongelar en FT).
+          - extractor : imágenes → embedding (backbone congelado + GAP), para cachear FE.
+          - head_model: embedding → softmax, REUSANDO las mismas capas Dense/Dropout que
+                        `full` (pesos compartidos por referencia → entrenar la cabeza sobre
+                        embeddings actualiza `full`, así el FT continúa desde ahí).
+        El backbone arranca congelado. Cada familia recibe el reescalado serializable que
+        espera (capas Rescaling nativas → el .keras carga sin código custom)."""
         import tensorflow as tf
         name = arch.lower()
         reg = tf.keras.regularizers.l2(hp.l2) if hp.l2 and hp.l2 > 0 else None
@@ -270,13 +296,23 @@ class TensorFlowStrategy(TrainingStrategy):
         else:
             raise ValueError(f"Backbone no soportado: {arch}")
         base.trainable = False
-        y = tf.keras.layers.GlobalAveragePooling2D()(base.output)
-        y = tf.keras.layers.Dense(256, activation="relu", kernel_regularizer=reg)(y)
-        y = tf.keras.layers.Dropout(hp.dropout)(y)
-        out = tf.keras.layers.Dense(hp.num_classes, activation="softmax")(y)
-        model = tf.keras.Model(inp, out)
-        log.info("Backbone %s instanciado (params=%d).", name, model.count_params())
-        return model, base
+        # Capas de la cabeza como OBJETOS reutilizables (pesos compartidos entre full y head).
+        gap = tf.keras.layers.GlobalAveragePooling2D()
+        d1 = tf.keras.layers.Dense(256, activation="relu", kernel_regularizer=reg)
+        drop = tf.keras.layers.Dropout(hp.dropout)
+        d2 = tf.keras.layers.Dense(hp.num_classes, activation="softmax")
+
+        pooled = gap(base.output)                       # (None, D) — embedding
+        out = d2(drop(d1(pooled)))
+        full = tf.keras.Model(inp, out)
+        extractor = tf.keras.Model(inp, pooled)         # comparte backbone+GAP con full
+
+        emb_in = tf.keras.layers.Input(shape=(pooled.shape[-1],))
+        head_model = tf.keras.Model(emb_in, d2(drop(d1(emb_in))))   # reusa d1/drop/d2
+
+        log.info("Backbone %s instanciado (params=%d, embedding=%d).",
+                 name, full.count_params(), int(pooled.shape[-1]))
+        return full, base, extractor, head_model
 
     def _unfreeze_tf(self, base, n: int) -> None:
         """Descongela las últimas `n` capas del backbone (BatchNorm permanece congelado
@@ -381,8 +417,15 @@ class TensorFlowStrategy(TrainingStrategy):
         import tensorflow as tf
         gpus = tf.config.list_physical_devices("GPU")
         if gpus:
+            # memory_growth: TF NO acapara el 100% de la VRAM al iniciar (evita OOM por
+            # preasignación) y crece bajo demanda → aprovecha la GPU sin desperdiciar. Debe
+            # fijarse antes de inicializar el GPU; en jobs en serie el 2º run ya lo tiene
+            # inicializado → lanza RuntimeError, que se ignora (ya quedó configurado).
             for gpu in gpus:
-                tf.config.experimental.set_memory_growth(gpu, True)
+                try:
+                    tf.config.experimental.set_memory_growth(gpu, True)
+                except RuntimeError as e:
+                    log.debug("set_memory_growth ya aplicado / GPU inicializado: %s", e)
             log.info("TF GPU: %s", [g.name for g in gpus])
             return "/GPU:0"
         log.info("TF usando CPU")

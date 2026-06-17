@@ -95,8 +95,10 @@ def augment_image(img: np.ndarray, cfg: Dict[str, dict], rng: np.random.Generato
     """
     if not cfg:
         return img
-    arr = np.clip(img, 0.0, 1.0)
-    pil = Image.fromarray((arr * 255.0).astype(np.uint8))
+    # Preserva el dtype de entrada: uint8 (0-255, dataset en RAM) → uint8; float [0,1] → float.
+    was_uint8 = img.dtype == np.uint8
+    arr8 = img if was_uint8 else (np.clip(img, 0.0, 1.0) * 255.0).astype(np.uint8)
+    pil = Image.fromarray(arr8)
 
     if "flipH" in cfg and rng.random() < cfg["flipH"]["prob"]:
         pil = pil.transpose(Image.FLIP_LEFT_RIGHT)
@@ -135,8 +137,10 @@ def augment_image(img: np.ndarray, cfg: Dict[str, dict], rng: np.random.Generato
             else float(rng.uniform(cfg["sharpness"]["intensity"], 1.0))
         pil = ImageEnhance.Sharpness(pil).enhance(f)
 
-    out = np.asarray(pil, dtype=np.float32) / 255.0
+    out8 = np.asarray(pil, dtype=np.uint8)
     if "gaussianNoise" in cfg:
-        std = cfg["gaussianNoise"]["std"]
-        out = out + rng.normal(0.0, std, size=out.shape).astype(np.float32)
-    return np.clip(out, 0.0, 1.0).astype(np.float32)
+        std = cfg["gaussianNoise"]["std"]   # σ en escala [0,1]
+        noisy = np.clip(out8.astype(np.float32) / 255.0
+                        + rng.normal(0.0, std, size=out8.shape).astype(np.float32), 0.0, 1.0)
+        return (noisy * 255.0).astype(np.uint8) if was_uint8 else noisy.astype(np.float32)
+    return out8 if was_uint8 else (out8.astype(np.float32) / 255.0)

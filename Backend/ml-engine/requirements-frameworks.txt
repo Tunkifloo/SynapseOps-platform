@@ -1,0 +1,11 @@
+# Frameworks ML — variante CPU (capa Docker "pesada/estable": varios GB, rara vez cambia).
+#
+# IMPORTANTE: `tensorflow-cpu` (NO `tensorflow`): el paquete `tensorflow` arrastra
+# ~6-8 GB de librerías CUDA aunque no haya GPU. Para entrenar en GPU usa
+# requirements-frameworks-gpu.txt (vía docker-compose.gpu.yml).
+tensorflow-cpu
+torch
+torchvision
+grpcio>=1.48.2
+
+--extra-index-url https://download.pytorch.org/whl/cpu

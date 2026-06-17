@@ -34,25 +34,41 @@ _DRIFT_SHARE_THRESHOLD = 0.30
 _MAX_SAMPLE = 4000   # filas máximas a usar/persistir (coste acotado)
 
 
-def extract_features(X: np.ndarray) -> np.ndarray:
-    """(N, H, W, C) en [0,1] → (N, 8) features compactas e interpretables."""
+_FEAT_CHUNK = 2048   # imágenes por bloque al extraer features (acota el pico de RAM)
+
+
+def extract_features(X: np.ndarray, chunk: int = _FEAT_CHUNK) -> np.ndarray:
+    """(N, H, W, C) uint8 o [0,1] → (N, 8) features compactas e interpretables.
+
+    Se procesa POR BLOQUES: convertir todo el dataset a float32 de golpe disparaba la
+    RAM (a 224px con decenas de miles de imágenes eran decenas de GB → OOM). El cast a
+    float se hace sobre `chunk` imágenes a la vez → pico acotado (~chunk·H·W·3·4 bytes),
+    independientemente del tamaño del dataset. El resultado (N×8) es minúsculo.
+    """
     if X is None or X.size == 0:
         return np.empty((0, len(FEATURE_NAMES)), dtype=np.float32)
-    arr = np.asarray(X, dtype=np.float32)
-    if arr.ndim == 3:                      # (N, H, W) → añade canal
-        arr = arr[..., np.newaxis]
-    n, _, _, c = arr.shape
-    # Media/σ por canal (sobre H, W). Para grises (C=1) se replica a 3 canales.
-    mean_c = arr.mean(axis=(1, 2))         # (N, C)
-    std_c = arr.std(axis=(1, 2))           # (N, C)
-    if c == 1:
-        mean_c = np.repeat(mean_c, 3, axis=1)
-        std_c = np.repeat(std_c, 3, axis=1)
-    else:
-        mean_c, std_c = mean_c[:, :3], std_c[:, :3]
-    brightness = arr.mean(axis=(1, 2, 3)).reshape(n, 1)
-    contrast = arr.std(axis=(1, 2, 3)).reshape(n, 1)
-    return np.concatenate([mean_c, std_c, brightness, contrast], axis=1).astype(np.float32)
+    Xv = X if X.ndim == 4 else X[..., np.newaxis]   # (N,H,W)→(N,H,W,1); vista, sin copia
+    n = len(Xv)
+    is_uint8 = X.dtype == np.uint8
+    out = np.empty((n, len(FEATURE_NAMES)), dtype=np.float32)
+    for i in range(0, n, max(1, chunk)):
+        sl = Xv[i:i + chunk]
+        arr = sl.astype(np.float32)
+        # Normaliza a [0,1] si llega en uint8 (0-255) → los umbrales PSI siguen válidos.
+        if is_uint8 or (arr.size and arr.max() > 1.5):
+            arr = arr / 255.0
+        c = arr.shape[-1]
+        mean_c = arr.mean(axis=(1, 2))        # (chunk, C)
+        std_c = arr.std(axis=(1, 2))
+        if c == 1:                            # grises: se replica a 3 canales
+            mean_c = np.repeat(mean_c, 3, axis=1)
+            std_c = np.repeat(std_c, 3, axis=1)
+        else:
+            mean_c, std_c = mean_c[:, :3], std_c[:, :3]
+        brightness = arr.mean(axis=(1, 2, 3)).reshape(len(sl), 1)
+        contrast = arr.std(axis=(1, 2, 3)).reshape(len(sl), 1)
+        out[i:i + len(sl)] = np.concatenate([mean_c, std_c, brightness, contrast], axis=1)
+    return out
 
 
 def _psi(ref: np.ndarray, cur: np.ndarray, bins: int = 10) -> float:
