@@ -20,7 +20,11 @@ protobuf>=4.25,<6
 evidently
 
 # ── Data / Preprocesamiento ───────────────────────────────
-numpy
+# numpy<2 es OBLIGATORIO: TensorFlow y torch==2.3.1+cu121 están compilados para numpy
+# 1.x. Con numpy 2.x, TF rompe al importar ("Unable to convert function return value to
+# a Python type! () -> handle" en TF_bfloat16_type). Fijarlo además hace el build
+# reproducible y fuerza a pip a elegir versiones de pandas/sklearn/evidently compatibles.
+numpy>=1.26,<2
 pandas
 scikit-learn
 Pillow

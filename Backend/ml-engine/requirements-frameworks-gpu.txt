@@ -3,14 +3,25 @@
 #   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
 # Requiere: driver NVIDIA + NVIDIA Container Toolkit en el host.
 
-# TensorFlow con librerías CUDA empaquetadas (cuDNN/cuBLAS, etc.)
-tensorflow[and-cuda]
-# PyTorch + torchvision CUDA 12.1. Se FIJA el sufijo +cu121: ese "local version" solo
-# existe en el índice de PyTorch → fuerza la build CUDA. Con `torch` a secas, pip suele
-# instalar la build CPU de PyPI (más nueva) → la GPU no se usa. (Validar en el build; si
-# el par no estuviera disponible, ajustar a una versión cu121 publicada.)
+# TensorFlow SIN el extra `[and-cuda]` (a propósito). El extra fija sus PROPIAS ruedas
+# CUDA (p. ej. nvidia-cublas-cu12==12.2.5.6) que CHOCAN con las que fija torch cu121
+# (nvidia-cublas-cu12==12.1.3.1) → ResolutionImpossible. Ninguna versión de TF[and-cuda]
+# usa CUDA 12.1, así que NUNCA convive con torch cu121 vía pip. Solución: TF plano (sin
+# pines nvidia) y TF reusa en runtime las librerías CUDA que ya instala torch, vía
+# LD_LIBRARY_PATH (ver docker-compose.gpu.yml). Si no las encuentra, TF cae a CPU (seguro).
+# Versión FIJA 2.15.1: numpy 1.x (obligatorio), Keras 2, cuDNN 8.9 (= el de torch cu121).
+tensorflow==2.15.1
+# PyTorch + torchvision CUDA 12.1. El sufijo +cu121 fuerza la build CUDA (trae sus ruedas
+# nvidia-*-cu12 12.1 / cuDNN 8.9.2.26, que TF también aprovecha). Con `torch` a secas, pip
+# instalaría la build CPU de PyPI → la GPU no se usa.
 torch==2.3.1+cu121
 torchvision==0.18.1+cu121
+# Compilador de dispositivo CUDA (ptxas + nvvm/libdevice.10.bc) que TF necesita para
+# generar el kernel de algunos ops en GPU (p. ej. la capa Normalization de EfficientNet).
+# torch NO lo trae (solo runtime) → sin esto TF falla: "libdevice not found / JIT
+# compilation failed". Versión 12.1 = la de torch cu121, así NO choca con sus ruedas
+# nvidia-*. Se localiza vía XLA_FLAGS=--xla_gpu_cuda_data_dir (ver docker-compose.gpu.yml).
+nvidia-cuda-nvcc-cu12==12.1.105
 grpcio>=1.48.2
 
 # Ruedas CUDA 12.1 de PyTorch (RTX serie 20/30/40 → cu121 OK)

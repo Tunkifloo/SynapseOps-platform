@@ -31,6 +31,17 @@ services:
       # Asegura que CUDA sea visible dentro del contenedor.
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,utility
+      # TensorFlow se instala SIN el extra [and-cuda] (chocaba con las ruedas CUDA de
+      # torch cu121). Aquí se le indica dónde están las librerías CUDA que SÍ trae torch
+      # (cuDNN 8.9.2.26, cuBLAS/cuFFT/… 12.1) para que TF también use la GPU. Si alguna no
+      # cargara, TF cae a CPU automáticamente (fallback seguro). Las rutas son las de las
+      # ruedas nvidia-*-cu12 de torch en site-packages.
+      LD_LIBRARY_PATH: /usr/local/lib/python3.11/site-packages/nvidia/cuda_runtime/lib:/usr/local/lib/python3.11/site-packages/nvidia/cuda_nvrtc/lib:/usr/local/lib/python3.11/site-packages/nvidia/cuda_cupti/lib:/usr/local/lib/python3.11/site-packages/nvidia/cudnn/lib:/usr/local/lib/python3.11/site-packages/nvidia/cublas/lib:/usr/local/lib/python3.11/site-packages/nvidia/cufft/lib:/usr/local/lib/python3.11/site-packages/nvidia/curand/lib:/usr/local/lib/python3.11/site-packages/nvidia/cusolver/lib:/usr/local/lib/python3.11/site-packages/nvidia/cusparse/lib:/usr/local/lib/python3.11/site-packages/nvidia/nccl/lib:/usr/local/lib/python3.11/site-packages/nvidia/nvjitlink/lib
+      # Dónde está el toolkit de compilación CUDA (libdevice + ptxas, del paquete
+      # nvidia-cuda-nvcc-cu12) que TF usa para generar kernels en GPU. XLA busca dentro
+      # libdevice en <dir>/nvvm/libdevice/ y ptxas en <dir>/bin/. Sin esto: "JIT
+      # compilation failed / libdevice not found" en backbones (capa Normalization).
+      XLA_FLAGS: --xla_gpu_cuda_data_dir=/usr/local/lib/python3.11/site-packages/nvidia/cuda_nvcc
     deploy:
       resources:
         reservations:
