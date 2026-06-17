@@ -120,6 +120,33 @@ public class DockerFacade {
         tar.closeArchiveEntry();
     }
 
+    /**
+     * Elimina las imágenes COLGANTES (sin tag, {@code <none>}) que no use ningún contenedor
+     * — equivalente a {@code docker image prune}. Cada model-service pesa ~1.5-2 GB; al
+     * reconstruir la imagen del framework, la anterior queda colgante y se acumula. Se
+     * elimina SIN {@code force} → las que estén en uso se conservan automáticamente.
+     * Best-effort: nunca interrumpe el despliegue.
+     */
+    public void pruneDanglingImages() {
+        try {
+            var dangling = dockerClient.listImagesCmd().withDanglingFilter(true).exec();
+            int removed = 0;
+            for (var img : dangling) {
+                try {
+                    dockerClient.removeImageCmd(img.getId()).exec();   // sin force: salta las en uso
+                    removed++;
+                } catch (Exception ignored) {
+                    // imagen en uso por un contenedor o ya eliminada → se conserva
+                }
+            }
+            if (removed > 0) {
+                log.info("Prune de imágenes colgantes: {} eliminada(s).", removed);
+            }
+        } catch (Exception e) {
+            log.warn("No se pudo hacer prune de imágenes colgantes: {}", e.getMessage());
+        }
+    }
+
     public String runContainer(String imageId, Map<String, String> envVars) {
         log.info("Levantando contenedor desde imagen: {}", imageId);
 
