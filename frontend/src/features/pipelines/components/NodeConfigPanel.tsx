@@ -1,5 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Trash2, X } from 'lucide-react'
+
+import { notify } from '@/shared/notify'
 
 import { Button } from '@/shared/components/ui/button'
 import { Input } from '@/shared/components/ui/input'
@@ -123,6 +125,8 @@ export function NodeConfigPanel({
   const [touched, setTouched] = useState<Set<string>>(new Set())
   const [saveAttempted, setSaveAttempted] = useState(false)
   const errors = useMemo(() => fieldErrors(data.kind, config), [data.kind, config])
+  // Contenedor scrollable: al fallar el guardado se desplaza al primer campo en rojo.
+  const bodyRef = useRef<HTMLDivElement>(null)
 
   // Línea base para detectar cambios sin guardar (solo nombre + configuración;
   // el estado lo gobierna la ejecución y no es editable aquí).
@@ -153,11 +157,22 @@ export function NodeConfigPanel({
 
   const handleSave = () => {
     setSaveAttempted(true)
-    const error = validateConfig(data.kind, config)
+    // Ingesta con dataset YA asignado: el origen no se reconfigura aquí (campos ocultos)
+    // → no se valida; de lo contrario un origen previo vacío bloquearía un guardado válido.
+    const skipValidation = data.kind === 'ingest' && !!ingest?.datasetPath
+    const error = skipValidation ? null : validateConfig(data.kind, config)
     if (error) {
+      // No se guarda: se marca el campo respectivo (rojo), se avisa con un toast
+      // inmediato (no se pierde bajo el scroll) y se desplaza al primer error.
       setValidationError(error)
+      notify.error('Revisa la configuración del nodo', { description: error })
+      requestAnimationFrame(() => {
+        const el = bodyRef.current?.querySelector('[aria-invalid="true"]')
+        el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      })
       return
     }
+    setValidationError(null)
     // El estado/errores no se editan: se preservan tal como los dejó la ejecución.
     onSave(label.trim() || cfg.label, config, data.status ?? 'idle', data.error)
     // Tras guardar, la configuración actual pasa a ser la línea base (no dirty).
@@ -249,7 +264,7 @@ export function NodeConfigPanel({
         </Button>
       </header>
 
-      <div className="flex-1 space-y-4 overflow-y-auto p-4">
+      <div ref={bodyRef} className="flex-1 space-y-4 overflow-y-auto p-4">
         {/* Descripción contextual: qué es y qué ajustar en este nodo. */}
         <p className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
           {KIND_HELP[data.kind]}
@@ -309,6 +324,7 @@ export function NodeConfigPanel({
             config={config}
             onConfigChange={mergeConfig}
             onAuthError={train.onAuthError}
+            error={saveAttempted ? errors.modelName : undefined}
           />
         )}
 

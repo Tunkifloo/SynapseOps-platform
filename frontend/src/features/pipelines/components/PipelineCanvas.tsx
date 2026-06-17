@@ -182,6 +182,10 @@ export function PipelineCanvas({
   } | null>(null)
   const loadedRef = useRef(false)                 // evita marcar dirty durante la carga inicial
   const baselineRef = useRef<string>('')          // snapshot del último estado guardado/cargado
+  // True cuando se reabre el lienzo sobre una ejecución YA TERMINADA: el replay SSE no debe
+  // re-marcar nodos como 'running' (el entrenamiento es no-terminal → nunca reconciliaría a
+  // success y el nodo quedaría "En ejecución" para siempre). Se baja al iniciar un flujo nuevo.
+  const replayFinishedRef = useRef(false)
   const { screenToFlowPosition, setViewport, fitView } = useReactFlow()
 
   // Claves de persistencia local por (workspace, pipeline). Requieren AMBOS ids: con un
@@ -455,6 +459,8 @@ export function PipelineCanvas({
       !!deployNodeAtStart && edges.some((e) => e.target === deployNodeAtStart.id)
 
     setFlowRunning(true)
+    // Flujo NUEVO en vivo → el replay-guard se desactiva (sí queremos animar 'running').
+    replayFinishedRef.current = false
     // Reinicia estados Y limpia la config runtime del flujo ANTERIOR (runId, versión,
     // métricas, endpoint): así, tras re-entrenar v2 no se sigue mostrando la v1 stale.
     setNodes((nds) => nds.map((n) => {
@@ -609,6 +615,11 @@ export function PipelineCanvas({
       setFlowRunning(false)
       return
     }
+    // Replay de una ejecución YA TERMINADA (al reabrir el lienzo): NO re-marcar 'running'.
+    // Los nodos ya están reconciliados (overlay / fetch del estado real); los logs siguen
+    // mostrándose en la consola. Sin esto, los eventos de época re-marcaban el train como
+    // "En ejecución" y, al ser no-terminal, nunca volvía a success (bug del nodo colgado).
+    if (replayFinishedRef.current) return
     // Secuencia real: ingesta → preprocesamiento → split → entrenamiento.
     // Se evalúa del paso MÁS avanzado al más temprano; cada etapa marca 'success'
     // las anteriores y 'running' la suya. El kickoff ("Job publicado … entrenamiento
@@ -840,10 +851,32 @@ export function PipelineCanvas({
           }
         }, 60)
 
-        // Reanuda la consola de la última ejecución (replay del backend).
+        // Reanuda la consola de la última ejecución (replay del backend). ANTES de reabrir
+        // el SSE consulta el estado REAL: si la ejecución ya terminó, activa el guard para
+        // que el replay no re-marque nodos como 'running' (bug del nodo colgado en RUNNING)
+        // y reconcilia los estados/métricas de forma autoritativa.
         if (execKey) {
           const saved = localStorage.getItem(execKey)
-          if (saved) setActiveExecutionId(Number(saved))
+          if (saved && wsId != null && pipelineId != null) {
+            const eid = Number(saved)
+            try {
+              const exec = await getExecution(token, wsId, pipelineId, eid)
+              if (exec.status === 'COMPLETED' || exec.status === 'FAILED') {
+                replayFinishedRef.current = true
+                if (exec.status === 'COMPLETED' && !cancelled) {
+                  setStatusByKind(['ingest', 'preprocess', 'split'], 'success')
+                  setNodes((nds) => nds.map((n) => n.data.kind === 'train'
+                    ? { ...n, data: { ...n.data, status: 'success', error: undefined,
+                        config: { ...n.data.config,
+                          runId: exec.mlflowRunId ?? n.data.config?.runId ?? '',
+                          modelVersion: exec.modelVersion ?? n.data.config?.modelVersion ?? '',
+                          metrics: exec.metrics ?? n.data.config?.metrics ?? '' } } }
+                    : n))
+                }
+              }
+            } catch { /* sin estado disponible → se confía en el overlay restaurado */ }
+            if (!cancelled) setActiveExecutionId(eid)
+          }
         }
         // Permite marcar dirty a partir de aquí (la carga no cuenta como edición).
         window.setTimeout(() => { loadedRef.current = true }, 0)
