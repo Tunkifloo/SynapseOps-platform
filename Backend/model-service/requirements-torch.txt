@@ -1,5 +1,8 @@
 # Inferencia PyTorch (artefactos .pt/.pth, idealmente TorchScript). Rueda CPU (más liviana).
-# Misma versión que el ml-engine (torch 2.3.1) para garantizar que el TorchScript guardado
-# en el entrenamiento cargue sin sorpresas de compatibilidad en torch.jit.load.
+# Versión FIJA en la corregida (≥2.6.0): torch 2.3.1 tenía la advisory crítica
+# GHSA-53q9-r3pm-6pq6 (torch.load weights_only → RCE), resuelta en 2.6.0. El model-service es
+# CPU (sin la restricción cu121 del ml-engine GPU), así que aquí SÍ se puede subir. El
+# TorchScript del ml-engine carga sin problema en una versión más nueva (torch.jit.load es
+# compatible hacia atrás).
 --extra-index-url https://download.pytorch.org/whl/cpu
-torch==2.3.1
+torch==2.6.0
