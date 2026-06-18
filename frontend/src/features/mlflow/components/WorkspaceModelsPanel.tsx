@@ -9,7 +9,7 @@ import {
   transitionWorkspaceModelStage,
 } from '../api'
 import { ModelRegistry, type RegistryApi } from './ModelRegistry'
-import { deployModel } from '@/features/deployments/api'
+import { deployModel, listDeployments } from '@/features/deployments/api'
 
 interface WorkspaceModelsPanelProps {
   token: string
@@ -35,6 +35,13 @@ export function WorkspaceModelsPanel({ token, workspaceId, onAuthError }: Worksp
     },
     allowDeploy: true,
     deploy: (runId) => deployModel(token, runId),
+    // Estado vivo del despliegue por runId: el detalle muestra "Desplegado" si ya hay una
+    // instancia corriendo de esa versión (persistente — se relee del servidor al volver).
+    getDeployment: async (runId) => {
+      const view = await listDeployments(token)
+      const d = view.deployments.find((it) => it.runId === runId && it.running)
+      return d ? { running: true, endpoint: d.endpoint } : null
+    },
   }), [token, workspaceId])
 
   return <ModelRegistry api={api} onAuthError={onAuthError} />

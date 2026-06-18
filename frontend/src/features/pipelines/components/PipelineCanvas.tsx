@@ -13,6 +13,8 @@ import ReactFlow, {
 } from 'reactflow'
 import 'reactflow/dist/style.css'
 
+import { useNavigate } from 'react-router-dom'
+
 import { notify } from '@/shared/notify'
 import { ConfirmDialog } from '@/shared/components/ConfirmDialog'
 import { useAppStore } from '@/store/useAppStore'
@@ -177,6 +179,7 @@ export function PipelineCanvas({
     title: string
     description: string
     confirmLabel: string
+    cancelLabel?: string
     tone: 'destructive' | 'default'
     onConfirm: () => void | Promise<void>
   } | null>(null)
@@ -187,6 +190,7 @@ export function PipelineCanvas({
   // success y el nodo quedaría "En ejecución" para siempre). Se baja al iniciar un flujo nuevo.
   const replayFinishedRef = useRef(false)
   const { screenToFlowPosition, setViewport, fitView } = useReactFlow()
+  const navigate = useNavigate()
 
   // Claves de persistencia local por (workspace, pipeline). Requieren AMBOS ids: con un
   // workspace `undefined` la clave colisionaría entre proyectos distintos.
@@ -426,8 +430,22 @@ export function PipelineCanvas({
         ? { ...n, data: { ...n.data, status: ok ? ('success' as const) : ('error' as const),
             error: ok ? undefined : 'El model-service no pasó el health check.',
             config: { ...n.data.config, endpoint: ok ? (res.endpoint ?? '') : '' } } } : n)))
-      if (ok) notify.success('model-service desplegado', { description: res.endpoint ?? 'Gestiónalo en "Despliegues".' })
-      else notify.error('El despliegue no pasó el health check del model-service')
+      if (ok) {
+        notify.success('model-service desplegado', { description: res.endpoint ?? 'Gestiónalo en "Despliegues".' })
+        // Caso A: el nodo de Despliegue estaba presente y el model-service pasó el health
+        // check (200) → modal de éxito con acceso directo al módulo de Despliegues.
+        setConfirm({
+          title: 'Modelo desplegado',
+          description: 'El model-service pasó el health check y su endpoint /predict ya está '
+            + 'disponible. Puedes probarlo y gestionarlo desde el módulo de Despliegues.',
+          confirmLabel: 'Ir a mis despliegues',
+          cancelLabel: 'Cerrar',
+          tone: 'default',
+          onConfirm: () => navigate('/deployments'),
+        })
+      } else {
+        notify.error('El despliegue no pasó el health check del model-service')
+      }
     } catch (err) {
       setNodes((nds) => nds.map((n) => (n.id === deployNodeId
         ? { ...n, data: { ...n.data, status: 'error' as const,
@@ -438,7 +456,7 @@ export function PipelineCanvas({
     } finally {
       setFlowRunning(false)
     }
-  }, [token, setNodes, onAuthError])
+  }, [token, setNodes, onAuthError, navigate])
 
   const executeFlow = useCallback(() => {
     if (!token || !workspace || !pipelineId) return
@@ -529,14 +547,20 @@ export function PipelineCanvas({
             if (deployNodeAtStart && deployConnectedAtStart && runId) {
               void deployFlowModel(runId, deployNodeAtStart.id)
             } else {
-              // Sin nodo de Despliegue (o sin conectar): el ciclo termina en el
-              // entrenamiento — es válido (el usuario puede querer solo entrenar). Se
-              // retroalimenta cómo desplegar después.
-              notify.success('Modelo entrenado y registrado', {
-                description: 'Para desplegarlo, ve a Mis modelos → detalles → Desplegar.',
-              })
+              // Caso B · Sin nodo de Despliegue (o sin conectar): el ciclo termina en el
+              // entrenamiento — es válido (el usuario puede querer solo entrenar). Modal
+              // que recuerda cómo desplegar después, con acceso directo a Mis modelos.
               setLogCloseSignal((s) => s + 1)
               setFlowRunning(false)
+              setConfirm({
+                title: 'Modelo entrenado y registrado',
+                description: 'El entrenamiento terminó y el modelo quedó versionado en MLflow. '
+                  + 'Recuerda que puedes desplegarlo en Mis modelos → detalles del modelo → Desplegar.',
+                confirmLabel: 'Ir a detalles del modelo',
+                cancelLabel: 'Cerrar',
+                tone: 'default',
+                onConfirm: () => navigate('/models'),
+              })
             }
             return
           }
@@ -561,7 +585,7 @@ export function PipelineCanvas({
       }
       window.setTimeout(() => void poll(), POLL_INTERVAL_MS)
     })()
-  }, [token, workspace, pipelineId, nodes, edges, setNodes, setStatusByKind, setActiveExecution, deployFlowModel])
+  }, [token, workspace, pipelineId, nodes, edges, setNodes, setStatusByKind, setActiveExecution, deployFlowModel, navigate])
 
   // "Iniciar flujo": valida y pide confirmación (acción crítica) antes de ejecutar.
   const runFlow = useCallback(() => {
@@ -1111,6 +1135,7 @@ export function PipelineCanvas({
         title={confirm?.title ?? ''}
         description={confirm?.description ?? ''}
         confirmLabel={confirm?.confirmLabel}
+        cancelLabel={confirm?.cancelLabel}
         tone={confirm?.tone}
         onConfirm={async () => { await confirm?.onConfirm() }}
       />
