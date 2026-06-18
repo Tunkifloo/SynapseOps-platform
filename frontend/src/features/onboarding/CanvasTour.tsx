@@ -136,33 +136,51 @@ export function CanvasTour({ onFinish }: CanvasTourProps) {
     cardStyle = { top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }
   }
 
-  // pointer-events-none en el overlay → NO bloquea la UI real; el usuario puede pulsar
-  // el botón resaltado. Solo la tarjeta recupera los eventos (pointer-events-auto).
+  // Fondo BLUR con HUECO sobre el objetivo. Claves de UX/z-index:
+  //  • Solo blur (tinte sutil del tema), NO un velo blanco.
+  //  • z-[45]: por ENCIMA del contenido/header (resalta el objetivo) pero por DEBAJO de los
+  //    diálogos de la app (z-50). Así, cuando una acción abre un modal (crear espacio/pipeline),
+  //    el modal se ve NÍTIDO por encima del blur en vez de quedar tapado.
+  //  • El hueco deja el componente a interactuar sin blur y clicable (overlay pointer-events-none).
+  const PAD = 6
+  const vw = typeof window !== 'undefined' ? window.innerWidth : 0
+  const vh = typeof window !== 'undefined' ? window.innerHeight : 0
+  const blurCls =
+    'pointer-events-none fixed z-[45] bg-background/30 backdrop-blur-sm transition-all duration-200 ease-out-quart'
+  const hole = rect
+    ? {
+        top: Math.max(0, rect.top - PAD),
+        left: Math.max(0, rect.left - PAD),
+        right: Math.min(vw, rect.right + PAD),
+        bottom: Math.min(vh, rect.bottom + PAD),
+      }
+    : null
+
   return (
-    <div className="pointer-events-none fixed inset-0 z-[100]" aria-live="polite">
-      {/* Spotlight: oscurece todo menos el objetivo (box-shadow gigante). No bloquea clics. */}
-      {rect && (
-        <div
-          className="pointer-events-none fixed rounded-xl ring-2 ring-primary transition-all duration-200 ease-out-quart"
-          style={{
-            top: rect.top - 6,
-            left: rect.left - 6,
-            width: rect.width + 12,
-            height: rect.height + 12,
-            boxShadow: '0 0 0 9999px color-mix(in oklch, var(--foreground) 45%, transparent)',
-          }}
-        />
-      )}
-      {!rect && (
-        <div className="pointer-events-none fixed inset-0 bg-foreground/45" />
+    <div aria-live="polite">
+      {hole ? (
+        <>
+          {/* 4 rectángulos de blur alrededor del objetivo → dejan un hueco nítido y clicable. */}
+          <div className={blurCls} style={{ top: 0, left: 0, width: '100%', height: hole.top }} />
+          <div className={blurCls} style={{ top: hole.bottom, left: 0, width: '100%', height: Math.max(0, vh - hole.bottom) }} />
+          <div className={blurCls} style={{ top: hole.top, left: 0, width: hole.left, height: hole.bottom - hole.top }} />
+          <div className={blurCls} style={{ top: hole.top, left: hole.right, width: Math.max(0, vw - hole.right), height: hole.bottom - hole.top }} />
+          {/* Anillo del objetivo. */}
+          <div
+            className="pointer-events-none fixed z-[46] rounded-xl ring-2 ring-primary transition-all duration-200 ease-out-quart"
+            style={{ top: hole.top, left: hole.left, width: hole.right - hole.left, height: hole.bottom - hole.top }}
+          />
+        </>
+      ) : (
+        <div className={blurCls} style={{ top: 0, left: 0, width: '100%', height: '100%' }} />
       )}
 
-      {/* Tarjeta del paso */}
+      {/* Tarjeta del paso — z-[55]: por ENCIMA de los diálogos para que la guía siga visible. */}
       <div
         role="dialog"
-        aria-modal="true"
+        aria-modal="false"
         aria-labelledby="tour-title"
-        className="pointer-events-auto fixed max-h-[80vh] w-80 overflow-y-auto rounded-2xl border border-border bg-card p-4 shadow-2xl motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95 motion-safe:duration-150"
+        className="pointer-events-auto fixed z-[55] max-h-[80vh] w-80 overflow-y-auto rounded-2xl border border-border bg-card p-4 shadow-2xl motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95 motion-safe:duration-150"
         style={cardStyle}
       >
         <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-primary-strong">
