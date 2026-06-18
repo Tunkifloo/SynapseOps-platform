@@ -121,6 +121,14 @@ jobs:
         uses: actions/dependency-review-action@v4
         with:
           fail-on-severity: high
+          # Excepción documentada: GHSA-53q9-r3pm-6pq6 (torch.load weights_only → RCE).
+          # El model-service ya se actualizó a torch>=2.6.0 (corregido). El ml-engine GPU
+          # queda en torch 2.3.1+cu121 por compatibilidad de su stack CUDA validado (TF 2.15
+          # + nvcc 12.1 + cu121; las versiones corregidas usan cu124 y romperían la
+          # coexistencia TF/PyTorch). El vector NO aplica: el sistema solo carga TorchScript
+          # producido por la propia plataforma vía torch.jit.load — nunca torch.load de
+          # artefactos no confiables subidos por terceros. Revisar al migrar el stack a cu124.
+          allow-ghsas: GHSA-53q9-r3pm-6pq6
 
   # ── JOB 4: Build & Push de imágenes → GHCR (solo main + tags v*) ───────────
   build-and-push:
