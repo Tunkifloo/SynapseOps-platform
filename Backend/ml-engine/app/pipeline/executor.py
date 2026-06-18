@@ -334,7 +334,14 @@ class PipelineExecutor:
     def _free_memory(self) -> None:
         """Libera la memoria del run anterior (grafo TF, caché torch, arrays) para que
         no se acumule entre ejecuciones serializadas. Best-effort; no importa frameworks
-        que no estén ya cargados."""
+        que no estén ya cargados.
+
+        Nota sobre VRAM: TensorFlow NO devuelve al driver la VRAM ya reservada por su
+        allocator (BFC) hasta que el proceso termina — clear_session() libera el grafo pero
+        el pool queda reservado y se REUTILIZA en el siguiente run (no es fuga ni crece sin
+        límite). Para que TF sí devuelva VRAM al driver tras liberar, se usa el allocator
+        asíncrono de CUDA vía env TF_GPU_ALLOCATOR=cuda_malloc_async (docker-compose.gpu.yml).
+        torch sí devuelve su caché con empty_cache()+ipc_collect()."""
         try:
             tf = sys.modules.get("tensorflow")
             if tf is not None:
@@ -345,6 +352,7 @@ class PipelineExecutor:
             torch = sys.modules.get("torch")
             if torch is not None and torch.cuda.is_available():
                 torch.cuda.empty_cache()
+                torch.cuda.ipc_collect()
         except Exception:  # noqa: BLE001
             pass
         gc.collect()

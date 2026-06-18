@@ -12,6 +12,7 @@ Las imágenes se cargan con PIL (no requiere TensorFlow), se redimensionan a un
 tamaño fijo y se normalizan a [0,1]. Guardrails de memoria para el contenedor de 8GB.
 """
 import logging
+import re
 import urllib.error
 import urllib.request
 import zipfile
@@ -37,11 +38,33 @@ MAX_CLASSES = 50                        # tope de clases
 _HOLDOUT_FRACTION = 0.15               # test ciego a reservar cuando no hay split 'test'
 IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".bmp")
 
-_SPLIT_ALIASES = {
-    "train": ("train", "training", "train_data", "trainset"),
-    "val":   ("val", "valid", "validation", "val_data", "valset"),
-    "test":  ("test", "testing", "test_data", "testset"),
+# Palabras clave de cada split. La detección NO es por igualdad exacta: clasifica por el
+# PRIMER token del nombre (separadores _ - / espacio / camelCase), así reconoce variantes
+# como "Train_Set_Folder", "validation set", "test-data", "trainSet" SIN confundir clases
+# reales de un solo token (p. ej. "testtubes", "training_shoes" → se evita pidiendo ≥2 splits).
+_SPLIT_KEYWORDS: Dict[str, Tuple[str, ...]] = {
+    "train": ("train", "training", "trainset", "traindata"),
+    "val":   ("val", "valid", "validation", "valset", "valdata"),
+    "test":  ("test", "testing", "testset", "testdata"),
 }
+
+
+def _classify_split(name: str) -> Optional[str]:
+    """Devuelve 'train'/'val'/'test' si el nombre de carpeta corresponde a un split, o None.
+
+    Tokeniza por separadores y camelCase y mira el PRIMER token: 'Train_Set_Folder' → token
+    'train' → train; 'ValidationSetFolder' → 'validation' → val. Un nombre de UN solo token
+    que no sea exactamente un keyword (p. ej. 'testtubes') NO se clasifica como split."""
+    # camelCase → espacios, luego separadores comunes a tokens en minúscula.
+    spaced = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", name.strip())
+    tokens = [t for t in re.split(r"[\s_\-./]+", spaced.lower()) if t]
+    if not tokens:
+        return None
+    first = tokens[0]
+    for split, kws in _SPLIT_KEYWORDS.items():
+        if first in kws:
+            return split
+    return None
 
 
 @dataclass
@@ -390,10 +413,9 @@ def _normalize_root(root: Path) -> Path:
 
 def _looks_like_dataset(d: Path) -> bool:
     """¿`d` es un split (train/val/test) o tiene clases (subcarpetas con imágenes)?"""
-    split_names = {a for aliases in _SPLIT_ALIASES.values() for a in aliases}
     child_dirs = [c for c in d.iterdir() if c.is_dir()
                   and not c.name.startswith(("__MACOSX", "."))]
-    if any(c.name.lower() in split_names for c in child_dirs):
+    if any(_classify_split(c.name) is not None for c in child_dirs):
         return True
     # Basta una imagen dentro de alguna subcarpeta-clase para considerarlo dataset.
     for c in child_dirs:
@@ -404,11 +426,19 @@ def _looks_like_dataset(d: Path) -> bool:
 
 
 def _resolve_split_dir(root: Path, split: str) -> Optional[Path]:
-    for alias in _SPLIT_ALIASES[split]:
-        for child in root.iterdir():
-            if child.is_dir() and child.name.lower() == alias:
-                return child
+    """Carpeta del split pedido detectada por nombre (tolerante: 'Train_Set_Folder', etc.).
+    Solo cuenta si además CONTIENE subcarpetas (las clases) → evita tomar un archivo o una
+    carpeta-clase suelta llamada como un split."""
+    for child in sorted(root.iterdir()):
+        if not child.is_dir() or child.name.startswith(("__MACOSX", ".")):
+            continue
+        if _classify_split(child.name) == split and _has_subdirs(child):
+            return child
     return None
+
+
+def _has_subdirs(d: Path) -> bool:
+    return any(c.is_dir() and not c.name.startswith(("__MACOSX", ".")) for c in d.iterdir())
 
 
 def _gather_class_files(split_dir: Path) -> Dict[str, List[Path]]:

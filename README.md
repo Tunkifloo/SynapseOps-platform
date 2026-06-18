@@ -35,7 +35,9 @@ El objetivo: que cualquier persona pueda entrenar, versionar, **desplegar** y **
 ## ✨ Características
 
 - 🎨 **Lienzo low-code (drag & drop):** arma el pipeline conectando nodos *Ingesta → Preprocesamiento → Split → Entrenamiento → Despliegue* y ejecútalo con un clic.
-- 🧠 **CNN adaptativa (TensorFlow o PyTorch):** una sola red que se adapta al `input_shape` y al nº de clases del dataset — sin definir capas a mano.
+- 🧠 **CNN adaptativa + Transfer Learning (TensorFlow o PyTorch):** entrena desde cero (CNN que se adapta al `input_shape` y nº de clases) **o** usa backbones preentrenados en ImageNet — **EfficientNetB0, MobileNetV2, ResNet50** — con flujo de **2 fases (Feature Extraction → Fine-Tuning)**.
+- 🧪 **Preprocesamiento avanzado:** catálogo granular de **Data Augmentation (10 técnicas selectivas)**, **balanceo de clases** (oversample/undersample/hybrid), normalización configurable y regularización (**Dropout, L2**).
+- 🔍 **Interpretabilidad (Score-CAM):** galería de mapas de calor que muestra en qué regiones se fija el modelo (acierto/error), como artefacto en MLflow y en el detalle del modelo.
 - 🚀 **Despliegue dinámico de inferencia:** al terminar el flujo, SynapseOps **genera, construye y levanta un `model-service`** (FastAPI) con endpoint `/predict`, puerto dinámico y health-check automático.
 - 📊 **Telemetría de ciclo de vida (Process Tracker):** tiempo de re-entrenamiento, lead time de despliegue, cold start, tasa de éxito y esfuerzo de interacción — por proyecto y por modelo.
 - 🛡️ **Calidad y Data Drift:** detección de overfitting + **deriva de datos** (Evidently AI + PSI) entre splits, entre corridas de re-entrenamiento y en **inferencia**.
@@ -140,28 +142,61 @@ Si el flujo **no** lleva nodo de Despliegue, termina en el entrenamiento (válid
 
 ---
 
-## ML Engine y CNN adaptativa
+## ML Engine: CNN adaptativa + Transfer Learning
 
 El `ml-engine` consume trabajos de Kafka y los ejecuta con **Template Method + Strategy**:
 
 ```
 PipelineExecutor.execute(job)                ← Template Method (pasos fijos)
-  1. Ingesta     → carga + normalización + split 3-vías (train/val/test)
-  2. Preprocess  → normalización {minmax|zscore|rescale} + (augmentation en train)
+  1. Ingesta     → carga (uint8 en RAM, 4× menos memoria) + split 3-vías
+  2. Preprocess  → normalización {minmax|zscore|rescale} + Data Augmentation
+                   selectiva (10 técnicas) + balanceo de clases (solo train)
   3. Split       → train / val / test (explícito o auto por % Train)
   4. Entrenar    → TensorFlowStrategy | PyTorchStrategy        ← Strategy (factory)
-  5. Métricas    → sklearn (precision/recall/f1/roc-auc) + matriz de confusión
-  6. Drift       → Evidently + PSI (split-quality y re-entrenamiento)
-  7. Registrar   → MLflow (params, métricas, artefacto, versión, reportes de drift)
+                   CNN adaptativa  ó  Transfer Learning (FE → FT)
+  5. Métricas    → sklearn (precision/recall/f1/roc-auc) en train/val/test + matriz confusión
+  6. Interpret.  → galería Score-CAM (artefacto MLflow)
+  7. Drift       → Evidently + PSI (split-quality y re-entrenamiento)
+  8. Registrar   → MLflow (params, métricas, artefacto, versión, reportes, Score-CAM)
        ├── Eventos por fase/época → Kafka logs → SSE (consola en vivo)
        └── Resultado final        → Kafka results → orquestador (BD + telemetría)
 ```
 
-**La CNN adaptativa** se dimensiona sola al `input_shape` detectado (2–3 bloques conv según resolución, cabezal `GAP → Dense(128) → Dropout → softmax`, 1 ó 3 canales, `num_classes` autodetectado). Opciones configurables por nodo: optimizador (`adam/adamw/sgd/rmsprop`), BatchNorm, Early Stopping (con restauración de mejores pesos), Data Augmentation, normalización, tamaño de imagen y % de train.
+### Arquitecturas de entrenamiento
+
+| Arquitectura | Tipo | Cuándo usarla |
+|---|---|---|
+| **CNN adaptativa** | Desde cero (TF/PyTorch) | Datasets simples (MNIST-like); se dimensiona sola al `input_shape` (2–3 bloques conv, `GAP → Dense → Dropout → softmax`). |
+| **EfficientNetB0** | Preentrenada ImageNet | Buen equilibrio precisión/tamaño en datasets reales. |
+| **MobileNetV2** | Preentrenada ImageNet | Ligera; rápida en CPU/edge. |
+| **ResNet50** | Preentrenada ImageNet | Mayor capacidad para datasets medianos/complejos. |
+
+**Transfer Learning en 2 fases** (arquitecturas preentrenadas), configurable por nodo:
+- **Fase 1 · Feature Extraction:** backbone **congelado**, se entrena solo la cabeza nueva con un LR alto (default 1e-3) durante `feature_extraction_epochs`.
+- **Fase 2 · Fine-Tuning:** se **descongelan las últimas N capas** (configurable) y se continúa con un LR muy bajo (default 1e-5) durante `finetuning_epochs` — la diferencia de ~100× evita destruir los pesos de ImageNet. `finetuning_epochs = 0` ⇒ solo feature extraction (datasets pequeños).
+- **Resolución configurable [96–224 px]** (no se fuerza 224): 224 = máxima calidad, 160 ≈ mitad de memoria, 128 = ligero.
+- **Caché de embeddings en FE** (sin augmentation): el backbone congelado se ejecuta **una sola vez** y se entrena solo la cabeza → mucho menos cómputo/memoria, clave en CPU.
+
+**Regularización y opciones** (CNN y backbones): **Dropout**, **L2**, optimizador (`adam/adamw/sgd/rmsprop`), BatchNorm, **Early Stopping dual** (val_loss y/o val_accuracy, con restauración de mejores pesos).
+
+### Data Augmentation selectivo + balanceo de clases
+
+- **Catálogo de 10 técnicas** activables por separado con su parámetro: flip H/V, rotación, brillo, contraste, saturación, nitidez, zoom/crop, ruido gaussiano y traslación. **Paridad TensorFlow ↔ PyTorch** (mismas técnicas e intensidades). Se aplica *in-graph* (no se hornea en el artefacto).
+- **Balanceo de clases** (multiclase 2–50): `oversample` (variantes augmentadas de minoritarias), `undersample` (recorte de mayoritarias) o `hybrid`, con **umbral** configurable y **solo sobre el train** (val/test intactos). Determinista (semilla fija).
+
+### Interpretabilidad (Score-CAM)
+
+Tras entrenar, se genera una **galería Score-CAM** (original · heatmap · overlay) sobre muestras del test, marcando aciertos (verde) y errores (rojo): muestra *en qué regiones se fija el modelo*. Se guarda como artefacto en MLflow y se visualiza en el detalle del modelo. Multiclase, paridad TF/PyTorch, best-effort.
 
 ### Métricas honestas (test ciego)
 
-Para datasets sin split de test explícito, el ml-engine reserva un **test ciego** (split 3-vías estratificado). La métrica **principal** se reporta sobre el **test** (datos no vistos ni usados en early-stopping) — no sobre validación — para evitar métricas optimistas.
+Para datasets sin split de test explícito, el ml-engine reserva un **test ciego** (split 3-vías estratificado). La métrica **principal** se reporta sobre el **test** (datos no vistos ni usados en early-stopping) — no sobre validación — para evitar métricas optimistas. Se calculan **precision/recall/f1/roc-auc para los tres splits** (train/val/test), agrupadas y diferenciadas por color en la UI.
+
+### Optimización de recursos
+
+- **Dataset en uint8** (RAM/VRAM): se materializa en uint8 y el cast a float [0,1] se hace por lote → **4× menos memoria**.
+- **Hardening anti-OOM:** extracción de features de drift por chunks, PyTorch mantiene los datos en CPU (mueve solo el lote a la GPU), cap de imágenes según memoria disponible y **aviso de huella estimada** antes de entrenar.
+- **GPU:** detección automática (CUDA/MPS/CPU con *fallback* seguro), `memory_growth`, y `cuda_malloc_async` para devolver VRAM al driver entre runs.
 
 ---
 
@@ -211,7 +246,7 @@ Cupo configurable de despliegues concurrentes (default 3, alineado con el presup
 | **URL** | `{ "url": "https://…/data.zip" }` | `.zip` público. **Blindado:** valida content-type, sigue redirecciones, detecta páginas HTML/login (Kaggle), tope de tamaño y anti *zip-slip*. |
 | **Subida ZIP / imagen** | `multipart/form-data` | `.zip` con imágenes o `.png/.jpg/.jpeg` sueltas. |
 
-**Autodetección de layout** (datasets propios): splits explícitos (`train/val[/test]` con alias), **carpetas-clase planas** (auto-split 3-vías), **solo `train/`** y estructuras con carpetas hermanas (ignora `annotations/`, docs, metadata). Guardrails de memoria (8 GB): ≤ 50 clases, ≤ 50 000 imágenes (submuestreo estratificado), ≥ 2 clases. **Cuota de disco por workspace** configurable.
+**Autodetección de layout** (datasets propios): splits explícitos con **nombres tolerantes** — reconoce `train/val[/test]` y variantes como `Train_Set_Folder`, `Validation Set`, `test-data`, `trainSet`, etc. (clasificación por token, sin confundir clases reales como `testtubes`) —, **carpetas-clase planas** (auto-split 3-vías), **solo `train/`** y estructuras con carpetas hermanas (ignora `annotations/`, docs, metadata). Guardrails de memoria: ≤ 50 clases, ≤ 50 000 imágenes (submuestreo estratificado), ≥ 2 clases. **Cuota de disco por workspace** configurable.
 
 ---
 

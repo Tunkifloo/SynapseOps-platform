@@ -6,6 +6,15 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* "Animar siempre" (decisión de producto): las animaciones NO se condicionan a la
+   preferencia del SO de reducir movimiento. Por defecto Tailwind condiciona `motion-safe`
+   a `prefers-reduced-motion: no-preference` → con "reduce motion" activo en el SO se
+   perdían en TODOS los módulos. Aquí se redefine para que `motion-safe` aplique SIEMPRE y
+   `motion-reduce` NUNCA (`:not(*)` no matchea nada) → las variantes por defecto (animadas)
+   ganan en todos lados. (Ver también: se eliminó el bloque @media reduce más abajo.) */
+@custom-variant motion-safe (&);
+@custom-variant motion-reduce (&:not(*));
+
 html, body, #root {
   width: 100%;
   height: 100%;
@@ -237,23 +246,8 @@ html { background-color: #f8fafc; }
   }
 }
 
-/* ── Accesibilidad: respeta prefers-reduced-motion en toda la app ──────────────
-   Reduce transiciones/animaciones a un crossfade instantáneo. Se preserva el
-   giro continuo del spinner (indicador de carga) a un ritmo más calmado. */
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
-  }
-  [data-slot="spinner"] svg {
-    animation-duration: 1.6s !important;
-    animation-iteration-count: infinite !important;
-  }
-}
+/* (Bloque @media prefers-reduced-motion eliminado a propósito: la app anima siempre,
+   ver la redefinición de las variantes motion-safe/motion-reduce arriba.) */
 
 /* ── React Flow — adaptación al tema (HU-001) ─────────────────────────────── */
 .react-flow__controls {
@@ -291,8 +285,10 @@ html { background-color: #f8fafc; }
 }
 
 /* ── Patrón de puntos (fondos de auth y vacíos, estilo maquetado) ─────────── */
+/* Usa tokens del tema → adapta claro/oscuro (antes el #f8fafc fijo dejaba las páginas
+   públicas de auth en claro aunque el tema fuera oscuro). */
 .bg-dots {
-  background-color: #f8fafc;
-  background-image: radial-gradient(#cbd5e1 1px, transparent 1px);
+  background-color: var(--background);
+  background-image: radial-gradient(var(--border) 1px, transparent 1px);
   background-size: 24px 24px;
 }

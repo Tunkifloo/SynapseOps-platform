@@ -1,2 +1,6 @@
 # Inferencia TensorFlow (artefactos .keras/.h5). CPU para el load test (RN-001/002).
-tensorflow-cpu==2.18.0
+# DEBE coincidir con la versión del ml-engine (Keras 2). El .keras lo guarda el ml-engine
+# con TF 2.15.1 (Keras 2) → referencia `keras.src.engine.functional`, que Keras 3 (TF 2.16+)
+# NO puede deserializar ("Could not deserialize class 'Functional' ... cannot be imported")
+# → el model-service crasheaba al cargar el modelo y el despliegue fallaba el health check.
+tensorflow-cpu==2.15.1

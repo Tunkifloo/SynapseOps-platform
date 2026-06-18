@@ -1,5 +1,6 @@
 package com.synapseops.orchestrator.infra.security;
 
+import io.jsonwebtoken.JwtException;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.MDC;
 import org.springframework.http.HttpHeaders;
@@ -30,7 +31,16 @@ public class JwtAuthenticationWebFilter implements WebFilter {
             return chain.filter(exchange);
         }
 
-        String username = jwtService.getUsernameFromToken(jwt);
+        // Parseo defensivo: un token EXPIRADO/inválido/malformado lanza JwtException. Antes
+        // se propagaba sin capturar → 500 silencioso en CUALQUIER endpoint (/workspaces,
+        // /deployments, /telemetry, logout…). Se trata como NO autenticado → Spring Security
+        // responde 401 en rutas protegidas y el frontend detecta la sesión caducada.
+        String username;
+        try {
+            username = jwtService.getUsernameFromToken(jwt);
+        } catch (JwtException | IllegalArgumentException e) {
+            return chain.filter(exchange);
+        }
 
         if (username == null) {
             return chain.filter(exchange);
