@@ -1,42 +1,7 @@
-# Variante GPU/CUDA del ml-engine (NVIDIA). Úsala con:
-#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml build ml-engine
-#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
-# Requiere: driver NVIDIA + NVIDIA Container Toolkit en el host.
-
-# ── API ───────────────────────────────────────────────────
-fastapi
-uvicorn[standard]
-pydantic-settings
-
-# ── Kafka ─────────────────────────────────────────────────
-confluent-kafka
-
-# ── ML Frameworks (CUDA) ──────────────────────────────────
-# TensorFlow con librerías CUDA empaquetadas (cuDNN/cuBLAS, etc.)
-tensorflow[and-cuda]
-# PyTorch + torchvision compilados para CUDA 12.1 (ver --extra-index-url abajo)
-torch
-torchvision
-grpcio>=1.48.2
-
-# ── MLflow ────────────────────────────────────────────────
-mlflow
-protobuf>=4.25,<6
-
-# ── Evidently AI ──────────────────────────────────────────
-evidently
-
-# ── Data / Preprocesamiento ───────────────────────────────
-numpy
-pandas
-scikit-learn
-Pillow
-
-# ── Observabilidad ────────────────────────────────────────
-prometheus-client
-
-# ── Testing ───────────────────────────────────────────────
-pytest
-
-# Ruedas CUDA 12.1 de PyTorch (RTX serie 30/40 → cu121 OK)
---extra-index-url https://download.pytorch.org/whl/cu121
+# Lista COMPLETA GPU/CUDA para desarrollo local:  pip install -r requirements-gpu.txt
+#
+# El Dockerfile usa las capas separadas (ver requirements.txt). No edites pins aquí:
+#   - frameworks (TF/Torch CUDA) → requirements-frameworks-gpu.txt
+#   - deps de app compartidas     → requirements-core.txt
+-r requirements-frameworks-gpu.txt
+-r requirements-core.txt

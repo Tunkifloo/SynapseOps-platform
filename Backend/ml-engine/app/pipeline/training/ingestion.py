@@ -12,6 +12,7 @@ Las imágenes se cargan con PIL (no requiere TensorFlow), se redimensionan a un
 tamaño fijo y se normalizan a [0,1]. Guardrails de memoria para el contenedor de 8GB.
 """
 import logging
+import re
 import urllib.error
 import urllib.request
 import zipfile
@@ -37,11 +38,33 @@ MAX_CLASSES = 50                        # tope de clases
 _HOLDOUT_FRACTION = 0.15               # test ciego a reservar cuando no hay split 'test'
 IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".bmp")
 
-_SPLIT_ALIASES = {
-    "train": ("train", "training", "train_data", "trainset"),
-    "val":   ("val", "valid", "validation", "val_data", "valset"),
-    "test":  ("test", "testing", "test_data", "testset"),
+# Palabras clave de cada split. La detección NO es por igualdad exacta: clasifica por el
+# PRIMER token del nombre (separadores _ - / espacio / camelCase), así reconoce variantes
+# como "Train_Set_Folder", "validation set", "test-data", "trainSet" SIN confundir clases
+# reales de un solo token (p. ej. "testtubes", "training_shoes" → se evita pidiendo ≥2 splits).
+_SPLIT_KEYWORDS: Dict[str, Tuple[str, ...]] = {
+    "train": ("train", "training", "trainset", "traindata"),
+    "val":   ("val", "valid", "validation", "valset", "valdata"),
+    "test":  ("test", "testing", "testset", "testdata"),
 }
+
+
+def _classify_split(name: str) -> Optional[str]:
+    """Devuelve 'train'/'val'/'test' si el nombre de carpeta corresponde a un split, o None.
+
+    Tokeniza por separadores y camelCase y mira el PRIMER token: 'Train_Set_Folder' → token
+    'train' → train; 'ValidationSetFolder' → 'validation' → val. Un nombre de UN solo token
+    que no sea exactamente un keyword (p. ej. 'testtubes') NO se clasifica como split."""
+    # camelCase → espacios, luego separadores comunes a tokens en minúscula.
+    spaced = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", name.strip())
+    tokens = [t for t in re.split(r"[\s_\-./]+", spaced.lower()) if t]
+    if not tokens:
+        return None
+    first = tokens[0]
+    for split, kws in _SPLIT_KEYWORDS.items():
+        if first in kws:
+            return split
+    return None
 
 
 @dataclass
@@ -66,11 +89,14 @@ def load_dataset(
     image_size: Optional[int] = None,
     train_ratio: Optional[int] = None,
     normalization: Optional[str] = None,
+    max_images: Optional[int] = None,
 ) -> DatasetBundle:
     """
     image_size    → tamaño de entrada (px) para datasets propios (nodo Preprocesamiento).
     train_ratio   → % de entrenamiento (50–90) para datasets sin splits explícitos (nodo Split).
     normalization → minmax [0,1] (default) | zscore (media/σ del train) | rescale [-1,1].
+    max_images    → tope de imágenes a materializar (default MAX_IMAGES). Transfer Learning
+                    pasa un tope menor porque 224px consume ~12x más memoria que 64px.
     Los datasets built-in (keras://) usan su forma y split predefinidos.
     """
     if not dataset_path or not dataset_path.strip():
@@ -78,21 +104,22 @@ def load_dataset(
 
     size = _resolve_image_size(image_size)
     ratio = _resolve_train_ratio(train_ratio)
+    cap = int(max_images) if max_images else MAX_IMAGES
 
     if dataset_path.startswith("keras://"):
         bundle = _load_keras_builtin(dataset_path.replace("keras://", "").strip().lower())
     elif dataset_path.startswith("http://") or dataset_path.startswith("https://"):
         extracted = _download_archive(dataset_path, workspace_id, execution_id)
-        bundle = _load_image_dataset(Path(extracted), size, ratio)
+        bundle = _load_image_dataset(Path(extracted), size, ratio, cap)
     else:
         local_path = Path(dataset_path)
         if not local_path.exists():
             raise FileNotFoundError(f"Dataset no encontrado: {dataset_path}")
         if local_path.suffix.lower() == ".zip":
             extracted = _extract_zip(local_path, workspace_id, execution_id)
-            bundle = _load_image_dataset(Path(extracted), size, ratio)
+            bundle = _load_image_dataset(Path(extracted), size, ratio, cap)
         elif local_path.is_dir():
-            bundle = _load_image_dataset(local_path, size, ratio)
+            bundle = _load_image_dataset(local_path, size, ratio, cap)
         else:
             raise ValueError(
                 f"Formato de dataset no soportado: {dataset_path}. "
@@ -102,15 +129,23 @@ def load_dataset(
 
 
 def _apply_normalization(bundle: DatasetBundle, strategy: str) -> DatasetBundle:
-    """Las imágenes ya vienen en [0,1] (minmax). Aplica la variante elegida."""
+    """minmax (default): NO se materializa float; el dataset queda uint8 (o float[0,1] en
+    builtins) y las estrategias castean /255 por lote → 4× menos RAM. zscore/rescale: sí
+    requieren float, así que se convierte a [0,1] y se aplica la variante (caso menos común)."""
     if strategy == "minmax":
         return bundle
+    # Convierte a [0,1] respetando el dtype: uint8 → /255; float (builtins) → tal cual.
+    def to01(a):
+        if a is None or not a.size:
+            return a
+        return (a.astype(np.float32) / 255.0) if a.dtype == np.uint8 else a.astype(np.float32)
     if strategy == "rescale":
-        fn = lambda a: (a * 2.0 - 1.0).astype(np.float32) if a is not None and a.size else a
+        fn = lambda a: (to01(a) * 2.0 - 1.0).astype(np.float32) if a is not None and a.size else a
     elif strategy == "zscore":
-        mean = float(bundle.X_train.mean()) if bundle.X_train.size else 0.0
-        std = float(bundle.X_train.std()) or 1.0
-        fn = lambda a: ((a - mean) / std).astype(np.float32) if a is not None and a.size else a
+        t = to01(bundle.X_train)
+        mean = float(t.mean()) if t is not None and t.size else 0.0
+        std = (float(t.std()) if t is not None and t.size else 1.0) or 1.0
+        fn = lambda a: ((to01(a) - mean) / std).astype(np.float32) if a is not None and a.size else a
     else:
         log.warning("Normalización '%s' no reconocida; se usa minmax.", strategy)
         return bundle
@@ -228,7 +263,8 @@ def _load_fashion_mnist_numpy() -> DatasetBundle:
 
 
 # ── Datasets propios de imágenes (PIL, sin TensorFlow) ──────────────────────────
-def _load_image_dataset(root: Path, size: Tuple[int, int], ratio: float) -> DatasetBundle:
+def _load_image_dataset(root: Path, size: Tuple[int, int], ratio: float,
+                        cap: int = MAX_IMAGES) -> DatasetBundle:
     root = _normalize_root(root)
 
     train_dir = _resolve_split_dir(root, "train")
@@ -237,21 +273,22 @@ def _load_image_dataset(root: Path, size: Tuple[int, int], ratio: float) -> Data
 
     if train_dir and val_dir:
         log.info("Layout detectado: splits explícitos en %s (tamaño=%s)", root, size)
-        return _load_explicit_splits(train_dir, val_dir, test_dir, size)
+        return _load_explicit_splits(train_dir, val_dir, test_dir, size, cap)
 
     # Solo 'train' (sin val): NO es una clase llamada "train" — se trata su contenido
     # como carpetas-clase planas y se auto-divide en 3 vías.
     if train_dir and not val_dir:
         log.info("Layout detectado: solo split 'train' → auto-split 3-vías sobre sus clases.")
-        return _load_flat_with_autosplit(train_dir, size, ratio)
+        return _load_flat_with_autosplit(train_dir, size, ratio, cap)
 
     log.info("Layout detectado: carpetas-clase planas en %s (auto-split %d/%d, tamaño=%s)",
              root, int(ratio * 100), int((1 - ratio) * 100), size)
-    return _load_flat_with_autosplit(root, size, ratio)
+    return _load_flat_with_autosplit(root, size, ratio, cap)
 
 
 def _load_explicit_splits(train_dir: Path, val_dir: Path,
-                          test_dir: Optional[Path], size: Tuple[int, int]) -> DatasetBundle:
+                          test_dir: Optional[Path], size: Tuple[int, int],
+                          cap: int = MAX_IMAGES) -> DatasetBundle:
     train_g = _gather_class_files(train_dir)
     val_g   = _gather_class_files(val_dir)
     test_g  = _gather_class_files(test_dir) if test_dir else {}
@@ -271,8 +308,8 @@ def _load_explicit_splits(train_dir: Path, val_dir: Path,
     total = _count(train_g) + _count(val_g) + _count(test_g)
     _validate_count(total)
     # Fallback: si excede el tope de memoria, recorta cada split proporcionalmente.
-    if total > MAX_IMAGES:
-        factor = MAX_IMAGES / total
+    if total > cap:
+        factor = cap / total
         train_g = _cap_to_limit(train_g, max(1, int(_count(train_g) * factor)))
         val_g = _cap_to_limit(val_g, max(1, int(_count(val_g) * factor)))
         if test_g:
@@ -297,12 +334,13 @@ def _load_explicit_splits(train_dir: Path, val_dir: Path,
                          len(class_names), class_names, X_test, y_test)
 
 
-def _load_flat_with_autosplit(root: Path, size: Tuple[int, int], ratio: float) -> DatasetBundle:
+def _load_flat_with_autosplit(root: Path, size: Tuple[int, int], ratio: float,
+                              cap: int = MAX_IMAGES) -> DatasetBundle:
     gathered = _gather_class_files(root)
     class_names = sorted(gathered)
     _validate_classes(class_names)
     _validate_count(_count(gathered))
-    gathered = _cap_to_limit(gathered, MAX_IMAGES)   # fallback: recorta al tope de memoria
+    gathered = _cap_to_limit(gathered, cap)   # fallback: recorta al tope de memoria
     class_to_idx = {c: i for i, c in enumerate(class_names)}
 
     # Split 3-vías estratificado por clase (semilla fija → determinista).
@@ -375,10 +413,9 @@ def _normalize_root(root: Path) -> Path:
 
 def _looks_like_dataset(d: Path) -> bool:
     """¿`d` es un split (train/val/test) o tiene clases (subcarpetas con imágenes)?"""
-    split_names = {a for aliases in _SPLIT_ALIASES.values() for a in aliases}
     child_dirs = [c for c in d.iterdir() if c.is_dir()
                   and not c.name.startswith(("__MACOSX", "."))]
-    if any(c.name.lower() in split_names for c in child_dirs):
+    if any(_classify_split(c.name) is not None for c in child_dirs):
         return True
     # Basta una imagen dentro de alguna subcarpeta-clase para considerarlo dataset.
     for c in child_dirs:
@@ -389,11 +426,19 @@ def _looks_like_dataset(d: Path) -> bool:
 
 
 def _resolve_split_dir(root: Path, split: str) -> Optional[Path]:
-    for alias in _SPLIT_ALIASES[split]:
-        for child in root.iterdir():
-            if child.is_dir() and child.name.lower() == alias:
-                return child
+    """Carpeta del split pedido detectada por nombre (tolerante: 'Train_Set_Folder', etc.).
+    Solo cuenta si además CONTIENE subcarpetas (las clases) → evita tomar un archivo o una
+    carpeta-clase suelta llamada como un split."""
+    for child in sorted(root.iterdir()):
+        if not child.is_dir() or child.name.startswith(("__MACOSX", ".")):
+            continue
+        if _classify_split(child.name) == split and _has_subdirs(child):
+            return child
     return None
+
+
+def _has_subdirs(d: Path) -> bool:
+    return any(c.is_dir() and not c.name.startswith(("__MACOSX", ".")) for c in d.iterdir())
 
 
 def _gather_class_files(split_dir: Path) -> Dict[str, List[Path]]:
@@ -409,25 +454,37 @@ def _gather_class_files(split_dir: Path) -> Dict[str, List[Path]]:
 def _materialize(gathered: Dict[str, List[Path]],
                  class_to_idx: Dict[str, int],
                  size: Tuple[int, int]) -> Tuple[np.ndarray, np.ndarray]:
-    X: List[np.ndarray] = []
-    y: List[int] = []
+    # Memoria: se PREASIGNA el array final y se llena in-place. Antes se construía una
+    # lista de imágenes + np.asarray(), que DUPLICA el dataset en RAM (pico ~2×). Con
+    # preasignación el pico baja a ~1× → clave para datasets a 224px (Transfer Learning).
+    total = _count(gathered)
+    h, w = size
+    if total == 0:
+        return np.empty((0,)), np.empty((0,), dtype=np.int64)
+    X = np.empty((total, h, w, 3), dtype=np.uint8)   # 4× menos RAM que float32
+    y = np.empty((total,), dtype=np.int64)
+    n = 0
     for cname, files in gathered.items():
         idx = class_to_idx[cname]
         for f in files:
             try:
-                X.append(_load_image_file(f, size))
-                y.append(idx)
+                X[n] = _load_image_file(f, size)
+                y[n] = idx
+                n += 1
             except (UnidentifiedImageError, OSError) as e:
                 log.warning("Imagen ilegible, se omite: %s (%s)", f, e)
-    if not X:
+    if n == 0:
         return np.empty((0,)), np.empty((0,), dtype=np.int64)
-    return np.asarray(X, dtype=np.float32), np.asarray(y, dtype=np.int64)
+    # Vistas (no copias) → no re-duplica memoria si hubo imágenes ilegibles.
+    return X[:n], y[:n]
 
 
 def _load_image_file(path: Path, size: Tuple[int, int]) -> np.ndarray:
     with Image.open(path) as img:
         img = img.convert("RGB").resize(size, Image.BILINEAR)
-        return np.asarray(img, dtype=np.float32) / 255.0
+        # Se guarda uint8 (0-255), NO float32/255: 4× menos RAM. Las estrategias
+        # castean a float [0,1] por lote en el entrenamiento.
+        return np.asarray(img, dtype=np.uint8)
 
 
 def _count(gathered: Dict[str, List[Path]]) -> int:

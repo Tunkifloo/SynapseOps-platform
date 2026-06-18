@@ -10,8 +10,8 @@ public record ExecutionRequest(
         String framework,
 
         @NotBlank(message = "La arquitectura es obligatoria.")
-        @Pattern(regexp = "(?i)cnn",
-                message = "Arquitectura no soportada. Actualmente solo está disponible 'cnn'.")
+        @Pattern(regexp = "(?i)(cnn|efficientnet|mobilenet|resnet)",
+                message = "Arquitectura no soportada (cnn | efficientnet | mobilenet | resnet).")
         String architecture,
 
         @Min(value = 1, message = "Mínimo 1 epoch.")
@@ -67,7 +67,49 @@ public record ExecutionRequest(
         @Max(value = 50, message = "La paciencia máxima es 50.")
         Integer esPatience,
 
-        @Pattern(regexp = "(?i)(val_loss|val_accuracy)",
-                message = "Monitor no soportado (val_loss | val_accuracy).")
-        String esMonitor
+        @Pattern(regexp = "(?i)(val_loss|val_accuracy|both)",
+                message = "Monitor no soportado (val_loss | val_accuracy | both).")
+        String esMonitor,
+
+        // ── Catálogo granular de Data Augmentation (JSON) + balanceo de clases ────
+        // Viaja como JSON-string; el ML Engine lo deserializa (clave→{enabled,param}).
+        String augmentationConfig,
+
+        @Pattern(regexp = "(?i)(off|oversample|undersample|hybrid)",
+                message = "Estrategia de balanceo no soportada (off | oversample | undersample | hybrid).")
+        String classBalancing,
+
+        @Min(value = 10, message = "El umbral de balanceo mínimo es 10.")
+        @Max(value = 80, message = "El umbral de balanceo máximo es 80.")
+        Integer balanceThreshold,
+
+        // ── Regularización (CNN adaptativa y cabezas de Transfer Learning) ───────
+        @DecimalMin(value = "0.0", message = "El dropout mínimo es 0.0.")
+        @DecimalMax(value = "0.9", message = "El dropout máximo es 0.9.")
+        Double dropout,
+
+        @DecimalMin(value = "0.0",  message = "La regularización L2 mínima es 0.0.")
+        @DecimalMax(value = "0.1",  message = "La regularización L2 máxima es 0.1.")
+        Double l2,
+
+        // ── Transfer Learning (2 fases: feature extraction → fine-tuning) ────────
+        @Min(value = 1, message = "Mínimo 1 epoch de feature extraction.")
+        @Max(value = 50, message = "Máximo 50 epochs de feature extraction.")
+        Integer featureExtractionEpochs,
+
+        @DecimalMin(value = "0.00001", message = "Learning rate de feature extraction mínimo 0.00001.")
+        @DecimalMax(value = "0.1",     message = "Learning rate de feature extraction máximo 0.1.")
+        Double featureExtractionLr,
+
+        @Min(value = 0,   message = "Las epochs de fine-tuning no pueden ser negativas.")
+        @Max(value = 100, message = "Máximo 100 epochs de fine-tuning.")
+        Integer finetuningEpochs,
+
+        @DecimalMin(value = "0.0000001", message = "Learning rate de fine-tuning mínimo 0.0000001.")
+        @DecimalMax(value = "0.1",       message = "Learning rate de fine-tuning máximo 0.1.")
+        Double finetuningLr,
+
+        @Min(value = 1,  message = "Mínimo 1 capa a descongelar.")
+        @Max(value = 50, message = "Máximo 50 capas a descongelar.")
+        Integer unfreezeLayers
 ) {}

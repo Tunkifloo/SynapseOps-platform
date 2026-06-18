@@ -11,6 +11,7 @@ import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -32,6 +33,10 @@ public class MLflowFacade {
         this.webClient    = WebClient.builder()
                 .baseUrl(mlflowUri)
                 .defaultHeader("Content-Type", MediaType.APPLICATION_JSON_VALUE)
+                // El buffer por defecto (256 KB) es insuficiente para descargar artifacts
+                // como la galería Score-CAM (~300-500 KB) → DataBufferLimitException y la
+                // imagen no llegaba al frontend. Se sube a 32 MB (también cubre runs grandes).
+                .codecs(c -> c.defaultCodecs().maxInMemorySize(32 * 1024 * 1024))
                 .build();
     }
 
@@ -259,6 +264,41 @@ public class MLflowFacade {
                 })
                 .doOnSuccess(uri -> log.info("Artifact URI → runId={}: {}", runId, uri))
                 .doOnError(e  -> log.error("Error artifact URI runId={}: {}", runId, e.getMessage()));
+    }
+
+    /**
+     * Descarga un artifact del run vía el proxy de MLflow ({@code --serve-artifacts})
+     * y lo devuelve como data-URL base64 (image/png). Mono.empty() si no existe o el run
+     * usa un artifact-root antiguo no-proxied. Best-effort: nunca propaga error.
+     */
+    public Mono<String> downloadArtifactBase64(String runId, String relPath) {
+        return getArtifactUri(runId).flatMap(uri -> {
+            if (uri == null || uri.isBlank()) {
+                return Mono.<String>empty();
+            }
+            // Ruta relativa al artifact-root para el proxy, tanto si el run usa el esquema
+            // proxied (mlflow-artifacts:/<exp>/<run>/artifacts) como una ruta local
+            // (/mlflow/artifacts/<exp>/<run>/artifacts) servida por --serve-artifacts.
+            String root;
+            if (uri.startsWith("mlflow-artifacts:")) {
+                root = uri.replaceFirst("^mlflow-artifacts:/+", "");
+            } else if (uri.contains("/mlflow/artifacts/")) {
+                root = uri.substring(uri.indexOf("/mlflow/artifacts/") + "/mlflow/artifacts/".length());
+            } else {
+                return Mono.<String>empty();
+            }
+            String fullPath = root.replaceFirst("^/+", "") + "/" + relPath;
+            return webClient.get()
+                    .uri("/api/2.0/mlflow-artifacts/artifacts/" + fullPath)
+                    .accept(MediaType.ALL)
+                    .retrieve()
+                    .bodyToMono(byte[].class)
+                    .map(bytes -> "data:image/png;base64," + Base64.getEncoder().encodeToString(bytes))
+                    .onErrorResume(e -> {
+                        log.debug("Artifact no disponible {} (run {}): {}", relPath, runId, e.getMessage());
+                        return Mono.empty();
+                    });
+        }).onErrorResume(e -> Mono.empty());
     }
 
     public Mono<MlflowRunMetrics> getRunMetrics(String runId) {

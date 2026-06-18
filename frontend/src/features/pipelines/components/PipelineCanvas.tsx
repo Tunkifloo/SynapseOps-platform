@@ -13,6 +13,8 @@ import ReactFlow, {
 } from 'reactflow'
 import 'reactflow/dist/style.css'
 
+import { useNavigate } from 'react-router-dom'
+
 import { notify } from '@/shared/notify'
 import { ConfirmDialog } from '@/shared/components/ConfirmDialog'
 import { useAppStore } from '@/store/useAppStore'
@@ -20,7 +22,7 @@ import { launchExecution, getExecution } from '@/features/executions/api'
 import { deployModel } from '@/features/deployments/api'
 import type { ExecutionRequest } from '@/features/executions/types'
 import { NODE_KIND_MAP, type NodeKind } from '@/features/pipelines/nodeKinds'
-import { defaultConfig, validateConfig, type NodeConfig } from '@/features/pipelines/nodeConfig'
+import { buildAugmentationConfig, defaultConfig, validateConfig, type NodeConfig } from '@/features/pipelines/nodeConfig'
 import { loadCanvas, saveCanvas } from '@/features/pipelines/canvasApi'
 import { PipelineNode, type PipelineNodeData, type PipelineNodeStatus } from './PipelineNode'
 import { NodePalette } from './NodePalette'
@@ -32,6 +34,49 @@ const nodeTypes = { pipelineNode: PipelineNode }
 
 let idCounter = 0
 const nextId = () => `n_${Date.now().toString(36)}_${idCounter++}`
+
+/**
+ * Campos de entrenamiento del payload a partir del config del nodo `train`.
+ * CNN → epochs/learningRate propios. Transfer Learning → epochs/LR por fase
+ * (el `epochs`/`learningRate` base se derivan para satisfacer la validación REST).
+ */
+function buildTrainFields(cfg: NodeConfig): {
+  architecture: string
+  optimizer: string
+  dropout: number
+  l2: number
+  epochs: number
+  learningRate: number
+  featureExtractionEpochs?: number
+  featureExtractionLr?: number
+  finetuningEpochs?: number
+  finetuningLr?: number
+  unfreezeLayers?: number
+} {
+  const arch = String(cfg.architecture ?? 'cnn')
+  const pretrained = arch !== 'cnn'
+  const feEpochs = Number(cfg.featureExtractionEpochs) || 5
+  const ftEpochs = Number.isFinite(Number(cfg.finetuningEpochs)) ? Number(cfg.finetuningEpochs) : 10
+  return {
+    architecture: arch,
+    optimizer: String(cfg.optimizer ?? 'adam'),
+    dropout: Number(cfg.dropout ?? 0.4),
+    l2: Number(cfg.l2 ?? 0),
+    // En TL el ML Engine ignora este `epochs` (usa fe+ft); se capea a 100 solo para
+    // satisfacer la validación REST del orquestador.
+    epochs: pretrained ? Math.min(feEpochs + ftEpochs, 100) : Number(cfg.epochs) || 5,
+    learningRate: pretrained ? Number(cfg.featureExtractionLr) || 0.001 : Number(cfg.learningRate) || 0.001,
+    ...(pretrained
+      ? {
+          featureExtractionEpochs: feEpochs,
+          featureExtractionLr: Number(cfg.featureExtractionLr) || 0.001,
+          finetuningEpochs: ftEpochs,
+          finetuningLr: Number(cfg.finetuningLr) || 0.00001,
+          unfreezeLayers: Number(cfg.unfreezeLayers) || 10,
+        }
+      : {}),
+  }
+}
 
 /**
  * ¿Agregar la arista source→target cerraría un ciclo?
@@ -134,12 +179,18 @@ export function PipelineCanvas({
     title: string
     description: string
     confirmLabel: string
+    cancelLabel?: string
     tone: 'destructive' | 'default'
     onConfirm: () => void | Promise<void>
   } | null>(null)
   const loadedRef = useRef(false)                 // evita marcar dirty durante la carga inicial
   const baselineRef = useRef<string>('')          // snapshot del último estado guardado/cargado
+  // True cuando se reabre el lienzo sobre una ejecución YA TERMINADA: el replay SSE no debe
+  // re-marcar nodos como 'running' (el entrenamiento es no-terminal → nunca reconciliaría a
+  // success y el nodo quedaría "En ejecución" para siempre). Se baja al iniciar un flujo nuevo.
+  const replayFinishedRef = useRef(false)
   const { screenToFlowPosition, setViewport, fitView } = useReactFlow()
+  const navigate = useNavigate()
 
   // Claves de persistencia local por (workspace, pipeline). Requieren AMBOS ids: con un
   // workspace `undefined` la clave colisionaría entre proyectos distintos.
@@ -236,12 +287,14 @@ export function PipelineCanvas({
 
       const payload: ExecutionRequest = {
         framework: (cfg.framework as 'tensorflow' | 'pytorch') ?? 'tensorflow',
-        architecture: 'cnn',
-        epochs: Number(cfg.epochs) || 5,
         batchSize: Number(cfg.batchSize) || 32,
-        learningRate: Number(cfg.learningRate) || 0.001,
         numClasses: 10, // el ml-engine autodetecta el real
         modelName: String(cfg.modelName || 'modelo'),
+        batchNorm: cfg.batchNorm === 'true',
+        earlyStopping: cfg.earlyStopping === 'true',
+        esPatience: Number(cfg.esPatience) || undefined,
+        esMonitor: String(cfg.esMonitor ?? 'val_loss'),
+        ...buildTrainFields(cfg),
       }
 
       void (async () => {
@@ -377,8 +430,22 @@ export function PipelineCanvas({
         ? { ...n, data: { ...n.data, status: ok ? ('success' as const) : ('error' as const),
             error: ok ? undefined : 'El model-service no pasó el health check.',
             config: { ...n.data.config, endpoint: ok ? (res.endpoint ?? '') : '' } } } : n)))
-      if (ok) notify.success('model-service desplegado', { description: res.endpoint ?? 'Gestiónalo en "Despliegues".' })
-      else notify.error('El despliegue no pasó el health check del model-service')
+      if (ok) {
+        notify.success('model-service desplegado', { description: res.endpoint ?? 'Gestiónalo en "Despliegues".' })
+        // Caso A: el nodo de Despliegue estaba presente y el model-service pasó el health
+        // check (200) → modal de éxito con acceso directo al módulo de Despliegues.
+        setConfirm({
+          title: 'Modelo desplegado',
+          description: 'El model-service pasó el health check y su endpoint /predict ya está '
+            + 'disponible. Puedes probarlo y gestionarlo desde el módulo de Despliegues.',
+          confirmLabel: 'Ir a mis despliegues',
+          cancelLabel: 'Cerrar',
+          tone: 'default',
+          onConfirm: () => navigate('/deployments'),
+        })
+      } else {
+        notify.error('El despliegue no pasó el health check del model-service')
+      }
     } catch (err) {
       setNodes((nds) => nds.map((n) => (n.id === deployNodeId
         ? { ...n, data: { ...n.data, status: 'error' as const,
@@ -389,7 +456,7 @@ export function PipelineCanvas({
     } finally {
       setFlowRunning(false)
     }
-  }, [token, setNodes, onAuthError])
+  }, [token, setNodes, onAuthError, navigate])
 
   const executeFlow = useCallback(() => {
     if (!token || !workspace || !pipelineId) return
@@ -410,6 +477,8 @@ export function PipelineCanvas({
       !!deployNodeAtStart && edges.some((e) => e.target === deployNodeAtStart.id)
 
     setFlowRunning(true)
+    // Flujo NUEVO en vivo → el replay-guard se desactiva (sí queremos animar 'running').
+    replayFinishedRef.current = false
     // Reinicia estados Y limpia la config runtime del flujo ANTERIOR (runId, versión,
     // métricas, endpoint): así, tras re-entrenar v2 no se sigue mostrando la v1 stale.
     setNodes((nds) => nds.map((n) => {
@@ -421,20 +490,22 @@ export function PipelineCanvas({
 
     const payload: ExecutionRequest = {
       framework: (cfg.framework as 'tensorflow' | 'pytorch') ?? 'tensorflow',
-      architecture: 'cnn',
-      epochs: Number(cfg.epochs) || 5,
       batchSize: Number(cfg.batchSize) || 32,
-      learningRate: Number(cfg.learningRate) || 0.001,
       numClasses: 10, // autodetectado por el ml-engine; placeholder ignorado
       modelName: String(cfg.modelName || 'modelo'),
-      optimizer: String(cfg.optimizer ?? 'adam'),
       batchNorm: cfg.batchNorm === 'true',
       earlyStopping: cfg.earlyStopping === 'true',
       esPatience: Number(cfg.esPatience) || undefined,
       esMonitor: String(cfg.esMonitor ?? 'val_loss'),
+      ...buildTrainFields(cfg),
       // Nodos Preprocesamiento y Split (parametrización real en el ml-engine).
       normalization: preprocessNode ? String(preCfg.normalization ?? 'minmax') : undefined,
       dataAugmentation: preprocessNode ? preCfg.dataAugmentation === 'true' : undefined,
+      augmentationConfig: preprocessNode
+        ? JSON.stringify(buildAugmentationConfig(preCfg))
+        : undefined,
+      classBalancing: preprocessNode ? String(preCfg.classBalancing ?? 'off') : undefined,
+      balanceThreshold: preprocessNode ? Number(preCfg.balanceThreshold) || undefined : undefined,
       imageSize: preprocessNode ? Number(preCfg.imageSize) || undefined : undefined,
       trainRatio: splitNode ? Number(splitCfg.trainRatio) || undefined : undefined,
     }
@@ -476,14 +547,20 @@ export function PipelineCanvas({
             if (deployNodeAtStart && deployConnectedAtStart && runId) {
               void deployFlowModel(runId, deployNodeAtStart.id)
             } else {
-              // Sin nodo de Despliegue (o sin conectar): el ciclo termina en el
-              // entrenamiento — es válido (el usuario puede querer solo entrenar). Se
-              // retroalimenta cómo desplegar después.
-              notify.success('Modelo entrenado y registrado', {
-                description: 'Para desplegarlo, ve a Mis modelos → detalles → Desplegar.',
-              })
+              // Caso B · Sin nodo de Despliegue (o sin conectar): el ciclo termina en el
+              // entrenamiento — es válido (el usuario puede querer solo entrenar). Modal
+              // que recuerda cómo desplegar después, con acceso directo a Mis modelos.
               setLogCloseSignal((s) => s + 1)
               setFlowRunning(false)
+              setConfirm({
+                title: 'Modelo entrenado y registrado',
+                description: 'El entrenamiento terminó y el modelo quedó versionado en MLflow. '
+                  + 'Recuerda que puedes desplegarlo en Mis modelos → detalles del modelo → Desplegar.',
+                confirmLabel: 'Ir a detalles del modelo',
+                cancelLabel: 'Cerrar',
+                tone: 'default',
+                onConfirm: () => navigate('/models'),
+              })
             }
             return
           }
@@ -508,7 +585,7 @@ export function PipelineCanvas({
       }
       window.setTimeout(() => void poll(), POLL_INTERVAL_MS)
     })()
-  }, [token, workspace, pipelineId, nodes, edges, setNodes, setStatusByKind, setActiveExecution, deployFlowModel])
+  }, [token, workspace, pipelineId, nodes, edges, setNodes, setStatusByKind, setActiveExecution, deployFlowModel, navigate])
 
   // "Iniciar flujo": valida y pide confirmación (acción crítica) antes de ejecutar.
   const runFlow = useCallback(() => {
@@ -562,6 +639,11 @@ export function PipelineCanvas({
       setFlowRunning(false)
       return
     }
+    // Replay de una ejecución YA TERMINADA (al reabrir el lienzo): NO re-marcar 'running'.
+    // Los nodos ya están reconciliados (overlay / fetch del estado real); los logs siguen
+    // mostrándose en la consola. Sin esto, los eventos de época re-marcaban el train como
+    // "En ejecución" y, al ser no-terminal, nunca volvía a success (bug del nodo colgado).
+    if (replayFinishedRef.current) return
     // Secuencia real: ingesta → preprocesamiento → split → entrenamiento.
     // Se evalúa del paso MÁS avanzado al más temprano; cada etapa marca 'success'
     // las anteriores y 'running' la suya. El kickoff ("Job publicado … entrenamiento
@@ -793,10 +875,32 @@ export function PipelineCanvas({
           }
         }, 60)
 
-        // Reanuda la consola de la última ejecución (replay del backend).
+        // Reanuda la consola de la última ejecución (replay del backend). ANTES de reabrir
+        // el SSE consulta el estado REAL: si la ejecución ya terminó, activa el guard para
+        // que el replay no re-marque nodos como 'running' (bug del nodo colgado en RUNNING)
+        // y reconcilia los estados/métricas de forma autoritativa.
         if (execKey) {
           const saved = localStorage.getItem(execKey)
-          if (saved) setActiveExecutionId(Number(saved))
+          if (saved && wsId != null && pipelineId != null) {
+            const eid = Number(saved)
+            try {
+              const exec = await getExecution(token, wsId, pipelineId, eid)
+              if (exec.status === 'COMPLETED' || exec.status === 'FAILED') {
+                replayFinishedRef.current = true
+                if (exec.status === 'COMPLETED' && !cancelled) {
+                  setStatusByKind(['ingest', 'preprocess', 'split'], 'success')
+                  setNodes((nds) => nds.map((n) => n.data.kind === 'train'
+                    ? { ...n, data: { ...n.data, status: 'success', error: undefined,
+                        config: { ...n.data.config,
+                          runId: exec.mlflowRunId ?? n.data.config?.runId ?? '',
+                          modelVersion: exec.modelVersion ?? n.data.config?.modelVersion ?? '',
+                          metrics: exec.metrics ?? n.data.config?.metrics ?? '' } } }
+                    : n))
+                }
+              }
+            } catch { /* sin estado disponible → se confía en el overlay restaurado */ }
+            if (!cancelled) setActiveExecutionId(eid)
+          }
         }
         // Permite marcar dirty a partir de aquí (la carga no cuenta como edición).
         window.setTimeout(() => { loadedRef.current = true }, 0)
@@ -953,6 +1057,7 @@ export function PipelineCanvas({
       <div className="flex min-h-0 flex-1 flex-col gap-3 md:flex-row">
         <NodePalette onAdd={addNode} />
         <div
+          data-tour="canvas"
           className="relative min-h-0 flex-1 overflow-hidden rounded-2xl border border-border bg-card/20"
           onDrop={onDrop}
           onDragOver={onDragOver}
@@ -1030,6 +1135,7 @@ export function PipelineCanvas({
         title={confirm?.title ?? ''}
         description={confirm?.description ?? ''}
         confirmLabel={confirm?.confirmLabel}
+        cancelLabel={confirm?.cancelLabel}
         tone={confirm?.tone}
         onConfirm={async () => { await confirm?.onConfirm() }}
       />

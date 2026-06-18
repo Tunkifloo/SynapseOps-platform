@@ -68,8 +68,10 @@ export function PipelineBuilderPage({ token, onAuthError }: PipelineBuilderPageP
         ? data.find((w) => w.idWorkspace === preferredId)
         : undefined
       if (!target) {
-        const lastName = localStorage.getItem(LAST_KEY)
-        target = lastName ? data.find((w) => w.name === lastName) : undefined
+        // Por ID (estable): si se usara el nombre, renombrar el workspace orfanaría esta
+        // memoria → al volver al lienzo se cargaba otro proyecto y se "perdían" el run/métricas.
+        const lastId = localStorage.getItem(LAST_KEY)
+        target = lastId ? data.find((w) => String(w.idWorkspace) === lastId) : undefined
       }
       setActiveWsId((prev) => target?.idWorkspace ?? prev ?? data[0]?.idWorkspace ?? null)
     } catch (err) {
@@ -117,10 +119,10 @@ export function PipelineBuilderPage({ token, onAuthError }: PipelineBuilderPageP
   const activePipeline = pipelines.find((p) => p.idPipeline === activePipelineId) ?? null
 
   useEffect(() => {
-    if (activeWorkspace?.name) {
-      localStorage.setItem(LAST_KEY, activeWorkspace.name)
+    if (activeWsId) {
+      localStorage.setItem(LAST_KEY, String(activeWsId))
     }
-  }, [activeWorkspace?.name, LAST_KEY])
+  }, [activeWsId, LAST_KEY])
 
   // Recuerda el pipeline activo por workspace para restaurarlo al volver.
   useEffect(() => {
@@ -313,7 +315,7 @@ export function PipelineBuilderPage({ token, onAuthError }: PipelineBuilderPageP
               {activeWorkspace?.name ? ` «${activeWorkspace.name}»` : ''}. Crea uno para diseñar y guardar tu flujo.
             </p>
             {pipelines.length === 0 && (
-              <Button variant="cta" loading={creating} onClick={() => void handleCreatePipeline()}>
+              <Button data-tour="create-pipeline" variant="cta" loading={creating} onClick={() => void handleCreatePipeline()}>
                 <Plus />
                 Crear pipeline
               </Button>

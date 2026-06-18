@@ -44,6 +44,10 @@ public abstract class User {
     @Column(nullable = false)
     private boolean enabled = true;
 
+    // Onboarding guiado (Ticket UX-5): true cuando el usuario completó u omitió el tour.
+    @Column(name = "onboarding_completed", nullable = false)
+    private boolean onboardingCompleted = false;
+
     @Override
     public final boolean equals(Object o) {
         if (this == o) return true;

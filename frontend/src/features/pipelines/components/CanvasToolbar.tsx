@@ -84,6 +84,7 @@ export function CanvasToolbar({
           {dirty && <span className="ml-1 inline-block size-1.5 rounded-full bg-current" aria-label="sin guardar" />}
         </Button>
         <Button
+          data-tour="start-flow"
           variant="cta"
           size="sm"
           disabled={empty || !canRunFlow}

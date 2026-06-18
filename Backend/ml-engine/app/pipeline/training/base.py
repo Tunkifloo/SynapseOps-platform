@@ -1,10 +1,12 @@
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Callable, Optional, Tuple
 import numpy as np
 
 # Callback de progreso por epoch: (epoch_actual, total_epochs, métricas) -> None
 EpochCallback = Callable[[int, int, dict], None]
+# Callback de inicio de fase (Transfer Learning): recibe un dict descriptivo de la fase.
+PhaseCallback = Callable[[dict], None]
 
 
 @dataclass
@@ -21,7 +23,19 @@ class HyperParams:
     early_stopping:   bool = False
     es_patience:      int  = 3
     es_monitor:       str  = "val_loss"  # val_loss | val_accuracy
-    data_augmentation: bool = False      # aug. en el entrenamiento (img)
+    data_augmentation: bool = False      # toggle maestro de augmentation (img)
+    # Catálogo granular de augmentation ya normalizado (clave→{param:valor}).
+    # Vacío + data_augmentation=True → las estrategias aplican el preset retrocompatible.
+    augmentation_config: dict = field(default_factory=dict)
+    # ── Regularización (configurable; aplica a la CNN adaptativa y a las cabezas TL) ──
+    dropout: float = 0.4                 # dropout de la cabeza densa
+    l2:      float = 0.0                 # regularización L2 / weight decay
+    # ── Transfer Learning (2 fases: feature-extraction → fine-tuning) ─────────
+    feature_extraction_epochs: int   = 5
+    feature_extraction_lr:     float = 1e-3
+    finetuning_epochs:         int   = 10
+    finetuning_lr:             float = 1e-5
+    unfreeze_layers:           int   = 10
 
 
 @dataclass
@@ -36,12 +50,18 @@ class TrainingResult:
     test_loss:      Optional[float] = None
     # ── Predicciones para métricas avanzadas (item 7) ────────────────────────
     # El executor calcula precision/recall/f1/roc_auc + matriz de confusión.
+    # Se incluye train para comparar simétricamente los tres splits.
+    train_true:  Optional[np.ndarray] = None
+    train_pred:  Optional[np.ndarray] = None
+    train_proba: Optional[np.ndarray] = None
     val_true:   Optional[np.ndarray] = None
     val_pred:   Optional[np.ndarray] = None
     val_proba:  Optional[np.ndarray] = None
     test_true:  Optional[np.ndarray] = None
     test_pred:  Optional[np.ndarray] = None
     test_proba: Optional[np.ndarray] = None
+    # Galería de interpretabilidad Score-CAM (PNG local), si se pudo generar.
+    interpretability_path: Optional[str] = None
 
 
 class TrainingStrategy(ABC):
@@ -63,5 +83,7 @@ class TrainingStrategy(ABC):
         X_test:  Optional[np.ndarray] = None,
         y_test:  Optional[np.ndarray] = None,
         on_epoch: Optional[EpochCallback] = None,
+        class_names: Optional[list] = None,
+        on_phase: Optional[PhaseCallback] = None,
     ) -> TrainingResult:
         pass

@@ -1,0 +1,17 @@
+# Frameworks ML — variante CPU (capa Docker "pesada/estable": varios GB, rara vez cambia).
+#
+# IMPORTANTE: `tensorflow-cpu` (NO `tensorflow`): el paquete `tensorflow` arrastra
+# ~6-8 GB de librerías CUDA aunque no haya GPU. Para entrenar en GPU usa
+# requirements-frameworks-gpu.txt (vía docker-compose.gpu.yml).
+#
+# VERSIONES FIJAS (reproducibilidad + compatibilidad numpy<2). Sin pin, pip resolvía un
+# set incompatible (TF viejo + numpy 2.x) que rompía el import de TensorFlow. TF 2.15.x
+# usa Keras 2 y numpy 1.x; torch 2.3.1 empareja con la variante GPU cu121.
+tensorflow-cpu==2.15.1
+# Sufijo +cpu: fuerza la build CPU magra desde el índice de PyTorch. Sin él, en Linux pip
+# bajaría la build CUDA de PyPI (pesada e innecesaria para la imagen CPU/CI).
+torch==2.3.1+cpu
+torchvision==0.18.1+cpu
+grpcio>=1.48.2
+
+--extra-index-url https://download.pytorch.org/whl/cpu

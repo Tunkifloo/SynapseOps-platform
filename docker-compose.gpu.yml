@@ -3,9 +3,12 @@
 # PC SIN GPU (laboratorio estándar): el código hace fallback automático a CPU.
 #   docker compose up -d
 #
-# PC CON GPU NVIDIA (driver + NVIDIA Container Toolkit instalados):
+# PC CON GPU NVIDIA (driver instalado) — DESCARGAR la imagen GPU ya publicada:
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml pull
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --no-build
+#
+# PC CON GPU para CONSTRUIR la imagen localmente (solo si quieres recompilar):
 #   docker compose -f docker-compose.yml -f docker-compose.gpu.yml build ml-engine
-#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
 #
 # El build-arg compila el ml-engine con TensorFlow[and-cuda] + PyTorch CUDA;
 # `deploy.resources` expone la GPU al contenedor. El executor autodetecta la GPU
@@ -13,17 +16,37 @@
 
 services:
   ml-engine:
-    # Nombre LOCAL propio (distinto del CD en GHCR, que es CPU). Así compose usa
-    # esta imagen GPU si existe y la construye si falta — nunca hace pull del CD.
-    # No se ve afectado por REGISTRY/APP_VERSION del .env.
-    image: synapseops/ml-engine:gpu
+    # Imagen GPU publicada en GHCR (distinta del CD del CI, que es CPU). Los labs
+    # solo hacen `pull` de esta ruta; el bloque `build` queda como fallback para
+    # quien quiera recompilarla localmente. No usa REGISTRY/APP_VERSION del .env.
+    image: ghcr.io/tunkifloo/ml-engine:gpu
     build:
       args:
-        REQUIREMENTS: requirements-gpu.txt
+        # Solo la capa de frameworks cambia entre CPU/GPU (las deps de app son comunes).
+        FRAMEWORKS: requirements-frameworks-gpu.txt
+        # Hornea los pesos ImageNet en la imagen GPU → Transfer Learning funciona
+        # OFFLINE en los labs (docker save/load incluye los pesos). Ver Dockerfile.
+        PRECACHE_WEIGHTS: "true"
     environment:
       # Asegura que CUDA sea visible dentro del contenedor.
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,utility
+      # TensorFlow se instala SIN el extra [and-cuda] (chocaba con las ruedas CUDA de
+      # torch cu121). Aquí se le indica dónde están las librerías CUDA que SÍ trae torch
+      # (cuDNN 8.9.2.26, cuBLAS/cuFFT/… 12.1) para que TF también use la GPU. Si alguna no
+      # cargara, TF cae a CPU automáticamente (fallback seguro). Las rutas son las de las
+      # ruedas nvidia-*-cu12 de torch en site-packages.
+      LD_LIBRARY_PATH: /usr/local/lib/python3.11/site-packages/nvidia/cuda_runtime/lib:/usr/local/lib/python3.11/site-packages/nvidia/cuda_nvrtc/lib:/usr/local/lib/python3.11/site-packages/nvidia/cuda_cupti/lib:/usr/local/lib/python3.11/site-packages/nvidia/cudnn/lib:/usr/local/lib/python3.11/site-packages/nvidia/cublas/lib:/usr/local/lib/python3.11/site-packages/nvidia/cufft/lib:/usr/local/lib/python3.11/site-packages/nvidia/curand/lib:/usr/local/lib/python3.11/site-packages/nvidia/cusolver/lib:/usr/local/lib/python3.11/site-packages/nvidia/cusparse/lib:/usr/local/lib/python3.11/site-packages/nvidia/nccl/lib:/usr/local/lib/python3.11/site-packages/nvidia/nvjitlink/lib
+      # Dónde está el toolkit de compilación CUDA (libdevice + ptxas, del paquete
+      # nvidia-cuda-nvcc-cu12) que TF usa para generar kernels en GPU. XLA busca dentro
+      # libdevice en <dir>/nvvm/libdevice/ y ptxas en <dir>/bin/. Sin esto: "JIT
+      # compilation failed / libdevice not found" en backbones (capa Normalization).
+      XLA_FLAGS: --xla_gpu_cuda_data_dir=/usr/local/lib/python3.11/site-packages/nvidia/cuda_nvcc
+      # Allocator asíncrono de CUDA: a diferencia del BFC por defecto (que retiene la VRAM
+      # reservada hasta que el proceso muere), cudaMallocAsync DEVUELVE la VRAM al driver al
+      # liberarla → tras clear_session()/empty_cache() en _free_memory el uso de VRAM baja
+      # entre runs en lugar de quedar ~ocupado. Requiere CUDA ≥11.2 (cu121 OK).
+      TF_GPU_ALLOCATOR: cuda_malloc_async
     deploy:
       resources:
         reservations:

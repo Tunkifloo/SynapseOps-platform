@@ -21,6 +21,8 @@ interface TrainModelSourceProps {
   config: NodeConfig
   onConfigChange: (patch: NodeConfig) => void
   onAuthError: (error: unknown) => boolean
+  /** Error de validación de `modelName` (tras intentar guardar) → resalta esta sección. */
+  error?: string
 }
 
 /**
@@ -30,10 +32,12 @@ interface TrainModelSourceProps {
  *    crea una NUEVA versión del mismo modelo (no se pide nombre).
  */
 export function TrainModelSource({
-  token, workspaceId, config, onConfigChange, onAuthError,
+  token, workspaceId, config, onConfigChange, onAuthError, error,
 }: TrainModelSourceProps) {
   const mode = String(config.modelMode ?? 'new')
   const modelName = String(config.modelName ?? '')
+  const invalidRing =
+    'border-destructive focus-visible:ring-destructive/40 aria-[invalid=true]:border-destructive'
   const [models, setModels] = useState<WorkspaceModel[]>([])
   const [loading, setLoading] = useState(false)
 
@@ -56,7 +60,10 @@ export function TrainModelSource({
   }
 
   return (
-    <div className="space-y-3 rounded-xl border border-border bg-card/40 p-3">
+    <div className={cn(
+      'space-y-3 rounded-xl border border-border bg-card/40 p-3',
+      error && 'border-destructive/50'
+    )}>
       <p className="text-xs font-semibold tracking-[0.1em] text-muted-foreground uppercase">Modelo</p>
 
       <div className="grid grid-cols-2 gap-2">
@@ -89,6 +96,8 @@ export function TrainModelSource({
             id="train-model-name"
             value={modelName}
             placeholder="mnist_cnn_demo"
+            aria-invalid={!!error}
+            className={cn(error && invalidRing)}
             onChange={(e) => onConfigChange({ modelName: e.target.value })}
           />
         </div>
@@ -101,7 +110,11 @@ export function TrainModelSource({
             <p className="text-xs text-warning-strong">Aún no hay modelos en este proyecto. Entrena uno nuevo primero.</p>
           ) : (
             <Select value={modelName} onValueChange={(v) => onConfigChange({ modelName: v })}>
-              <SelectTrigger id="train-model-existing"><SelectValue placeholder="Selecciona un modelo" /></SelectTrigger>
+              <SelectTrigger
+                id="train-model-existing"
+                aria-invalid={!!error}
+                className={cn(error && invalidRing)}
+              ><SelectValue placeholder="Selecciona un modelo" /></SelectTrigger>
               <SelectContent>
                 {models.map((m) => (
                   <SelectItem key={m.name} value={m.name}>{m.name} · v{m.latestVersion}</SelectItem>
@@ -113,6 +126,12 @@ export function TrainModelSource({
             El re-entrenamiento registra una <span className="font-medium text-foreground">nueva versión</span> del modelo elegido.
           </p>
         </div>
+      )}
+
+      {error && (
+        <p role="alert" className="text-[11px] font-medium text-destructive-strong">
+          {error}
+        </p>
       )}
     </div>
   )

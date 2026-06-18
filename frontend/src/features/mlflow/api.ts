@@ -59,6 +59,8 @@ export interface MlflowRunSummary {
     metrics: Record<string, number>
     params: Record<string, string>
     tags?: Record<string, string>
+    /** Galería Score-CAM como data-URL (image/png base64), si el run la generó. */
+    scorecam?: string | null
 }
 
 export const getMlflowHealth = (token: string) =>

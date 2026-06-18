@@ -1,0 +1,36 @@
+# Dependencias COMPARTIDAS CPU/GPU del ml-engine.
+#
+# En el Dockerfile esto es la capa "ligera/volátil": cambiar una de estas deps NO
+# reinstala TensorFlow/PyTorch (que viven en requirements-frameworks*.txt, capa
+# pesada y estable). Así dejas de re-descargar los frameworks en cada build.
+
+# ── API ───────────────────────────────────────────────────
+fastapi
+uvicorn[standard]
+pydantic-settings
+
+# ── Kafka ─────────────────────────────────────────────────
+confluent-kafka
+
+# ── MLflow ────────────────────────────────────────────────
+mlflow
+protobuf>=4.25,<6
+
+# ── Evidently AI ──────────────────────────────────────────
+evidently
+
+# ── Data / Preprocesamiento ───────────────────────────────
+# numpy<2 es OBLIGATORIO: TensorFlow y torch==2.3.1+cu121 están compilados para numpy
+# 1.x. Con numpy 2.x, TF rompe al importar ("Unable to convert function return value to
+# a Python type! () -> handle" en TF_bfloat16_type). Fijarlo además hace el build
+# reproducible y fuerza a pip a elegir versiones de pandas/sklearn/evidently compatibles.
+numpy>=1.26,<2
+pandas
+scikit-learn
+Pillow
+
+# ── Observabilidad ────────────────────────────────────────
+prometheus-client
+
+# ── Testing ───────────────────────────────────────────────
+pytest

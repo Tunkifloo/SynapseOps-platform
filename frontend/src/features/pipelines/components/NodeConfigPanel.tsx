@@ -1,5 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Trash2, X } from 'lucide-react'
+
+import { notify } from '@/shared/notify'
 
 import { Button } from '@/shared/components/ui/button'
 import { Input } from '@/shared/components/ui/input'
@@ -16,6 +18,7 @@ import { NODE_KIND_MAP, type NodeKind } from '@/features/pipelines/nodeKinds'
 import {
   NODE_FIELDS,
   defaultConfig,
+  fieldErrors,
   validateConfig,
   type FieldDef,
   type NodeConfig,
@@ -117,6 +120,13 @@ export function NodeConfigPanel({
     ...(data.config ?? {}),
   })
   const [validationError, setValidationError] = useState<string | null>(null)
+  // Validación en tiempo real (Ticket UX-2): errores por campo + control de cuándo
+  // mostrarlos (campo tocado o tras intentar guardar) para no abrumar al abrir el panel.
+  const [touched, setTouched] = useState<Set<string>>(new Set())
+  const [saveAttempted, setSaveAttempted] = useState(false)
+  const errors = useMemo(() => fieldErrors(data.kind, config), [data.kind, config])
+  // Contenedor scrollable: al fallar el guardado se desplaza al primer campo en rojo.
+  const bodyRef = useRef<HTMLDivElement>(null)
 
   // Línea base para detectar cambios sin guardar (solo nombre + configuración;
   // el estado lo gobierna la ejecución y no es editable aquí).
@@ -136,6 +146,7 @@ export function NodeConfigPanel({
 
   const setField = (name: string, value: string | number) => {
     setValidationError(null)
+    setTouched((prev) => new Set(prev).add(name))
     setConfig((prev) => ({ ...prev, [name]: value }))
   }
 
@@ -145,11 +156,23 @@ export function NodeConfigPanel({
   }
 
   const handleSave = () => {
-    const error = validateConfig(data.kind, config)
+    setSaveAttempted(true)
+    // Ingesta con dataset YA asignado: el origen no se reconfigura aquí (campos ocultos)
+    // → no se valida; de lo contrario un origen previo vacío bloquearía un guardado válido.
+    const skipValidation = data.kind === 'ingest' && !!ingest?.datasetPath
+    const error = skipValidation ? null : validateConfig(data.kind, config)
     if (error) {
+      // No se guarda: se marca el campo respectivo (rojo), se avisa con un toast
+      // inmediato (no se pierde bajo el scroll) y se desplaza al primer error.
       setValidationError(error)
+      notify.error('Revisa la configuración del nodo', { description: error })
+      requestAnimationFrame(() => {
+        const el = bodyRef.current?.querySelector('[aria-invalid="true"]')
+        el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      })
       return
     }
+    setValidationError(null)
     // El estado/errores no se editan: se preservan tal como los dejó la ejecución.
     onSave(label.trim() || cfg.label, config, data.status ?? 'idle', data.error)
     // Tras guardar, la configuración actual pasa a ser la línea base (no dirty).
@@ -160,13 +183,23 @@ export function NodeConfigPanel({
     if (field.showIf && !field.showIf(config)) return null
     const value = config[field.name] ?? ''
     const id = `cfg-${field.name}`
+    const err = errors[field.name]
+    const showErr = !!err && (touched.has(field.name) || saveAttempted)
+    const errId = `${id}-err`
+    const invalidRing =
+      'border-destructive focus-visible:ring-destructive/40 aria-[invalid=true]:border-destructive'
 
     return (
       <div key={field.name} className="space-y-1.5">
         <Label htmlFor={id}>{field.label}</Label>
         {field.type === 'select' ? (
           <Select value={String(value)} onValueChange={(v) => setField(field.name, v)}>
-            <SelectTrigger id={id}>
+            <SelectTrigger
+              id={id}
+              aria-invalid={showErr}
+              aria-describedby={showErr ? errId : undefined}
+              className={cn(showErr && invalidRing)}
+            >
               <SelectValue placeholder="Selecciona…" />
             </SelectTrigger>
             <SelectContent>
@@ -186,6 +219,9 @@ export function NodeConfigPanel({
             max={field.max}
             step={field.step}
             placeholder={field.placeholder}
+            aria-invalid={showErr}
+            aria-describedby={showErr ? errId : undefined}
+            className={cn(showErr && invalidRing)}
             onChange={(e) =>
               setField(
                 field.name,
@@ -198,7 +234,17 @@ export function NodeConfigPanel({
             }
           />
         )}
-        {field.help && <p className="text-[11px] text-muted-foreground">{field.help}</p>}
+        {showErr ? (
+          <p
+            id={errId}
+            role="alert"
+            className="text-[11px] font-medium text-destructive-strong motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-top-1 motion-safe:duration-150"
+          >
+            {err}
+          </p>
+        ) : (
+          field.help && <p className="text-[11px] text-muted-foreground">{field.help}</p>
+        )}
       </div>
     )
   }
@@ -218,7 +264,7 @@ export function NodeConfigPanel({
         </Button>
       </header>
 
-      <div className="flex-1 space-y-4 overflow-y-auto p-4">
+      <div ref={bodyRef} className="flex-1 space-y-4 overflow-y-auto p-4">
         {/* Descripción contextual: qué es y qué ajustar en este nodo. */}
         <p className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
           {KIND_HELP[data.kind]}
@@ -278,6 +324,7 @@ export function NodeConfigPanel({
             config={config}
             onConfigChange={mergeConfig}
             onAuthError={train.onAuthError}
+            error={saveAttempted ? errors.modelName : undefined}
           />
         )}
 

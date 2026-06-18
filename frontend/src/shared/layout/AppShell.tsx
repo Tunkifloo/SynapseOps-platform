@@ -40,6 +40,7 @@ import { Input } from '@/shared/components/ui/input'
 import { Badge } from '@/shared/components/ui/badge'
 import { ConfirmDialog } from '@/shared/components/ConfirmDialog'
 import { getMlflowHealth } from '@/features/mlflow/api'
+import { OnboardingFlow } from '@/features/onboarding/OnboardingFlow'
 import { useTheme } from '@/shared/theme/useTheme'
 import { API_BASE_URL } from '@/shared/api/env'
 import { cn } from '@/lib/utils'
@@ -162,6 +163,7 @@ export function AppShell({
       return (
         <Button
           key={item.key}
+          data-tour={item.key === 'builder' ? 'nav-builder' : undefined}
           variant="ghost"
           onClick={() => navigate(item.path)}
           aria-current={active ? 'page' : undefined}
@@ -183,6 +185,8 @@ export function AppShell({
 
   return (
     <div className="flex h-[100svh] w-full overflow-hidden bg-background font-sans text-foreground">
+      {/* Onboarding guiado (Ticket UX-5): modal de bienvenida + tour del Lienzo. */}
+      {token && <OnboardingFlow token={token} />}
       {/* ── Sidebar (≥ lg) ─────────────────────────────────────────────── */}
       <aside
         style={{ width: asideWidth }}
@@ -344,6 +348,7 @@ export function AppShell({
               return (
                 <Button
                   key={item.key}
+                  data-tour={item.key === 'builder' ? 'nav-builder' : undefined}
                   variant={active ? 'secondary' : 'outline'}
                   size="sm"
                   onClick={() => navigate(item.path)}
@@ -549,6 +554,8 @@ function NotificationsBell({ token, role }: { token: string; role?: Role }) {
   // SSE: al cambiar de workspace en el lienzo y volver se re-suscribe y el backend reenvía
   // el historial (replay); sin esto, los mismos hitos se re-notificarían como "no leídos".
   const seenRef = useRef<Set<string>>(new Set())
+  // Contenedor del panel (campana + dropdown) para detectar clics fuera (Ticket UX-1).
+  const wrapRef = useRef<HTMLDivElement>(null)
   // El healthcheck (MLflow) es de alcance ADMIN; para colaboradores se omite.
   const canCheckHealth = role === 'ADMIN'
 
@@ -651,6 +658,24 @@ function NotificationsBell({ token, role }: { token: string; role?: Role }) {
     })
   }
 
+  // Click-outside + Escape (Ticket UX-1): cierra el panel al hacer clic fuera de la
+  // campana/dropdown o al pulsar Escape. No bloquea el clic sobre el resto de la UI.
+  useEffect(() => {
+    if (!open) return
+    const onPointer = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false)
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('mousedown', onPointer)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onPointer)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+
   const levelIcon = (item: NotifItem) => {
     if (item.level === 'ERROR') return <CircleAlert className="size-4 text-destructive-strong" />
     if (item.level === 'WARN') return <CircleAlert className="size-4 text-warning-strong" />
@@ -659,7 +684,7 @@ function NotificationsBell({ token, role }: { token: string; role?: Role }) {
   }
 
   return (
-    <div className="relative">
+    <div className="relative" ref={wrapRef}>
       <Button variant="ghost" size="icon" onClick={toggle} aria-label="Notificaciones" className="relative">
         <Bell />
         {unread > 0 && (
@@ -670,9 +695,11 @@ function NotificationsBell({ token, role }: { token: string; role?: Role }) {
       </Button>
 
       {open && (
-        <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} aria-hidden="true" />
-          <div className="absolute top-[calc(100%+8px)] right-0 z-50 w-80 overflow-hidden rounded-xl border border-border bg-popover shadow-xl ring-1 ring-foreground/10 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-top-1 motion-safe:zoom-in-95 motion-safe:duration-150">
+        <div
+          role="dialog"
+          aria-label="Notificaciones"
+          className="absolute top-[calc(100%+8px)] right-0 z-50 w-80 overflow-hidden rounded-xl border border-border bg-popover shadow-xl ring-1 ring-foreground/10 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-top-1 motion-safe:zoom-in-95 motion-safe:duration-150"
+        >
 
             {/* Cabecera: healthcheck (ADMIN) o título de notificaciones */}
             <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
@@ -730,8 +757,7 @@ function NotificationsBell({ token, role }: { token: string; role?: Role }) {
                 </ul>
               )}
             </div>
-          </div>
-        </>
+        </div>
       )}
     </div>
   )

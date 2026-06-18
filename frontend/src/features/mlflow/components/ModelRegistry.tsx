@@ -23,6 +23,7 @@ import {
 } from '@/shared/components/ui/select'
 import { notify } from '@/shared/notify'
 import { setDeployHandoff } from '@/features/pipelines/deployHandoff'
+import { groupMetricsBySplit } from '@/features/executions/metricsGroups'
 import type { MlflowModelVersion, ModelStage } from '../api'
 import { DeleteVersionDialog } from './DeleteVersionDialog'
 
@@ -47,6 +48,8 @@ export interface VersionDetails {
   params: Record<string, string>
   metrics: Record<string, number>
   confusionMatrix?: ConfusionMatrix | null
+  /** Galería Score-CAM (data-URL base64), si el run la generó. */
+  scorecam?: string | null
 }
 
 export interface RegistryApi {
@@ -60,6 +63,9 @@ export interface RegistryApi {
   allowDeploy?: boolean
   /** Despliega el model-service directamente (sin pasar por el lienzo). */
   deploy?: (runId: string) => Promise<{ status: string; endpoint: string | null }>
+  /** Estado VIVO del despliegue de un run (servidor): permite que el botón refleje si esta
+   *  versión ya tiene una instancia corriendo y que el estado persista al volver al detalle. */
+  getDeployment?: (runId: string) => Promise<{ running: boolean; endpoint: string | null } | null>
 }
 
 interface ModelRegistryProps {
@@ -149,6 +155,22 @@ export function VersionCard({ api, modelName, version, onAuthError, onChanged }:
   }, [version.runId])
 
   const [deploying, setDeploying] = useState(false)
+  // Estado VIVO del despliegue (servidor): el botón refleja si esta versión ya tiene una
+  // instancia corriendo, y persiste al salir y volver al detalle (se relee del backend).
+  const [deployment, setDeployment] = useState<{ running: boolean; endpoint: string | null } | null>(null)
+
+  const refreshDeployment = useCallback(async () => {
+    if (!api.getDeployment) return
+    try {
+      setDeployment(await api.getDeployment(version.runId))
+    } catch {
+      /* estado informativo: si falla, se deja el último conocido */
+    }
+  }, [api, version.runId])
+
+  useEffect(() => {
+    void refreshDeployment()
+  }, [refreshDeployment])
 
   const handleDeploy = async () => {
     // Despliegue directo si la capa de datos lo soporta; si no, handoff al lienzo.
@@ -167,12 +189,15 @@ export function VersionCard({ api, modelName, version, onAuthError, onChanged }:
     try {
       const res = await api.deploy(version.runId)
       if (res.status === 'RUNNING') {
+        setDeployment({ running: true, endpoint: res.endpoint })
         notify.success('model-service desplegado', {
           description: `${modelName} · v${version.version}${res.endpoint ? ` · ${res.endpoint}` : ''} — gestiónalo en "Despliegues".`,
         })
       } else {
         notify.error('El despliegue no pasó el health check del model-service')
       }
+      // Reconcilia con el estado real del servidor (cubre éxito y reintentos).
+      void refreshDeployment()
     } catch (err) {
       if (!onAuthError(err)) {
         notify.error('No se pudo desplegar', { description: err instanceof Error ? err.message : undefined })
@@ -237,7 +262,21 @@ export function VersionCard({ api, modelName, version, onAuthError, onChanged }:
 
       {(api.allowDeploy || api.transitionStage || api.deleteVersion) && (
         <div className="mt-4 flex flex-wrap items-center gap-2">
-          {api.allowDeploy && (
+          {api.allowDeploy && (deployment?.running ? (
+            // Ya hay una instancia corriendo para esta versión → el botón cambia de estado
+            // y lleva al módulo de Despliegues (probar /predict, derribar, redesplegar).
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-8 border-success/40 text-success-strong hover:bg-success/10"
+              onClick={() => navigate('/deployments')}
+              title={deployment.endpoint ?? undefined}
+            >
+              <Rocket className="mr-1.5 size-3.5" />
+              Desplegado · ver
+            </Button>
+          ) : (
             <Button
               type="button"
               size="sm"
@@ -250,7 +289,7 @@ export function VersionCard({ api, modelName, version, onAuthError, onChanged }:
               <Rocket className="mr-1.5 size-3.5" />
               {deploying ? 'Desplegando…' : 'Desplegar'}
             </Button>
-          )}
+          ))}
 
           {api.transitionStage && (
             <Select value={stage} onValueChange={(v) => void handlePromote(v)} disabled={isPromoting}>
@@ -312,14 +351,19 @@ export function VersionCard({ api, modelName, version, onAuthError, onChanged }:
                     entries={Object.entries(details?.params ?? {})}
                     format={(v) => String(v)}
                   />
-                  <DetailGrid
-                    title="Métricas"
-                    entries={Object.entries(details?.metrics ?? {})}
-                    format={(v) => (typeof v === 'number' ? v.toFixed(4) : String(v))}
-                    valueClass="text-success-strong"
-                  />
+                  {/* Métricas agrupadas por split (Train/Val/Test/Drift) con color semántico. */}
+                  {groupMetricsBySplit(details?.metrics ?? {}).map((g) => (
+                    <DetailGrid
+                      key={g.key}
+                      title={g.title}
+                      entries={g.entries}
+                      format={(v) => (typeof v === 'number' ? v.toFixed(4) : String(v))}
+                      valueClass={g.valueClass}
+                    />
+                  ))}
                   <QualityReport metrics={details?.metrics ?? {}} />
                   {details?.confusionMatrix && <ConfusionMatrixView cm={details.confusionMatrix} />}
+                  {details?.scorecam && <ScoreCamView src={details.scorecam} />}
                   {(!details ||
                     (Object.keys(details.params).length === 0 &&
                       Object.keys(details.metrics).length === 0)) && (
@@ -401,6 +445,38 @@ export function ConfusionMatrixView({ cm }: { cm: ConfusionMatrix }) {
   )
 }
 
+/** Galería de interpretabilidad Score-CAM (imagen generada en el entrenamiento). */
+export function ScoreCamView({ src }: { src: string }) {
+  const [open, setOpen] = useState(true)
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center gap-1.5 text-[10px] font-semibold tracking-[0.14em] text-muted-foreground uppercase transition-colors duration-150 ease-out-quart hover:text-foreground"
+        aria-expanded={open}
+      >
+        {open ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
+        Interpretabilidad · Score-CAM
+      </button>
+      {open && (
+        <div className="mt-1.5 space-y-1.5">
+          <p className="text-[11px] leading-relaxed text-muted-foreground">
+            Mapas de calor sobre muestras del test: en qué regiones se fija el modelo para
+            decidir. Borde verde = acierto · rojo = error.
+          </p>
+          <img
+            src={src}
+            alt="Galería Score-CAM del modelo"
+            loading="lazy"
+            className="w-full rounded-lg border border-border bg-card"
+          />
+        </div>
+      )}
+    </div>
+  )
+}
+
 interface DetailGridProps {
   title: string
   entries: [string, string | number][]
@@ -434,8 +510,10 @@ function QualityReport({ metrics }: { metrics: Record<string, number> }) {
   }
   const psiTone = (p: number): Tone => (p >= 0.25 ? 'bad' : p >= 0.1 ? 'warn' : 'ok')
   const psiLabel = (p: number) => (p >= 0.25 ? 'significativa' : p >= 0.1 ? 'moderada' : 'estable')
-  if (splitPsi != null) chips.push({ label: `Calidad del split (train vs val): deriva ${psiLabel(splitPsi)} · PSI ${splitPsi.toFixed(2)}`, tone: psiTone(splitPsi) })
-  if (retrainPsi != null) chips.push({ label: `Cambio de datos vs corrida previa: deriva ${psiLabel(retrainPsi)} · PSI ${retrainPsi.toFixed(2)}`, tone: psiTone(retrainPsi) })
+  // PSI a 4 decimales (igual que el nodo del lienzo y el grid de métricas). Con toFixed(2)
+  // un PSI pequeño (p. ej. 0.0049) se mostraba como "0.00" → parecía sin valor / inconsistente.
+  if (splitPsi != null) chips.push({ label: `Calidad del split (train vs val): deriva ${psiLabel(splitPsi)} · PSI ${splitPsi.toFixed(4)}`, tone: psiTone(splitPsi) })
+  if (retrainPsi != null) chips.push({ label: `Cambio de datos vs corrida previa: deriva ${psiLabel(retrainPsi)} · PSI ${retrainPsi.toFixed(4)}`, tone: psiTone(retrainPsi) })
 
   const toneClass: Record<Tone, string> = {
     ok: 'bg-success/10 text-success-strong',

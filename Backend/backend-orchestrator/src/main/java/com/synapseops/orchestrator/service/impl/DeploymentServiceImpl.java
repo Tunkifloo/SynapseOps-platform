@@ -79,8 +79,16 @@ public class DeploymentServiceImpl implements DeploymentService {
             String modelName    = artifact.getModelVersion() != null
                     ? artifact.getModelVersion() : "model_v1";
             String artifactPath = artifact.getArtifactPath();
-            String serviceName  = "model-service-exec-" + executionId;
             String execId       = String.valueOf(executionId);
+            // Framework según la extensión del artefacto (.keras/.h5 → tf, .pt/.pth → torch).
+            String framework    = dockerfileBuilder.reset()
+                    .setArtifactPath(artifactPath)
+                    .resolveFramework();
+            // La imagen del model-service es GENÉRICA por framework (el modelo se monta en
+            // runtime vía MODEL_PATH, NO se hornea). Nombrarla por framework — y no por
+            // ejecución — evita acumular una imagen de ~1.5-2 GB por cada despliegue: se
+            // reutiliza vía la caché de Docker (a lo sumo 2 imágenes: tf y torch).
+            String serviceName  = "model-service-" + framework;
             Long   workspaceId  = execution.getPipeline().getWorkspace().getIdWorkspace();
             String containerName = "modelo_" + workspaceId;            // TA-003 · nombre único
 
@@ -101,11 +109,6 @@ public class DeploymentServiceImpl implements DeploymentService {
 
             int    hostPort      = dockerFacade.findFreePort(8001);    // TA-002 · puerto dinámico
 
-            // Framework según la extensión del artefacto (.keras/.h5 → tf, .pt/.pth → torch).
-            String framework = dockerfileBuilder.reset()
-                    .setArtifactPath(artifactPath)
-                    .resolveFramework();
-
             log.info("Iniciando despliegue — executionId={} model={} framework={} path={}",
                     executionId, modelName, framework, artifactPath);
             executionEventBus.publish(execId, "INFO",
@@ -120,7 +123,7 @@ public class DeploymentServiceImpl implements DeploymentService {
                     .onErrorReturn("")
                     .blockOptional().orElse("");
             if (artifactUri.isBlank()) {
-                log.warn("HU-007 · runId={} sin artifact_uri en MLflow; se usa el artefacto de /storage.",
+                log.warn("· runId={} sin artifact_uri en MLflow; se usa el artefacto de /storage.",
                         artifact.getRunId());
             }
 
@@ -140,13 +143,17 @@ public class DeploymentServiceImpl implements DeploymentService {
             persistManifests(executionId, dockerfile, composeYaml);
 
             long genElapsed = System.currentTimeMillis() - genStart;
-            log.info("HU-007 · Artefactos generados y validados en {} ms (umbral 5000 ms)", genElapsed);
+            log.info("· Artefactos generados y validados en {} ms (umbral 5000 ms)", genElapsed);
 
             executionEventBus.publish(execId, "INFO",
                     "Construyendo imagen del model-service (framework=" + framework
                             + ", puede tardar)…");
             String imageId = dockerFacade.buildImage(dockerfile, serviceName, framework);
             log.info("Imagen construida: {} → {}", serviceName, imageId);
+            // Higiene de disco: si este build reemplazó la imagen del framework (cambió la
+            // plantilla), la anterior queda colgante (<none>). Se purgan las colgantes no
+            // usadas por ningún contenedor (≈ docker image prune), liberando ~1.5-2 GB c/u.
+            dockerFacade.pruneDanglingImages();
             executionEventBus.publish(execId, "INFO", "Imagen construida. Levantando contenedor…");
 
             // Contrato de la plantilla TA-007: el artefacto se lee de MODEL_PATH
