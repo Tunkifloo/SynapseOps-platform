@@ -1,3 +1,5 @@
 # Inferencia PyTorch (artefactos .pt/.pth, idealmente TorchScript). Rueda CPU (más liviana).
+# Misma versión que el ml-engine (torch 2.3.1) para garantizar que el TorchScript guardado
+# en el entrenamiento cargue sin sorpresas de compatibilidad en torch.jit.load.
 --extra-index-url https://download.pytorch.org/whl/cpu
-torch==2.5.1
+torch==2.3.1

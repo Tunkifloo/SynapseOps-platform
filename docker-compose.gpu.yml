@@ -42,6 +42,11 @@ services:
       # libdevice en <dir>/nvvm/libdevice/ y ptxas en <dir>/bin/. Sin esto: "JIT
       # compilation failed / libdevice not found" en backbones (capa Normalization).
       XLA_FLAGS: --xla_gpu_cuda_data_dir=/usr/local/lib/python3.11/site-packages/nvidia/cuda_nvcc
+      # Allocator asíncrono de CUDA: a diferencia del BFC por defecto (que retiene la VRAM
+      # reservada hasta que el proceso muere), cudaMallocAsync DEVUELVE la VRAM al driver al
+      # liberarla → tras clear_session()/empty_cache() en _free_memory el uso de VRAM baja
+      # entre runs en lugar de quedar ~ocupado. Requiere CUDA ≥11.2 (cu121 OK).
+      TF_GPU_ALLOCATOR: cuda_malloc_async
     deploy:
       resources:
         reservations:

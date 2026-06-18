@@ -123,7 +123,7 @@ public class DeploymentServiceImpl implements DeploymentService {
                     .onErrorReturn("")
                     .blockOptional().orElse("");
             if (artifactUri.isBlank()) {
-                log.warn("HU-007 · runId={} sin artifact_uri en MLflow; se usa el artefacto de /storage.",
+                log.warn("· runId={} sin artifact_uri en MLflow; se usa el artefacto de /storage.",
                         artifact.getRunId());
             }
 
@@ -143,7 +143,7 @@ public class DeploymentServiceImpl implements DeploymentService {
             persistManifests(executionId, dockerfile, composeYaml);
 
             long genElapsed = System.currentTimeMillis() - genStart;
-            log.info("HU-007 · Artefactos generados y validados en {} ms (umbral 5000 ms)", genElapsed);
+            log.info("· Artefactos generados y validados en {} ms (umbral 5000 ms)", genElapsed);
 
             executionEventBus.publish(execId, "INFO",
                     "Construyendo imagen del model-service (framework=" + framework
