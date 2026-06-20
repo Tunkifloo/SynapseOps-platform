@@ -55,7 +55,11 @@ class PyTorchStrategy(TrainingStrategy):
         use_cuda = device.type == "cuda"
 
         def _to_cpu_tensor(arr):
-            t = torch.tensor(np.transpose(arr, (0, 3, 1, 2)))
+            # from_numpy COMPARTE el buffer del numpy (transpuesto a NCHW solo por strides,
+            # sin copiar) → el split NO se duplica en RAM. Antes `torch.tensor(...)` COPIABA
+            # el array entero a contiguo (a 160px ~4 GB extra del train) → alimentaba el OOM.
+            # El lote se vuelve contiguo al apilarse en el DataLoader / al pasar a device.
+            t = torch.from_numpy(np.transpose(arr, (0, 3, 1, 2)))
             return t if t.dtype == torch.uint8 else t.float()
 
         Xtr = _to_cpu_tensor(X_train)

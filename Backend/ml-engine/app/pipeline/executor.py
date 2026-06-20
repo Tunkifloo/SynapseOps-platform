@@ -180,6 +180,17 @@ class PipelineExecutor:
             return self._run(job)
         except Exception as e:
             log.exception("Error en pipeline execution=%s", job.execution_id)
+            # Mensaje accionable si el fallo es por memoria EN PROCESO (VRAM de GPU o RAM):
+            # TF ResourceExhausted, CUDA OOM de torch, bad_alloc o MemoryError. (Un OOM-kill
+            # del cgroup mata el proceso y no llega aquí → eso lo cubre el reinicio + telemetría.)
+            low = str(e).lower()
+            if isinstance(e, MemoryError) or any(
+                k in low for k in ("out of memory", "resourceexhausted", "oom when",
+                                   "bad_alloc", "cuda error", "cublas", "cudnn")):
+                self._emit(job.execution_id,
+                           "Fallo por memoria (GPU/RAM): reduce el batch size, el tamaño de "
+                           "imagen o el dataset. En backbones pesados (p. ej. ResNet) prueba "
+                           "una arquitectura más ligera (MobileNet) o menor resolución.", "ERROR")
             try:
                 self._mlflow.end_run("FAILED")
             except Exception:
@@ -212,12 +223,16 @@ class PipelineExecutor:
         used, limit = status
         avail = max(0.5, limit - used)              # GB disponibles
         size = job.image_size or 64
-        # El dataset se materializa en uint8 (1 byte/canal); el cast a float ocurre por
-        # lote (pico pequeño, cubierto por el margen del 60% restante).
-        per_img_gb = (size * size * 3 * 1) / 1e9    # uint8
+        # El dataset se materializa en uint8 (1 byte/canal, Min-Max) y se castea a float por
+        # lote. (zscore/rescale retirados → ya no existe la variante float32 ×4.)
+        per_img_gb = (size * size * 3) / 1e9
         if per_img_gb <= 0:
             return current
-        safe = max(200, int(avail * 0.40 / per_img_gb))
+        # Reserva los costes FIJOS (framework + libs CUDA host ≈ _FRAMEWORK_RESERVE_GB y el
+        # buffer de shuffle ≈ 0.5 GB) y deja el resto para el dataset, con 85% de margen sobre
+        # lo restante. Antes era un 40% plano que dejaba poco aire → runs al borde del límite.
+        budget = max(0.5, avail - self._FRAMEWORK_RESERVE_GB - 0.5)
+        safe = max(200, int(budget * 0.85 / per_img_gb))
         capped = safe if current is None else min(safe, current)
         # Informa solo cuando la memoria es el límite efectivo (cap realmente bajo).
         if capped < 20_000:
@@ -226,8 +241,9 @@ class PipelineExecutor:
                        f"imágenes a {size}px, se submuestrea para evitar fallos por memoria.")
         return capped
 
-    # Reserva fija estimada (GB) para el framework (import TF/torch + grafo + transientes).
-    _FRAMEWORK_RESERVE_GB = 2.0
+    # Reserva fija estimada (GB): framework (import TF/torch) + librerías CUDA del lado host +
+    # grafo + transitorios de métricas. ~3 GB observado empíricamente (medición Fase 1).
+    _FRAMEWORK_RESERVE_GB = 3.0
 
     def _emit_training_plan(self, job: PipelineJob, n_train: int, n_val: int,
                             n_test: int, size: int, pretrained: bool) -> None:
@@ -236,7 +252,8 @@ class PipelineExecutor:
         CPU). Complementa el cap funcional de ingesta (_safe_max_images) y los avisos en vivo
         (_warn_memory). Objetivo: que el usuario ajuste antes de un fallo, no después."""
         total = n_train + n_val + n_test
-        per_img_gb = (size * size * 3) / 1e9                 # uint8 residente por imagen
+        # Dataset en uint8 (Min-Max; 1 byte/canal). El cast a float es por lote.
+        per_img_gb = (size * size * 3) / 1e9
         dataset_gb = total * per_img_gb
         self._emit(job.execution_id,
                    f"Plan: {total} imágenes a {size}px ≈ {dataset_gb:.1f} GB en memoria (uint8) · "
@@ -245,9 +262,10 @@ class PipelineExecutor:
         status = self._memory_status()
         if status:
             _used, limit = status
-            # Pico aproximado: dataset uint8 + (TF mantiene la validación en float) + reserva.
-            val_float = (n_val * per_img_gb * 4) if job.framework != "pytorch" else 0.0
-            peak = dataset_gb + val_float + self._FRAMEWORK_RESERVE_GB
+            # Pico ≈ dataset + buffer de shuffle (~10k imgs uint8) + reserva del framework.
+            # Tras la de-duplicación (Fase 1) ya NO se mantienen copias float de val/test.
+            shuffle_gb = min(n_train, 10_000) * (size * size * 3) / 1e9
+            peak = dataset_gb + shuffle_gb + self._FRAMEWORK_RESERVE_GB
             if peak >= limit * 0.85:
                 self._emit(job.execution_id,
                            f"⚠ Configuración PESADA: pico de memoria estimado ≈ {peak:.1f} GB de "
@@ -398,6 +416,14 @@ class PipelineExecutor:
                            f"Aviso: batch grande ({job.batch_size}) a {size}px consume bastante "
                            f"memoria; si el entrenamiento falla por memoria (OOM) o va lento, "
                            f"reduce el batch size.", "WARN")
+
+        if not pretrained and (job.image_size or 64) > 256:
+            # CNN: la resolución la fija el usuario (16–512). La memoria y el tiempo crecen
+            # con el cuadrado del tamaño → aviso si es alta.
+            self._emit(job.execution_id,
+                       f"Aviso: {job.image_size}px en CNN consume bastante memoria y tiempo "
+                       f"(crece con el cuadrado del tamaño). Si falla por memoria o va lento, "
+                       f"baja el tamaño en el nodo de Preprocesamiento.", "WARN")
 
         # Pre-limpieza: borra disco transitorio (extracted/, downloads/) que un crash
         # duro anterior pudo dejar sin limpiar, antes de extraer este dataset.
@@ -624,7 +650,11 @@ class PipelineExecutor:
         overfit_warning = _compute_overfit_warning(result, bundle)
         if overfit_warning:
             level = "WARN" if overfit_warning["severity"] in ("high", "moderate") else "INFO"
-            self._emit(job.execution_id, "Calidad: " + overfit_warning["message"], level)
+            extra = ""
+            if overfit_warning["severity"] in ("high", "moderate") and not aug_cfg:
+                extra = (" Este entrenamiento NO usa data augmentation: activarlo (o subir "
+                         "dropout/L2, o reducir epochs) suele reducir el overfitting.")
+            self._emit(job.execution_id, "Calidad: " + overfit_warning["message"] + extra, level)
 
         # ── Data drift (calidad del split + re-entrenamiento) ─────────────────
         drift_summary = self._compute_drift(job, bundle, output_dir)

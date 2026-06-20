@@ -1,0 +1,38 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# SynapseOps · Plantilla de  C:\Users\<TU_USUARIO>\.wslconfig
+#
+# PROBLEMA QUE RESUELVE (Fase 0 · optimización del ml-engine):
+#   En Windows + Docker Desktop, los contenedores corren dentro de una VM Linux
+#   (WSL2) cuyo límite de RAM por defecto es ~50% del host (con tope histórico de
+#   8 GB). Por eso un host de 16 GB se comporta como uno de 8 GB y el ml-engine
+#   colapsa por OOM con datasets grandes, aunque "sobre" RAM en Windows.
+#
+# CÓMO APLICARLO:
+#   1) Copia este archivo a:  C:\Users\<TU_USUARIO>\.wslconfig   (sin extensión)
+#   2) Ajusta `memory` a ~75-85% de la RAM física del host (ver tabla abajo).
+#   3) Cierra Docker Desktop y ejecuta en PowerShell:   wsl --shutdown
+#   4) Reabre Docker Desktop. Verifica el techo real DENTRO del contenedor:
+#        docker exec ml-engine cat /proc/meminfo | findstr MemTotal
+#      (debe acercarse al `memory` configurado, no a los ~8 GB por defecto)
+#
+#   Host físico │ memory recomendado │ processors
+#   ────────────┼────────────────────┼───────────
+#     16 GB     │ 12GB (deja 4 a Win)│ 6
+#     32 GB     │ 24GB               │ 8-12
+#      8 GB     │ 6GB  (irá justo)   │ 4
+# ─────────────────────────────────────────────────────────────────────────────
+
+[wsl2]
+# RAM máxima para la VM de WSL2 (donde viven los contenedores Docker).
+memory=12GB
+
+# Núcleos lógicos para la VM (ajusta al host; deja 1-2 para Windows).
+processors=6
+
+# Swap de la VM: colchón ante picos. En disco (más lento que RAM), pero evita que un
+# pico transitorio mate el proceso. Útil mientras no esté el streaming (Fase 2).
+swap=4GB
+
+[experimental]
+# Devuelve al host la memoria que la VM deja de usar (evita que WSL2 retenga RAM).
+autoMemoryReclaim=gradual
