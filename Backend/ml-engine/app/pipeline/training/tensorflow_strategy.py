@@ -56,14 +56,17 @@ class TensorFlowStrategy(TrainingStrategy):
         # POR LOTE en tf.data (scale=255); float (builtins/zscore) → tal cual (scale=1).
         scale = 255.0 if X_train.dtype == np.uint8 else 1.0
         train_ds = self._make_dataset(X_train, y_train, hyperparams, aug_cfg, scale)
-        Xv_f = X_val.astype(np.float32) / scale   # val a float (mucho menor que train)
+        # Validación como tf.data por lotes (cast por lote) en vez de un array float COMPLETO:
+        # a 160px+ el `X_val.astype(float32)` residente sumaba GB y, junto con la duplicación
+        # del train, disparaba el OOM. Ahora val nunca se materializa entero en float.
+        val_ds = self._labeled_ds(X_val, y_val, hyperparams.batch_size, scale)
         arch = (hyperparams.architecture or "cnn").lower()
 
         with tf.device(device):
             if arch == "cnn":
                 model = self._build_cnn(hyperparams)
                 hist = self._fit_phase(
-                    model, train_ds, Xv_f, y_val, hyperparams,
+                    model, train_ds, val_ds, hyperparams,
                     hyperparams.learning_rate, hyperparams.epochs, 0,
                     hyperparams.epochs, None, on_epoch)
             else:
@@ -87,18 +90,20 @@ class TensorFlowStrategy(TrainingStrategy):
                 elif not aug_cfg:
                     emb_train = extractor.predict(
                         self._predict_ds(X_train, hyperparams.batch_size, scale), verbose=0)
-                    emb_val = extractor.predict(Xv_f, verbose=0)
+                    emb_val = extractor.predict(
+                        self._predict_ds(X_val, hyperparams.batch_size, scale), verbose=0)
                     emb_ds = (tf.data.Dataset.from_tensor_slices((emb_train, y_train))
                               .shuffle(min(len(emb_train), 10_000))
                               .batch(hyperparams.batch_size).prefetch(tf.data.AUTOTUNE))
                     log.info("FE con caché de embeddings (dim=%d; backbone no se re-ejecuta).",
                              emb_train.shape[-1])
-                    h1 = self._fit_phase(head_model, emb_ds, emb_val, y_val, hyperparams,
+                    # Embeddings pequeños (N×D) → validación como tupla directa a Keras.
+                    h1 = self._fit_phase(head_model, emb_ds, (emb_val, y_val), hyperparams,
                                          hyperparams.feature_extraction_lr, fe_ep, 0, total,
                                          "FE", on_epoch)
                     del emb_train, emb_val, emb_ds
                 else:
-                    h1 = self._fit_phase(model, train_ds, Xv_f, y_val, hyperparams,
+                    h1 = self._fit_phase(model, train_ds, val_ds, hyperparams,
                                          hyperparams.feature_extraction_lr, fe_ep, 0, total,
                                          "FE", on_epoch)
                 # ── FT: imágenes crudas (los gradientes fluyen por el backbone) ──
@@ -109,18 +114,20 @@ class TensorFlowStrategy(TrainingStrategy):
                         on_phase({"phase": "FT", "epochs": ft_ep,
                                   "lr": hyperparams.finetuning_lr,
                                   "unfreeze": hyperparams.unfreeze_layers})
-                    h2 = self._fit_phase(model, train_ds, Xv_f, y_val, hyperparams,
+                    h2 = self._fit_phase(model, train_ds, val_ds, hyperparams,
                                          hyperparams.finetuning_lr, ft_ep, fe_ep, total,
                                          "FT", on_epoch)
                 hist = {k: list(h1.get(k, [])) + list(h2.get(k, []))
                         for k in set(h1) | set(h2)}
 
-        # Predicciones para métricas avanzadas (item 7). Train vía tf.data (cast por lote,
-        # no materializa todo el train en float); val ya es float; test se castea (es chico).
+        # Predicciones para métricas avanzadas (item 7). TODO por lotes vía tf.data (cast por
+        # lote) → ni train ni val ni test se materializan enteros en float (evita el pico de
+        # memoria que disparaba el OOM en el post-entrenamiento).
         with tf.device(device):
             train_proba = model.predict(
                 self._predict_ds(X_train, hyperparams.batch_size, scale), verbose=0)
-            val_proba = model.predict(Xv_f, verbose=0)
+            val_proba = model.predict(
+                self._predict_ds(X_val, hyperparams.batch_size, scale), verbose=0)
         train_pred = train_proba.argmax(axis=1)
         train_true = np.asarray(y_train)
         val_pred = val_proba.argmax(axis=1)
@@ -128,10 +135,11 @@ class TensorFlowStrategy(TrainingStrategy):
         test_accuracy = test_loss = None
         test_true = test_pred = test_proba = None
         if X_test is not None and y_test is not None and len(X_test) > 0:
-            Xte_f = X_test.astype(np.float32) / scale
             with tf.device(device):
-                tl, ta = model.evaluate(Xte_f, y_test, verbose=0)
-                test_proba = model.predict(Xte_f, verbose=0)
+                tl, ta = model.evaluate(
+                    self._labeled_ds(X_test, y_test, hyperparams.batch_size, scale), verbose=0)
+                test_proba = model.predict(
+                    self._predict_ds(X_test, hyperparams.batch_size, scale), verbose=0)
             test_pred = test_proba.argmax(axis=1)
             test_true = np.asarray(y_test)
             test_loss, test_accuracy = float(tl), float(ta)
@@ -168,14 +176,32 @@ class TensorFlowStrategy(TrainingStrategy):
         )
 
     def _make_dataset(self, X_train, y_train, hp: HyperParams, aug_cfg: dict, scale: float):
-        """tf.data de entrenamiento: castea uint8→[0,1] POR LOTE (scale=255; float→1) y, si
-        hay catálogo, aplica augmentation. Siempre devuelve un dataset (el cast es necesario
-        aunque no haya augmentation) → el train grande nunca se materializa en float."""
+        """tf.data de entrenamiento desde un GENERADOR sobre el array numpy: castea
+        uint8→[0,1] POR LOTE (scale=255; float→1) y, si hay catálogo, aplica augmentation.
+
+        Memoria: `from_generator` lee fila a fila del numpy SIN copiar el array a un tensor
+        constante de TF — que es lo que hacía `from_tensor_slices` y DUPLICABA el train en
+        RAM (a 160px eran ~4 GB extra → disparaba el OOM). Ahora el train vive una sola vez
+        (el numpy del bundle) y el dataset solo retiene el buffer de shuffle + el lote."""
         import tensorflow as tf
         inv = 1.0 / scale
+        dtype = tf.uint8 if X_train.dtype == np.uint8 else tf.float32
+        sig = (tf.TensorSpec(shape=X_train.shape[1:], dtype=dtype),
+               tf.TensorSpec(shape=(), dtype=tf.int64))
+
+        def gen():
+            for i in range(len(X_train)):
+                yield X_train[i], y_train[i]
+
+        # Buffer de shuffle ACOTADO por memoria (~0.5 GB): a 160px float32 una imagen ocupa
+        # ~0.3 MB → 10 000 elementos serían ~3 GB de buffer (disparaba picos de RAM). Se escala
+        # al tamaño/dtype real de cada muestra (uint8 admite más elementos que float32).
+        per_img_bytes = int(X_train[0].nbytes) if len(X_train) else 1
+        buf = min(len(X_train), 10_000, max(1_000, int(0.5e9 / max(1, per_img_bytes))))
+
         ds = (
-            tf.data.Dataset.from_tensor_slices((X_train, y_train))
-            .shuffle(min(len(X_train), 10_000))
+            tf.data.Dataset.from_generator(gen, output_signature=sig)
+            .shuffle(buf)
             .batch(hp.batch_size)
             .map(lambda x, yy: (tf.cast(x, tf.float32) * inv, yy),
                  num_parallel_calls=tf.data.AUTOTUNE)
@@ -185,22 +211,53 @@ class TensorFlowStrategy(TrainingStrategy):
                         num_parallel_calls=tf.data.AUTOTUNE)
         return ds.prefetch(tf.data.AUTOTUNE)
 
-    def _predict_ds(self, X, batch: int, scale: float):
-        """tf.data para inferencia (sin shuffle/labels): castea uint8→[0,1] por lote."""
+    def _labeled_ds(self, X, y, batch: int, scale: float):
+        """tf.data CON etiquetas para validación/evaluación (sin shuffle), desde generador:
+        castea uint8→[0,1] por lote. Evita materializar el split entero en float (lo que
+        usaban `validation_data=(Xv_f, y)` y `evaluate(Xte_f, y)`)."""
         import tensorflow as tf
         inv = 1.0 / scale
+        sig = (tf.TensorSpec(shape=X.shape[1:],
+                             dtype=tf.uint8 if X.dtype == np.uint8 else tf.float32),
+               tf.TensorSpec(shape=(), dtype=tf.int64))
+
+        def gen():
+            for i in range(len(X)):
+                yield X[i], y[i]
+
         return (
-            tf.data.Dataset.from_tensor_slices(X)
+            tf.data.Dataset.from_generator(gen, output_signature=sig)
+            .batch(batch)
+            .map(lambda xb, yb: (tf.cast(xb, tf.float32) * inv, yb),
+                 num_parallel_calls=tf.data.AUTOTUNE)
+            .prefetch(tf.data.AUTOTUNE)
+        )
+
+    def _predict_ds(self, X, batch: int, scale: float):
+        """tf.data para inferencia (sin shuffle/labels) desde generador: castea uint8→[0,1]
+        por lote SIN copiar X a un tensor constante (mismo motivo de memoria que _make_dataset)."""
+        import tensorflow as tf
+        inv = 1.0 / scale
+        sig = tf.TensorSpec(shape=X.shape[1:],
+                            dtype=tf.uint8 if X.dtype == np.uint8 else tf.float32)
+
+        def gen():
+            for i in range(len(X)):
+                yield X[i]
+
+        return (
+            tf.data.Dataset.from_generator(gen, output_signature=sig)
             .batch(batch)
             .map(lambda x: tf.cast(x, tf.float32) * inv, num_parallel_calls=tf.data.AUTOTUNE)
             .prefetch(tf.data.AUTOTUNE)
         )
 
-    def _fit_phase(self, model, train_ds, Xv_f, y_val,
+    def _fit_phase(self, model, train_ds, val_data,
                    hp: HyperParams, lr: float, epochs: int, offset: int,
                    total: int, phase: "str | None", on_epoch) -> dict:
         """Compila con `lr` y entrena `epochs` desde el tf.data (cast por lote). Reporta
-        epochs continuas (offset/total) y la fase (FE/FT). `Xv_f` = validación ya en float."""
+        epochs continuas (offset/total) y la fase (FE/FT). `val_data` = validación como
+        tf.data por lotes (imágenes) o tupla (embeddings, y); se pasa tal cual a Keras."""
         import tensorflow as tf
         if epochs <= 0:
             return {}
@@ -223,7 +280,7 @@ class TensorFlowStrategy(TrainingStrategy):
                 cbs.append(tf.keras.callbacks.EarlyStopping(
                     monitor=monitor, patience=max(1, hp.es_patience),
                     restore_best_weights=True, verbose=1))
-        h = model.fit(train_ds, validation_data=(Xv_f, y_val),
+        h = model.fit(train_ds, validation_data=val_data,
                       epochs=epochs, verbose=1, callbacks=cbs)
         return h.history
 

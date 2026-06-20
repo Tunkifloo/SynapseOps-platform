@@ -1,12 +1,14 @@
 import type { NodeKind } from '@/features/pipelines/nodeKinds'
 
-export type FieldType = 'text' | 'number' | 'select'
+export type FieldType = 'text' | 'number' | 'select' | 'info'
 export type NodeConfig = Record<string, string | number>
 
 export interface FieldDef {
   name: string
   label: string
   type: FieldType
+  /** Texto fijo a mostrar cuando type === 'info' (campo de solo lectura, no editable). */
+  text?: string
   options?: { value: string; label: string }[]
   min?: number
   max?: number
@@ -136,13 +138,9 @@ export const NODE_FIELDS: Record<NodeKind, FieldDef[]> = {
     {
       name: 'normalization',
       label: 'Normalización',
-      type: 'select',
-      options: [
-        { value: 'minmax', label: 'Min-Max [0,1]' },
-        { value: 'zscore', label: 'Z-score (media/σ)' },
-        { value: 'rescale', label: 'Rescale [-1,1]' },
-      ],
-      help: 'Escalado de los píxeles antes de entrenar.',
+      type: 'info',
+      text: 'Min-Max [0,1] (automática)',
+      help: 'Los píxeles se escalan a [0,1]. Es la normalización óptima para las CNN y la que esperan los modelos preentrenados (EfficientNet/MobileNet/ResNet), que traen su propio preprocesamiento.',
     },
     {
       name: 'dataAugmentation',
