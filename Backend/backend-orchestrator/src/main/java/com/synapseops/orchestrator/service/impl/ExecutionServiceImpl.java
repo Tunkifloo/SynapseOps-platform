@@ -80,7 +80,10 @@ public class ExecutionServiceImpl implements ExecutionService {
                     request.preprocessingStrategy() != null ? request.preprocessingStrategy() : "normalization",
                     request.imageSize(),
                     request.trainRatio(),
-                    request.normalization() != null ? request.normalization() : "minmax",
+                    // Normalización fija Min-Max [0,1]: zscore/rescale se retiraron (rompían
+                    // los modelos preentrenados y cuadruplicaban la memoria). Se fuerza minmax
+                    // aquí para cubrir también pipelines guardados con la opción antigua.
+                    "minmax",
                     request.dataAugmentation(),
                     request.optimizer() != null ? request.optimizer() : "adam",
                     request.batchNorm(),

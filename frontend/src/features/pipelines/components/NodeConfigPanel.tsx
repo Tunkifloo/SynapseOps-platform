@@ -192,7 +192,14 @@ export function NodeConfigPanel({
     return (
       <div key={field.name} className="space-y-1.5">
         <Label htmlFor={id}>{field.label}</Label>
-        {field.type === 'select' ? (
+        {field.type === 'info' ? (
+          <div
+            id={id}
+            className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm font-medium text-foreground"
+          >
+            {field.text ?? String(value)}
+          </div>
+        ) : field.type === 'select' ? (
           <Select value={String(value)} onValueChange={(v) => setField(field.name, v)}>
             <SelectTrigger
               id={id}
