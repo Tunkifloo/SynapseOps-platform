@@ -96,6 +96,10 @@ class PipelineJob:
     finetuning_epochs:         int   = 10
     finetuning_lr:             float = 1e-5
     unfreeze_layers:           int   = 10
+    # ── HPO (optimización automática de hiperparámetros, Fase 4) ──────────────
+    hpo:        bool = False
+    hpo_trials: int  = 10
+    hpo_effort: str  = "balanced"   # fast | balanced | thorough (fidelidad del proxy)
 
     @staticmethod
     def from_dict(data: dict) -> "PipelineJob":
@@ -150,6 +154,9 @@ class PipelineJob:
             early_stopping=_flag(data.get("earlyStopping")),
             es_patience =int(data.get("esPatience", 3) or 3),
             es_monitor  =data.get("esMonitor", "val_loss") or "val_loss",
+            hpo         =_flag(data.get("hpo")),
+            hpo_trials  =int(data.get("hpoTrials", 10) or 10),
+            hpo_effort  =(data.get("hpoEffort") or "balanced").lower(),
         )
 
 
@@ -165,6 +172,16 @@ class PipelineExecutor:
     # piso donde aún extraen features útiles y techo = resolución de los pesos ImageNet.
     MIN_PRETRAINED_SIZE = 96
     MAX_PRETRAINED_SIZE = 224
+    # HPO (Fase 4): presupuesto por trial (proxy barato); el reentreno final usa el dataset
+    # completo. El "esfuerzo" controla la fidelidad del proxy (epochs, nº imágenes): más
+    # esfuerzo = selección de hiperparámetros más fiable, pero más tiempo. Con pruning los
+    # trials malos se cortan antes, así que se puede permitir más epochs sin disparar el coste.
+    HPO_EFFORT = {
+        "fast":     (3, 3000),
+        "balanced": (5, 6000),
+        "thorough": (8, 10000),
+    }
+    HPO_MAX_TRIALS = 40
 
     def __init__(self) -> None:
         self._mlflow = MLflowFacade()
@@ -375,6 +392,59 @@ class PipelineExecutor:
             pass
         gc.collect()
 
+    def _run_hpo(self, job: PipelineJob, bundle, aug_cfg: dict) -> None:
+        """Fase 4 · Ejecuta Optuna para elegir hiperparámetros y los aplica al `job` (el
+        entrenamiento final, más abajo, los usa sobre el dataset COMPLETO). Best-effort: ante
+        cualquier fallo deja los hiperparámetros indicados por el usuario."""
+        from app.pipeline.training import hpo
+        n_trials = max(2, min(int(job.hpo_trials or 10), self.HPO_MAX_TRIALS))
+        trial_epochs, trial_max = self.HPO_EFFORT.get(
+            (job.hpo_effort or "balanced").lower(), self.HPO_EFFORT["balanced"])
+        arch = (job.architecture or "cnn").lower()
+        strategy = self._select_strategy(job.framework)
+        self._emit(job.execution_id,
+                   f"HPO: optimización automática de hiperparámetros — {n_trials} trials "
+                   f"(esfuerzo «{job.hpo_effort}»: {trial_epochs} epochs sobre ≤{trial_max} "
+                   f"imágenes; los trials malos se cortan antes). El entreno final usa el dataset completo.")
+
+        def build_hp(params: dict, epochs: int) -> HyperParams:
+            return HyperParams(
+                epochs=epochs, batch_size=job.batch_size, architecture=job.architecture,
+                learning_rate=params["learning_rate"], num_classes=bundle.num_classes,
+                input_shape=bundle.input_shape, optimizer=params["optimizer"],
+                batch_norm=job.batch_norm, early_stopping=False,
+                data_augmentation=job.data_augmentation, augmentation_config=aug_cfg,
+                dropout=params["dropout"], l2=params["l2"],
+                feature_extraction_epochs=epochs,
+                feature_extraction_lr=params.get("feature_extraction_lr", job.feature_extraction_lr),
+                finetuning_epochs=max(1, epochs // 2),
+                finetuning_lr=params.get("finetuning_lr", job.finetuning_lr),
+                unfreeze_layers=params.get("unfreeze_layers", job.unfreeze_layers),
+            )
+
+        try:
+            best = hpo.run_study(
+                job, bundle, strategy, build_hp, n_trials,
+                trial_epochs, trial_max,
+                lambda m: self._emit(job.execution_id, m), cleanup=self._free_memory)
+        except Exception as e:  # noqa: BLE001 — HPO complementario, no debe tumbar el run
+            self._emit(job.execution_id,
+                       f"HPO: no se pudo completar ({e}); se usan los hiperparámetros indicados.",
+                       "WARN")
+            log.warning("HPO falló: %s", e)
+            return
+
+        job.learning_rate = float(best.get("learning_rate", job.learning_rate))
+        job.dropout = float(best.get("dropout", job.dropout))
+        job.optimizer = str(best.get("optimizer", job.optimizer))
+        job.l2 = float(best.get("l2", job.l2))
+        if arch != "cnn":
+            job.feature_extraction_lr = float(best.get("feature_extraction_lr", job.feature_extraction_lr))
+            job.finetuning_lr = float(best.get("finetuning_lr", job.finetuning_lr))
+            job.unfreeze_layers = int(best.get("unfreeze_layers", job.unfreeze_layers))
+        self._emit(job.execution_id,
+                   "HPO: aplicando los mejores hiperparámetros al entrenamiento final…")
+
     def _run(self, job: PipelineJob) -> dict:
         # ── Paso 0: Validar arquitectura ──────────────────────────────────────
         arch = (job.architecture or "cnn").lower()
@@ -489,6 +559,12 @@ class PipelineExecutor:
         # de mayor consumo antes de entrenar). No restringe; avisa con thresholds claros.
         self._warn_memory(job, "carga del dataset")
 
+        # ── HPO opcional (Fase 4): elige los mejores hiperparámetros ANTES del entreno
+        # final. Aplica los resultados sobre `job`, de modo que el resto del flujo (build de
+        # HyperParams + log de params + entrenamiento) usa ya los valores óptimos.
+        if job.hpo:
+            self._run_hpo(job, bundle, aug_cfg)
+
         # ── Paso 2: Iniciar MLflow run ────────────────────────────────────────
         experiment_id = self._mlflow.get_or_create_experiment(
             f"pipeline_{job.pipeline_id}")
@@ -519,6 +595,14 @@ class PipelineExecutor:
             "es_monitor":    job.es_monitor if job.early_stopping else "—",
             "train_ratio":   job.train_ratio if job.train_ratio is not None else "auto(80)",
         })
+        if job.hpo:
+            # Los mejores hiperparámetros ya están en job.* (los loguea el bloque de arriba);
+            # aquí solo se deja constancia de que la búsqueda HPO se ejecutó.
+            self._mlflow.log_params({
+                "hpo": True,
+                "hpo_trials": max(2, min(int(job.hpo_trials or 10), self.HPO_MAX_TRIALS)),
+                "hpo_effort": job.hpo_effort,
+            })
         if pretrained:
             self._mlflow.log_params({
                 "pretrained_backbone":       arch,

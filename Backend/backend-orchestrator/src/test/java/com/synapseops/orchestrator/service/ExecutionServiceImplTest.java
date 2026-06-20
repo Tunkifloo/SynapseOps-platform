@@ -42,7 +42,8 @@ class ExecutionServiceImplTest {
         return new ExecutionRequest("tensorflow", "cnn", 5, 32, 0.001, 10, "mnist_demo",
                 null, null, null, null, null, null, null, null, null, null,
                 // augmentation/balanceo + transfer learning (no usados en este test)
-                null, null, null, null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null, null, null,
+                null, null, null);   // hpo, hpoTrials, hpoEffort
     }
 
     @BeforeEach

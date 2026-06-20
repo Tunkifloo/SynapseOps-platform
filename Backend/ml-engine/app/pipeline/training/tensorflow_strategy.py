@@ -37,6 +37,7 @@ class TensorFlowStrategy(TrainingStrategy):
         on_epoch: Optional[EpochCallback] = None,
         class_names: Optional[list] = None,
         on_phase: Optional[PhaseCallback] = None,
+        quick: bool = False,
     ) -> TrainingResult:
         import tensorflow as tf
 
@@ -119,6 +120,22 @@ class TensorFlowStrategy(TrainingStrategy):
                                          "FT", on_epoch)
                 hist = {k: list(h1.get(k, [])) + list(h2.get(k, []))
                         for k in set(h1) | set(h2)}
+
+        # HPO (quick): basta el history de validación para puntuar el candidato. Se omiten
+        # predicciones completas, test, Score-CAM y el guardado del artefacto (caros).
+        if quick:
+            return TrainingResult(
+                framework="tensorflow",
+                history={
+                    "accuracy":     hist.get("accuracy", []),
+                    "loss":         hist.get("loss", []),
+                    "val_accuracy": hist.get("val_accuracy", []),
+                    "val_loss":     hist.get("val_loss", []),
+                },
+                artifact_path="",
+                final_accuracy=float(hist.get("val_accuracy", hist.get("accuracy", [0]))[-1]),
+                final_loss=float(hist.get("val_loss", hist.get("loss", [0]))[-1]),
+            )
 
         # Predicciones para métricas avanzadas (item 7). TODO por lotes vía tf.data (cast por
         # lote) → ni train ni val ni test se materializan enteros en float (evita el pico de

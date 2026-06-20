@@ -29,6 +29,11 @@ pandas
 scikit-learn
 Pillow
 
+# ── HPO (optimización automática de hiperparámetros) ──────
+# Optuna es puro-Python y liviano (no compila); encaja con el consumidor serial y el
+# presupuesto de RAM (a diferencia de Ray Tune). Capa volátil: no toca los frameworks.
+optuna>=4,<5
+
 # ── Observabilidad ────────────────────────────────────────
 prometheus-client
 

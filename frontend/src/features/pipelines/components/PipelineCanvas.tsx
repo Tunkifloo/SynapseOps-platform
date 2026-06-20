@@ -294,6 +294,9 @@ export function PipelineCanvas({
         earlyStopping: cfg.earlyStopping === 'true',
         esPatience: Number(cfg.esPatience) || undefined,
         esMonitor: String(cfg.esMonitor ?? 'val_loss'),
+        hpo: cfg.hpo === 'true',
+        hpoTrials: Number(cfg.hpoTrials) || undefined,
+        hpoEffort: String(cfg.hpoEffort ?? 'balanced'),
         ...buildTrainFields(cfg),
       }
 
@@ -497,6 +500,11 @@ export function PipelineCanvas({
       earlyStopping: cfg.earlyStopping === 'true',
       esPatience: Number(cfg.esPatience) || undefined,
       esMonitor: String(cfg.esMonitor ?? 'val_loss'),
+      // HPO (Fase 4): este es el payload de "Iniciar flujo" (la cadena completa); debe
+      // incluir el toggle igual que runTraining, o la búsqueda nunca se dispara.
+      hpo: cfg.hpo === 'true',
+      hpoTrials: Number(cfg.hpoTrials) || undefined,
+      hpoEffort: String(cfg.hpoEffort ?? 'balanced'),
       ...buildTrainFields(cfg),
       // Nodos Preprocesamiento y Split (parametrización real en el ml-engine).
       normalization: preprocessNode ? String(preCfg.normalization ?? 'minmax') : undefined,
