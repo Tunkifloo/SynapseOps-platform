@@ -14,13 +14,16 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
-consumer = PipelineConsumer()
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # ── Startup ───────────────────────────────────────────
+    # El consumidor se crea AQUÍ (no a nivel de módulo) para que importar main.py NO tenga
+    # efectos secundarios: clave para el aislamiento por subproceso 'spawn' (Fase 3), que
+    # re-importa el módulo principal en el hijo. Ver app/pipeline/runner.py.
     log.info("ml-engine arrancando...")
+    consumer = PipelineConsumer()
+    app.state.consumer = consumer
     consumer.start()
     yield
     # ── Shutdown ──────────────────────────────────────────

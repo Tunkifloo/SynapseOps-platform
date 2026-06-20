@@ -37,6 +37,7 @@ class PyTorchStrategy(TrainingStrategy):
         on_epoch: Optional[EpochCallback] = None,
         class_names: Optional[list] = None,
         on_phase: Optional[PhaseCallback] = None,
+        quick: bool = False,
     ) -> TrainingResult:
         import torch
         import torch.nn as nn
@@ -132,6 +133,17 @@ class PyTorchStrategy(TrainingStrategy):
                                       hyperparams, ft_ep, fe_ep, total, "FT", on_epoch)
             history = {k: list(h1.get(k, [])) + list(h2.get(k, []))
                        for k in set(h1) | set(h2)}
+
+        # HPO (quick): basta el history de validación para puntuar el candidato. Se omiten
+        # predicciones completas, test, Score-CAM y la serialización (caros).
+        if quick:
+            return TrainingResult(
+                framework="pytorch",
+                history=history,
+                artifact_path="",
+                final_accuracy=history.get("val_accuracy", history.get("accuracy", [0]))[-1],
+                final_loss=history.get("val_loss", history.get("loss", [0]))[-1],
+            )
 
         # Predicciones de train y validación para métricas avanzadas (item 7). Por lotes
         # (datos en CPU → cada lote a device); nunca materializa el train entero en VRAM.

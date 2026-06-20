@@ -101,7 +101,11 @@ public class ExecutionServiceImpl implements ExecutionService {
                     request.featureExtractionLr(),
                     request.finetuningEpochs(),
                     request.finetuningLr(),
-                    request.unfreezeLayers()
+                    request.unfreezeLayers(),
+                    // HPO (Fase 4): defaults seguros si el cliente no los envía.
+                    request.hpo() != null ? request.hpo() : Boolean.FALSE,
+                    request.hpoTrials() != null ? request.hpoTrials() : 10,
+                    request.hpoEffort() != null ? request.hpoEffort() : "balanced"
             );
 
             // Compensación síncrona (dual-write): la escritura en BD y la publicación a

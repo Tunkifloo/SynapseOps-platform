@@ -34,5 +34,9 @@ public record PipelineJobRequest(
         Double  featureExtractionLr,
         Integer finetuningEpochs,
         Double  finetuningLr,
-        Integer unfreezeLayers
+        Integer unfreezeLayers,
+        // ── HPO (Fase 4) ─────────────────────────────────────────────────────
+        Boolean hpo,
+        Integer hpoTrials,
+        String  hpoEffort
 ) {}

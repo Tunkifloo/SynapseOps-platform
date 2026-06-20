@@ -88,6 +88,8 @@ const AUG_FIELDS: FieldDef[] = AUG_TECHNIQUES.flatMap((t): FieldDef[] => [
 
 const isCnn = (c: NodeConfig) => (c.architecture ?? 'cnn') === 'cnn'
 const isPretrained = (c: NodeConfig) => (c.architecture ?? 'cnn') !== 'cnn'
+/** HPO desactivado: con HPO activo, Optuna elige los hiperparámetros y estos campos se ocultan. */
+const hpoOff = (c: NodeConfig) => c.hpo !== 'true'
 
 /** Ensambla el objeto augmentationConfig (JSON) que espera el ML Engine. */
 export function buildAugmentationConfig(c: NodeConfig): Record<string, unknown> {
@@ -218,6 +220,37 @@ export const NODE_FIELDS: Record<NodeKind, FieldDef[]> = {
       help: 'CNN: red entrenada desde cero, ideal para datasets simples. EfficientNet/MobileNet/ResNet: preentrenadas en ImageNet (Transfer Learning), mejores para datasets reales pequeños o medianos.',
     },
     {
+      name: 'hpo',
+      label: 'Optimización automática (HPO)',
+      type: 'select',
+      options: [
+        { value: 'true', label: 'Activado — Optuna los elige por mí (recomendado)' },
+        { value: 'false', label: 'Desactivado — ajusto los hiperparámetros a mano (avanzado)' },
+      ],
+      help: 'Modo automático, recomendado si no tienes claro qué hiperparámetros usar: el sistema prueba varias combinaciones (Optuna) y entrena con la mejor. Desactívalo solo si quieres fijar learning rate, dropout, optimizador, etc. a tu criterio.',
+    },
+    {
+      name: 'hpoTrials',
+      label: 'HPO · combinaciones a probar',
+      type: 'number',
+      min: 2,
+      max: 40,
+      help: 'Cuántas combinaciones evaluar. Más = mejor búsqueda pero más tiempo (cada una entrena un modelo rápido sobre una muestra del dataset).',
+      showIf: (c) => c.hpo === 'true',
+    },
+    {
+      name: 'hpoEffort',
+      label: 'HPO · esfuerzo por combinación',
+      type: 'select',
+      options: [
+        { value: 'fast', label: 'Rápido (menos preciso)' },
+        { value: 'balanced', label: 'Equilibrado (recomendado)' },
+        { value: 'thorough', label: 'Exhaustivo (más lento, mejor selección)' },
+      ],
+      help: 'Cuánto entrena cada combinación de prueba. Más esfuerzo = selección más fiable de los hiperparámetros, pero más tiempo. Las combinaciones que rinden mal se descartan antes.',
+      showIf: (c) => c.hpo === 'true',
+    },
+    {
       name: 'optimizer',
       label: 'Optimizador',
       type: 'select',
@@ -227,11 +260,12 @@ export const NODE_FIELDS: Record<NodeKind, FieldDef[]> = {
         { value: 'sgd', label: 'SGD (momentum)' },
         { value: 'rmsprop', label: 'RMSprop' },
       ],
+      showIf: hpoOff,
     },
     // CNN desde cero: epochs + learning rate únicos (ocultos en Transfer Learning).
     { name: 'epochs', label: 'Epochs', type: 'number', min: 1, max: 100, showIf: isCnn },
     { name: 'batchSize', label: 'Batch size', type: 'select', options: batchSizes },
-    { name: 'learningRate', label: 'Learning rate', type: 'text', placeholder: '0.001', showIf: isCnn },
+    { name: 'learningRate', label: 'Learning rate', type: 'text', placeholder: '0.001', showIf: (c) => isCnn(c) && hpoOff(c) },
     // ── Transfer Learning: 2 fases (solo arquitecturas preentrenadas) ─────────
     {
       name: 'featureExtractionEpochs', label: 'Feature Extraction · epochs',
@@ -240,7 +274,7 @@ export const NODE_FIELDS: Record<NodeKind, FieldDef[]> = {
     },
     {
       name: 'featureExtractionLr', label: 'Feature Extraction · learning rate',
-      type: 'text', placeholder: '0.001', showIf: isPretrained,
+      type: 'text', placeholder: '0.001', showIf: (c) => isPretrained(c) && hpoOff(c),
       help: 'Learning rate de la Fase 1 (cabeza nueva sobre backbone congelado). Relativamente alto (p. ej. 0.001) para converger rápido.',
     },
     {
@@ -252,18 +286,18 @@ export const NODE_FIELDS: Record<NodeKind, FieldDef[]> = {
       name: 'finetuningLr', label: 'Fine-Tuning · learning rate',
       type: 'text', placeholder: '0.00001',
       help: 'Learning rate de la Fase 2 (fine-tuning). Muy bajo (p. ej. 0.00001) para no destruir lo aprendido en ImageNet.',
-      showIf: (c) => isPretrained(c) && Number(c.finetuningEpochs) > 0,
+      showIf: (c) => isPretrained(c) && Number(c.finetuningEpochs) > 0 && hpoOff(c),
     },
     {
       name: 'unfreezeLayers', label: 'Capas a descongelar',
       type: 'number', min: 1, max: 50,
       help: 'Cuántas de las últimas capas del backbone se reentrenan en el fine-tuning. Más capas = más adaptación al dominio, pero más riesgo de sobreajuste.',
-      showIf: (c) => isPretrained(c) && Number(c.finetuningEpochs) > 0,
+      showIf: (c) => isPretrained(c) && Number(c.finetuningEpochs) > 0 && hpoOff(c),
     },
     // ── Regularización (aplica a la CNN y a las cabezas preentrenadas) ────────
-    { name: 'dropout', label: 'Dropout', type: 'number', min: 0, max: 0.9, step: '0.05',
+    { name: 'dropout', label: 'Dropout', type: 'number', min: 0, max: 0.9, step: '0.05', showIf: hpoOff,
       help: 'Apaga aleatoriamente una fracción de neuronas en cada paso para reducir el sobreajuste. Típico 0.3–0.5; 0 = desactivado.' },
-    { name: 'l2', label: 'Regularización L2', type: 'number', min: 0, max: 0.1, step: '0.001',
+    { name: 'l2', label: 'Regularización L2', type: 'number', min: 0, max: 0.1, step: '0.001', showIf: hpoOff,
       help: 'Penaliza pesos grandes (weight decay) para reducir el sobreajuste. Típico 0.0001–0.001; 0 = desactivado.' },
     {
       name: 'batchNorm',
@@ -386,6 +420,9 @@ export const defaultConfig = (kind: NodeKind): NodeConfig => {
       return {
         framework: 'tensorflow',
         architecture: 'cnn',
+        hpo: 'false',
+        hpoTrials: 10,
+        hpoEffort: 'balanced',
         optimizer: 'adam',
         epochs: 5,
         batchSize: '32',
