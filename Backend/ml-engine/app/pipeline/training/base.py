@@ -85,5 +85,9 @@ class TrainingStrategy(ABC):
         on_epoch: Optional[EpochCallback] = None,
         class_names: Optional[list] = None,
         on_phase: Optional[PhaseCallback] = None,
+        quick: bool = False,
     ) -> TrainingResult:
+        """`quick=True` (HPO): entrena y devuelve solo el history (métricas de validación);
+        omite predicciones completas, evaluación de test, Score-CAM y guardado del artefacto.
+        Sirve para evaluar candidatos de hiperparámetros de forma barata."""
         pass
