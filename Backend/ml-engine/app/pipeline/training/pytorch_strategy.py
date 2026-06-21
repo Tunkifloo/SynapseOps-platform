@@ -10,7 +10,7 @@ import numpy as np
 
 from app.pipeline.training import augmentation, scorecam
 from app.pipeline.training.base import (
-    EpochCallback, HyperParams, PhaseCallback, TrainingResult, TrainingStrategy,
+    EpochCallback, EventCallback, HyperParams, PhaseCallback, TrainingResult, TrainingStrategy,
 )
 
 log = logging.getLogger(__name__)
@@ -37,6 +37,8 @@ class PyTorchStrategy(TrainingStrategy):
         on_epoch: Optional[EpochCallback] = None,
         class_names: Optional[list] = None,
         on_phase: Optional[PhaseCallback] = None,
+        on_event: Optional[EventCallback] = None,
+        quick: bool = False,
     ) -> TrainingResult:
         import torch
         import torch.nn as nn
@@ -55,7 +57,11 @@ class PyTorchStrategy(TrainingStrategy):
         use_cuda = device.type == "cuda"
 
         def _to_cpu_tensor(arr):
-            t = torch.tensor(np.transpose(arr, (0, 3, 1, 2)))
+            # from_numpy COMPARTE el buffer del numpy (transpuesto a NCHW solo por strides,
+            # sin copiar) → el split NO se duplica en RAM. Antes `torch.tensor(...)` COPIABA
+            # el array entero a contiguo (a 160px ~4 GB extra del train) → alimentaba el OOM.
+            # El lote se vuelve contiguo al apilarse en el DataLoader / al pasar a device.
+            t = torch.from_numpy(np.transpose(arr, (0, 3, 1, 2)))
             return t if t.dtype == torch.uint8 else t.float()
 
         Xtr = _to_cpu_tensor(X_train)
@@ -129,6 +135,32 @@ class PyTorchStrategy(TrainingStrategy):
             history = {k: list(h1.get(k, [])) + list(h2.get(k, []))
                        for k in set(h1) | set(h2)}
 
+        # HPO (quick): basta el history de validación para puntuar el candidato. Se omiten
+        # predicciones completas, test, Score-CAM y la serialización (caros).
+        if quick:
+            return TrainingResult(
+                framework="pytorch",
+                history=history,
+                artifact_path="",
+                final_accuracy=history.get("val_accuracy", history.get("accuracy", [0]))[-1],
+                final_loss=history.get("val_loss", history.get("loss", [0]))[-1],
+            )
+
+        # Eventos de monitoreo (solo entreno final; en HPO on_event es None): parada por Early
+        # Stopping + restauración de pesos, e inicio de la etapa de evaluación.
+        if on_event is not None:
+            arch_l = (hyperparams.architecture or "cnn").lower()
+            configured = (hyperparams.feature_extraction_epochs + hyperparams.finetuning_epochs) \
+                if arch_l != "cnn" else hyperparams.epochs
+            actual = len(history.get("loss", []))
+            if hyperparams.early_stopping and actual < configured:
+                on_event(
+                    f"Early Stopping: entrenamiento detenido en la epoch {actual} de {configured} "
+                    f"(sin mejora de {hyperparams.es_monitor}); se restauraron los mejores pesos.",
+                    "INFO")
+            on_event("Evaluación: midiendo el modelo en validación y test ciego (datos no vistos)…",
+                     "INFO")
+
         # Predicciones de train y validación para métricas avanzadas (item 7). Por lotes
         # (datos en CPU → cada lote a device); nunca materializa el train entero en VRAM.
         model.eval()
@@ -151,6 +183,8 @@ class PyTorchStrategy(TrainingStrategy):
             log.info("Evaluación en test — loss=%.4f acc=%.4f", test_loss, test_accuracy)
 
         # Interpretabilidad Score-CAM (best-effort) ANTES de mover el modelo a CPU.
+        if on_event is not None:
+            on_event("Interpretabilidad: generando la galería Score-CAM (mapas de activación)…", "INFO")
         cam_X, cam_y = ((X_test, y_test) if X_test is not None and len(X_test) > 0
                         else (X_val, y_val))
         gallery = scorecam.generate("pytorch", model, np.asarray(cam_X), np.asarray(cam_y),

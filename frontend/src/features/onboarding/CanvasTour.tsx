@@ -37,7 +37,7 @@ const STEPS: TourStep[] = [
   {
     sel: '[data-tour="nodes"]',
     title: 'Bloques del pipeline',
-    body: 'Estos son los 5 bloques de tu flujo. Arrástralos (o tócalos) al lienzo y conéctalos de izquierda a derecha. Te explico cada uno.',
+    body: 'Estos son los 6 bloques de tu flujo. Arrástralos (o tócalos) al lienzo y conéctalos de izquierda a derecha, en orden. Te explico cada uno.',
   },
   {
     sel: '[data-tour="node-ingest"]',
@@ -55,24 +55,29 @@ const STEPS: TourStep[] = [
     body: 'Divide el dataset. Configuras el % de entrenamiento (50–90%); el resto se reparte automáticamente entre validación y test (held-out para métricas honestas).',
   },
   {
-    sel: '[data-tour="node-train"]',
-    title: '4 · Entrenamiento',
-    body: 'El corazón del flujo. Eliges Framework (TF/PyTorch) y Arquitectura: CNN desde cero o preentrenadas (EfficientNet/MobileNet/ResNet) con Transfer Learning en 2 fases. Ajustas optimizador, epochs, batch, learning rate, Dropout y L2 (regularización), Batch Norm y Early Stopping. Recuerda nombrar tu modelo.',
+    sel: '[data-tour="node-hparams"]',
+    title: '4 · Hiperparámetros',
+    body: 'Define el modelo: la Arquitectura (CNN desde cero o preentrenadas EfficientNet/MobileNet/ResNet) y cómo se eligen los hiperparámetros. Recomendado: «Optimización automática (HPO)» — Optuna prueba varias combinaciones y entrena con la mejor, sin que ajustes nada. Avanzado: desactívalo para fijar learning rate, optimizador, Dropout y L2 a tu criterio.',
+  },
+  {
+    sel: '[data-tour="node-hparams"]',
+    title: 'Transfer Learning (arquitecturas preentrenadas)',
+    body: 'Si eliges una arquitectura preentrenada y ajuste manual, aparecen sus parámetros: epochs y learning rate de Feature Extraction (cabeza nueva, backbone congelado) y de Fine-Tuning (descongela las últimas N capas con LR muy bajo). Con HPO activado, el sistema los elige por ti.',
   },
   {
     sel: '[data-tour="node-train"]',
-    title: 'Transfer Learning (arquitecturas nuevas)',
-    body: 'Al elegir una arquitectura preentrenada aparecen sus parámetros: epochs y learning rate de Feature Extraction (cabeza nueva, backbone congelado) y de Fine-Tuning (descongela las últimas N capas con LR muy bajo). El tamaño se ajusta a 224px automáticamente.',
+    title: '5 · Entrenamiento',
+    body: 'Ejecuta el entrenamiento con la arquitectura e hiperparámetros del nodo anterior. Aquí defines el Framework (TF/PyTorch), el Batch size, Batch Norm y Early Stopping, y el nombre del modelo. El nº de clases se autodetecta.',
   },
   {
     sel: '[data-tour="node-deploy"]',
-    title: '5 · Despliegue',
-    body: 'Publica el modelo entrenado como servicio de inferencia (/predict). El puerto se asigna solo; luego puedes probarlo subiendo imágenes desde «Despliegues».',
+    title: '6 · Despliegue (opcional)',
+    body: 'Publica el modelo entrenado como servicio de inferencia (/predict). El puerto se asigna solo; luego puedes probarlo subiendo imágenes desde «Despliegues». Es opcional: puedes entrenar sin desplegar.',
   },
   {
     sel: '[data-tour="canvas"]',
     title: 'Arma y conecta tu flujo',
-    body: 'Suelta los bloques aquí y conéctalos de izquierda a derecha. Toca un nodo para abrir su panel y configurar sus parámetros (cada campo trae su ayuda).',
+    body: 'Conéctalos EN ORDEN: Ingesta → Preprocesamiento → Split → Hiperparámetros → Entrenamiento. El Despliegue es opcional (al final, desde Entrenamiento). Cada bloque va unido al siguiente: no se permite saltar pasos. Toca un nodo para configurarlo; toca una línea para desconectarla. Si falta algo o está mal unido, «Iniciar flujo» te dirá exactamente qué corregir.',
   },
   {
     sel: '[data-tour="start-flow"]',

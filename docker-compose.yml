@@ -184,6 +184,10 @@ services:
       dockerfile: Dockerfile
     container_name: backend-orchestrator
     restart: unless-stopped
+    # Fase 0 · sin mem_limit, la JVM (MaxRAMPercentage=75) dimensiona el heap al 75% de la
+    # RAM de la VM de WSL2 → en una VM de 14g pediría ~10g solo el backend. Acotar a 2g
+    # mantiene el heap en ~1.5g, de sobra para el orquestador WebFlux. Tunable por .env.
+    mem_limit: ${BACKEND_MEM_LIMIT:-2g}
     # Comparte el volumen /storage con ml-engine (que corre como root). Sin un UID
     # común, los directorios que crea ml-engine (root) no son escribibles por el
     # usuario por defecto del orquestador → AccessDenied al ingestar datasets.
@@ -236,7 +240,14 @@ services:
       dockerfile: Dockerfile
     container_name: ml-engine
     restart: unless-stopped
-    user: "0:0" 
+    # Fase 0 (optimización de memoria) · acota la RAM del contenedor para que (a) el cap
+    # de ingesta (_safe_max_images) lea un presupuesto de cgroup coherente y (b) un
+    # entrenamiento pesado no asfixie al resto del stack. Default 10g: NO limita en hosts
+    # de 8 GB (la VM de WSL2 es menor que el límite → sin regresión); en labs de 16 GB+
+    # con .wslconfig subido (ver infra/wsl/wslconfig.example), bloquea en 10g y deja ~4g
+    # para los otros servicios. Tunable por .env (ML_ENGINE_MEM_LIMIT).
+    mem_limit: ${ML_ENGINE_MEM_LIMIT:-12g}
+    user: "0:0"
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka-broker:9092
       MLFLOW_TRACKING_URI: http://mlflow-server:5000

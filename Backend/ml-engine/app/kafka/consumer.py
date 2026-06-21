@@ -164,7 +164,14 @@ class PipelineConsumer:
             return
 
         start = time.time()
-        result = self._executor.execute(job)
+        # Fase 3 · aislamiento en subproceso: un OOM/crash del entrenamiento mata solo al hijo
+        # (el que más memoria consume), NO a este consumidor → el contenedor ya no reinicia.
+        # Fallback a en-proceso si multiprocessing falla o si se desactiva por env.
+        if settings.isolate_training:
+            from app.pipeline.runner import run_job_isolated
+            result = run_job_isolated(data, self._executor)
+        else:
+            result = self._executor.execute(job)
         elapsed = time.time() - start
 
         # Métricas Prometheus

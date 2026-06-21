@@ -13,8 +13,14 @@ pydantic-settings
 confluent-kafka
 
 # ── MLflow ────────────────────────────────────────────────
+# mlflow SIN pin de versión a propósito: pinearlo lo convierte en un "cambio" que el
+# dependency-review del CI re-evalúa y marca con los (muchos) CVEs del SERVIDOR MLflow — que NO
+# aplican aquí (el ml-engine solo lo usa como CLIENTE de tracking; el servidor es la imagen
+# oficial mlflow:v2.21.3, en red interna). En su lugar se ancla a la rama 2.x vía `protobuf<5`:
+# mlflow 3.x exige protobuf 5, así que con protobuf<5 pip resuelve mlflow 2.x (compatible con el
+# servidor 2.21.3). protobuf<5 además es OBLIGATORIO por TensorFlow 2.15.1 (requiere protobuf<5).
 mlflow
-protobuf>=4.25,<6
+protobuf>=4.25,<5
 
 # ── Evidently AI ──────────────────────────────────────────
 evidently
@@ -28,6 +34,11 @@ numpy>=1.26,<2
 pandas
 scikit-learn
 Pillow
+
+# ── HPO (optimización automática de hiperparámetros) ──────
+# Optuna es puro-Python y liviano (no compila); encaja con el consumidor serial y el
+# presupuesto de RAM (a diferencia de Ray Tune). Capa volátil: no toca los frameworks.
+optuna>=4,<5
 
 # ── Observabilidad ────────────────────────────────────────
 prometheus-client

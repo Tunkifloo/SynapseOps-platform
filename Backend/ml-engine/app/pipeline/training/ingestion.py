@@ -129,31 +129,15 @@ def load_dataset(
 
 
 def _apply_normalization(bundle: DatasetBundle, strategy: str) -> DatasetBundle:
-    """minmax (default): NO se materializa float; el dataset queda uint8 (o float[0,1] en
-    builtins) y las estrategias castean /255 por lote → 4× menos RAM. zscore/rescale: sí
-    requieren float, así que se convierte a [0,1] y se aplica la variante (caso menos común)."""
-    if strategy == "minmax":
-        return bundle
-    # Convierte a [0,1] respetando el dtype: uint8 → /255; float (builtins) → tal cual.
-    def to01(a):
-        if a is None or not a.size:
-            return a
-        return (a.astype(np.float32) / 255.0) if a.dtype == np.uint8 else a.astype(np.float32)
-    if strategy == "rescale":
-        fn = lambda a: (to01(a) * 2.0 - 1.0).astype(np.float32) if a is not None and a.size else a
-    elif strategy == "zscore":
-        t = to01(bundle.X_train)
-        mean = float(t.mean()) if t is not None and t.size else 0.0
-        std = (float(t.std()) if t is not None and t.size else 1.0) or 1.0
-        fn = lambda a: ((to01(a) - mean) / std).astype(np.float32) if a is not None and a.size else a
-    else:
-        log.warning("Normalización '%s' no reconocida; se usa minmax.", strategy)
-        return bundle
-    log.info("Normalización aplicada: %s", strategy)
-    bundle.X_train = fn(bundle.X_train)
-    bundle.X_val = fn(bundle.X_val)
-    if bundle.X_test is not None:
-        bundle.X_test = fn(bundle.X_test)
+    """Solo **Min-Max [0,1]**: el dataset se mantiene en uint8 (4× menos RAM) y las estrategias
+    castean /255 por lote.
+
+    zscore/rescale se RETIRARON: rompían los modelos preentrenados (esperan [0,1] y traen su
+    propio preprocesamiento → doble normalización) y materializaban el dataset completo en
+    float32 (×4 memoria → OOM). Cualquier valor distinto de 'minmax' se trata como minmax para
+    no romper pipelines guardados con la opción antigua."""
+    if strategy != "minmax":
+        log.info("Normalización '%s' retirada → se usa Min-Max [0,1] (uint8).", strategy)
     return bundle
 
 

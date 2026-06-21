@@ -7,6 +7,9 @@ import numpy as np
 EpochCallback = Callable[[int, int, dict], None]
 # Callback de inicio de fase (Transfer Learning): recibe un dict descriptivo de la fase.
 PhaseCallback = Callable[[dict], None]
+# Callback de eventos del ciclo (early stopping, inicio de evaluación, interpretabilidad):
+# (mensaje, nivel) -> None. Lo usa el executor para emitir SSE en el entreno FINAL (no en HPO).
+EventCallback = Callable[[str, str], None]
 
 
 @dataclass
@@ -85,5 +88,10 @@ class TrainingStrategy(ABC):
         on_epoch: Optional[EpochCallback] = None,
         class_names: Optional[list] = None,
         on_phase: Optional[PhaseCallback] = None,
+        on_event: Optional[EventCallback] = None,
+        quick: bool = False,
     ) -> TrainingResult:
+        """`quick=True` (HPO): entrena y devuelve solo el history (métricas de validación);
+        omite predicciones completas, evaluación de test, Score-CAM y guardado del artefacto.
+        Sirve para evaluar candidatos de hiperparámetros de forma barata."""
         pass

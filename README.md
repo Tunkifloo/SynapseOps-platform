@@ -179,6 +179,8 @@ PipelineExecutor.execute(job)                ← Template Method (pasos fijos)
 
 **Regularización y opciones** (CNN y backbones): **Dropout**, **L2**, optimizador (`adam/adamw/sgd/rmsprop`), BatchNorm, **Early Stopping dual** (val_loss y/o val_accuracy, con restauración de mejores pesos).
 
+**Optimización automática de hiperparámetros (HPO con Optuna):** un nodo dedicado de **Hiperparámetros** (separado del de Entrenamiento) ofrece el modo *Optimización automática*: Optuna prueba varias combinaciones (learning rate, dropout, optimizador, L2 y, en Transfer Learning, los LR de cada fase + capas a descongelar), entrenando un modelo **proxy** barato por *trial* con **pruning** (corta pronto los malos) y **esfuerzo** configurable (rápido/equilibrado/exhaustivo), y **reentrena el ganador** con el dataset completo. Pensado para usuarios menos experimentados; el ajuste **manual** (a criterio) sigue disponible al desactivarlo.
+
 ### Data Augmentation selectivo + balanceo de clases
 
 - **Catálogo de 10 técnicas** activables por separado con su parámetro: flip H/V, rotación, brillo, contraste, saturación, nitidez, zoom/crop, ruido gaussiano y traslación. **Paridad TensorFlow ↔ PyTorch** (mismas técnicas e intensidades). Se aplica *in-graph* (no se hornea en el artefacto).
@@ -197,6 +199,10 @@ Para datasets sin split de test explícito, el ml-engine reserva un **test ciego
 - **Dataset en uint8** (RAM/VRAM): se materializa en uint8 y el cast a float [0,1] se hace por lote → **4× menos memoria**.
 - **Hardening anti-OOM:** extracción de features de drift por chunks, PyTorch mantiene los datos en CPU (mueve solo el lote a la GPU), cap de imágenes según memoria disponible y **aviso de huella estimada** antes de entrenar.
 - **GPU:** detección automática (CUDA/MPS/CPU con *fallback* seguro), `memory_growth`, y `cuda_malloc_async` para devolver VRAM al driver entre runs.
+- **De-duplicación de memoria:** el entrenamiento ya no copia el dataset — TF lo alimenta desde un generador (en vez de `from_tensor_slices`) y PyTorch comparte el buffer (`from_numpy`); val/test se evalúan por lote → **pico de RAM ~2× menor** (≈75k imágenes a 160px entrenan enteras).
+- **Normalización Min-Max [0,1] única:** se retiraron zscore/rescale (rompían los backbones preentrenados y cuadruplicaban la memoria).
+- **Aislamiento por subproceso:** cada entrenamiento corre en un proceso hijo (`spawn`); un OOM/crash mata solo al hijo → el consumidor sigue vivo y el contenedor **no reinicia**.
+- **Límites de memoria por servicio** (`ML_ENGINE_MEM_LIMIT` / `BACKEND_MEM_LIMIT`) + plantilla `.wslconfig` (`infra/wsl/wslconfig.example`) para darle a la VM de WSL2 la RAM real del host.
 
 ---
 
@@ -296,6 +302,12 @@ GRAFANA_PASSWORD=grafana_password
 # ── Storage ────────────────────────────────────────────────
 STORAGE_MAX_FILE_SIZE_MB=1000      # tamaño máx. por archivo
 STORAGE_MAX_WORKSPACE_MB=2000      # cuota de disco por proyecto
+
+# ── Límites de memoria por contenedor (opcional) ───────────
+# No limitan en hosts de 8 GB (la VM de WSL2 es menor); en labs de 16 GB+ acotan y
+# hacen coherente el cálculo de memoria del ml-engine. Ver infra/wsl/wslconfig.example.
+ML_ENGINE_MEM_LIMIT=12g            # sube a 13g en hosts de 16 GB+ para datasets grandes
+BACKEND_MEM_LIMIT=2g               # acota el heap de la JVM (WebFlux no necesita más)
 
 # ── Perfil ─────────────────────────────────────────────────
 SPRING_PROFILES_ACTIVE=prod

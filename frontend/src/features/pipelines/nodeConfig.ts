@@ -1,12 +1,14 @@
 import type { NodeKind } from '@/features/pipelines/nodeKinds'
 
-export type FieldType = 'text' | 'number' | 'select'
+export type FieldType = 'text' | 'number' | 'select' | 'info'
 export type NodeConfig = Record<string, string | number>
 
 export interface FieldDef {
   name: string
   label: string
   type: FieldType
+  /** Texto fijo a mostrar cuando type === 'info' (campo de solo lectura, no editable). */
+  text?: string
   options?: { value: string; label: string }[]
   min?: number
   max?: number
@@ -86,6 +88,8 @@ const AUG_FIELDS: FieldDef[] = AUG_TECHNIQUES.flatMap((t): FieldDef[] => [
 
 const isCnn = (c: NodeConfig) => (c.architecture ?? 'cnn') === 'cnn'
 const isPretrained = (c: NodeConfig) => (c.architecture ?? 'cnn') !== 'cnn'
+/** HPO desactivado: con HPO activo, Optuna elige los hiperparámetros y estos campos se ocultan. */
+const hpoOff = (c: NodeConfig) => c.hpo !== 'true'
 
 /** Ensambla el objeto augmentationConfig (JSON) que espera el ML Engine. */
 export function buildAugmentationConfig(c: NodeConfig): Record<string, unknown> {
@@ -136,13 +140,9 @@ export const NODE_FIELDS: Record<NodeKind, FieldDef[]> = {
     {
       name: 'normalization',
       label: 'Normalización',
-      type: 'select',
-      options: [
-        { value: 'minmax', label: 'Min-Max [0,1]' },
-        { value: 'zscore', label: 'Z-score (media/σ)' },
-        { value: 'rescale', label: 'Rescale [-1,1]' },
-      ],
-      help: 'Escalado de los píxeles antes de entrenar.',
+      type: 'info',
+      text: 'Min-Max [0,1] (automática)',
+      help: 'Los píxeles se escalan a [0,1]. Es la normalización óptima para las CNN y la que esperan los modelos preentrenados (EfficientNet/MobileNet/ResNet), que traen su propio preprocesamiento.',
     },
     {
       name: 'dataAugmentation',
@@ -197,16 +197,10 @@ export const NODE_FIELDS: Record<NodeKind, FieldDef[]> = {
       help: 'El resto se reparte entre validación y test.',
     },
   ],
-  train: [
-    {
-      name: 'framework',
-      label: 'Framework',
-      type: 'select',
-      options: [
-        { value: 'tensorflow', label: 'TensorFlow' },
-        { value: 'pytorch', label: 'PyTorch' },
-      ],
-    },
+  // Nodo Hiperparámetros: arquitectura + TODOS los knobs del modelo. Vive aparte del nodo
+  // de Entrenamiento para no saturarlo. Como tiene `architecture` y `hpo`, los showIf
+  // (isCnn / isPretrained / hpoOff) se resuelven dentro de su propia config.
+  hparams: [
     {
       name: 'architecture',
       label: 'Arquitectura',
@@ -220,6 +214,37 @@ export const NODE_FIELDS: Record<NodeKind, FieldDef[]> = {
       help: 'CNN: red entrenada desde cero, ideal para datasets simples. EfficientNet/MobileNet/ResNet: preentrenadas en ImageNet (Transfer Learning), mejores para datasets reales pequeños o medianos.',
     },
     {
+      name: 'hpo',
+      label: 'Optimización automática (HPO)',
+      type: 'select',
+      options: [
+        { value: 'true', label: 'Activado — Optuna los elige por mí (recomendado)' },
+        { value: 'false', label: 'Desactivado — ajusto los hiperparámetros a mano (avanzado)' },
+      ],
+      help: 'Modo automático, recomendado si no tienes claro qué hiperparámetros usar: el sistema prueba varias combinaciones (Optuna) y entrena con la mejor. Desactívalo solo si quieres fijar learning rate, dropout, optimizador, etc. a tu criterio.',
+    },
+    {
+      name: 'hpoTrials',
+      label: 'HPO · combinaciones a probar',
+      type: 'number',
+      min: 2,
+      max: 40,
+      help: 'Cuántas combinaciones evaluar. Más = mejor búsqueda pero más tiempo (cada una entrena un modelo rápido sobre una muestra del dataset).',
+      showIf: (c) => c.hpo === 'true',
+    },
+    {
+      name: 'hpoEffort',
+      label: 'HPO · esfuerzo por combinación',
+      type: 'select',
+      options: [
+        { value: 'fast', label: 'Rápido (menos preciso)' },
+        { value: 'balanced', label: 'Equilibrado (recomendado)' },
+        { value: 'thorough', label: 'Exhaustivo (más lento, mejor selección)' },
+      ],
+      help: 'Cuánto entrena cada combinación de prueba. Más esfuerzo = selección más fiable de los hiperparámetros, pero más tiempo. Las combinaciones que rinden mal se descartan antes.',
+      showIf: (c) => c.hpo === 'true',
+    },
+    {
       name: 'optimizer',
       label: 'Optimizador',
       type: 'select',
@@ -229,11 +254,13 @@ export const NODE_FIELDS: Record<NodeKind, FieldDef[]> = {
         { value: 'sgd', label: 'SGD (momentum)' },
         { value: 'rmsprop', label: 'RMSprop' },
       ],
+      showIf: hpoOff,
     },
     // CNN desde cero: epochs + learning rate únicos (ocultos en Transfer Learning).
-    { name: 'epochs', label: 'Epochs', type: 'number', min: 1, max: 100, showIf: isCnn },
-    { name: 'batchSize', label: 'Batch size', type: 'select', options: batchSizes },
-    { name: 'learningRate', label: 'Learning rate', type: 'text', placeholder: '0.001', showIf: isCnn },
+    { name: 'epochs', label: 'Epochs', type: 'number', min: 1, max: 100, showIf: isCnn,
+      help: 'Cuántas veces el modelo recorre TODO el dataset de entrenamiento. Más epochs aprenden más, pero demasiadas pueden sobreajustar. Típico 10–50; con Early Stopping se detiene solo cuando deja de mejorar.' },
+    { name: 'learningRate', label: 'Learning rate', type: 'text', placeholder: '0.001', showIf: (c) => isCnn(c) && hpoOff(c),
+      help: 'Tamaño del paso con que el modelo ajusta sus pesos. Muy alto = inestable; muy bajo = lento. Punto de partida típico 0.001. Con HPO activado se elige solo.' },
     // ── Transfer Learning: 2 fases (solo arquitecturas preentrenadas) ─────────
     {
       name: 'featureExtractionEpochs', label: 'Feature Extraction · epochs',
@@ -242,7 +269,7 @@ export const NODE_FIELDS: Record<NodeKind, FieldDef[]> = {
     },
     {
       name: 'featureExtractionLr', label: 'Feature Extraction · learning rate',
-      type: 'text', placeholder: '0.001', showIf: isPretrained,
+      type: 'text', placeholder: '0.001', showIf: (c) => isPretrained(c) && hpoOff(c),
       help: 'Learning rate de la Fase 1 (cabeza nueva sobre backbone congelado). Relativamente alto (p. ej. 0.001) para converger rápido.',
     },
     {
@@ -254,19 +281,35 @@ export const NODE_FIELDS: Record<NodeKind, FieldDef[]> = {
       name: 'finetuningLr', label: 'Fine-Tuning · learning rate',
       type: 'text', placeholder: '0.00001',
       help: 'Learning rate de la Fase 2 (fine-tuning). Muy bajo (p. ej. 0.00001) para no destruir lo aprendido en ImageNet.',
-      showIf: (c) => isPretrained(c) && Number(c.finetuningEpochs) > 0,
+      showIf: (c) => isPretrained(c) && Number(c.finetuningEpochs) > 0 && hpoOff(c),
     },
     {
       name: 'unfreezeLayers', label: 'Capas a descongelar',
       type: 'number', min: 1, max: 50,
       help: 'Cuántas de las últimas capas del backbone se reentrenan en el fine-tuning. Más capas = más adaptación al dominio, pero más riesgo de sobreajuste.',
-      showIf: (c) => isPretrained(c) && Number(c.finetuningEpochs) > 0,
+      showIf: (c) => isPretrained(c) && Number(c.finetuningEpochs) > 0 && hpoOff(c),
     },
     // ── Regularización (aplica a la CNN y a las cabezas preentrenadas) ────────
-    { name: 'dropout', label: 'Dropout', type: 'number', min: 0, max: 0.9, step: '0.05',
+    { name: 'dropout', label: 'Dropout', type: 'number', min: 0, max: 0.9, step: '0.05', showIf: hpoOff,
       help: 'Apaga aleatoriamente una fracción de neuronas en cada paso para reducir el sobreajuste. Típico 0.3–0.5; 0 = desactivado.' },
-    { name: 'l2', label: 'Regularización L2', type: 'number', min: 0, max: 0.1, step: '0.001',
+    { name: 'l2', label: 'Regularización L2', type: 'number', min: 0, max: 0.1, step: '0.001', showIf: hpoOff,
       help: 'Penaliza pesos grandes (weight decay) para reducir el sobreajuste. Típico 0.0001–0.001; 0 = desactivado.' },
+  ],
+  // Nodo Entrenamiento: solo la ejecución (framework/runtime, batch, batch norm, early
+  // stopping). El modelo (nuevo vs re-entrenar) se gestiona en TrainModelSource.
+  train: [
+    {
+      name: 'framework',
+      label: 'Framework',
+      type: 'select',
+      options: [
+        { value: 'tensorflow', label: 'TensorFlow' },
+        { value: 'pytorch', label: 'PyTorch' },
+      ],
+      help: 'Motor de entrenamiento. TensorFlow y PyTorch dan resultados equivalentes; elige el que prefieras. No cambia la arquitectura ni los hiperparámetros.',
+    },
+    { name: 'batchSize', label: 'Batch size', type: 'select', options: batchSizes,
+      help: 'Cuántas imágenes procesa a la vez antes de actualizar los pesos. Más grande entrena más rápido pero usa más memoria (GPU/RAM); si falla por memoria, redúcelo. Típico 32–64.' },
     {
       name: 'batchNorm',
       label: 'Batch Normalization',
@@ -275,6 +318,7 @@ export const NODE_FIELDS: Record<NodeKind, FieldDef[]> = {
         { value: 'false', label: 'Desactivado' },
         { value: 'true', label: 'Activado' },
       ],
+      help: 'Normaliza las activaciones dentro de la red en cada lote; suele estabilizar y acelerar el entrenamiento, sobre todo en la CNN desde cero. Recomendado: Activado.',
     },
     {
       name: 'earlyStopping',
@@ -284,6 +328,7 @@ export const NODE_FIELDS: Record<NodeKind, FieldDef[]> = {
         { value: 'false', label: 'Desactivado' },
         { value: 'true', label: 'Activado' },
       ],
+      help: 'Detiene el entrenamiento automáticamente cuando el modelo deja de mejorar en validación, evitando sobreajuste y tiempo perdido. Recomendado: Activado.',
     },
     {
       name: 'esPatience',
@@ -291,6 +336,7 @@ export const NODE_FIELDS: Record<NodeKind, FieldDef[]> = {
       type: 'number',
       min: 1,
       max: 50,
+      help: 'Cuántas epochs seguidas SIN mejora se toleran antes de detener. Más paciencia da más oportunidades de mejorar; menos detiene antes. Típico 3–10.',
       showIf: (c) => c.earlyStopping === 'true',
     },
     {
@@ -305,7 +351,6 @@ export const NODE_FIELDS: Record<NodeKind, FieldDef[]> = {
       help: '"Ambas" detiene solo cuando ni la pérdida ni la precisión mejoran.',
       showIf: (c) => c.earlyStopping === 'true',
     },
-    // El modelo (nuevo vs re-entrenar existente) se gestiona en TrainModelSource.
   ],
   deploy: [],
 }
@@ -384,13 +429,15 @@ export const defaultConfig = (kind: NodeKind): NodeConfig => {
       }
     case 'split':
       return { trainRatio: 80 }
-    case 'train':
+    case 'hparams':
       return {
-        framework: 'tensorflow',
         architecture: 'cnn',
+        // HPO activado por defecto: es el modo recomendado para usuarios menos experimentados.
+        hpo: 'true',
+        hpoTrials: 10,
+        hpoEffort: 'balanced',
         optimizer: 'adam',
         epochs: 5,
-        batchSize: '32',
         learningRate: '0.001',
         // Transfer Learning (defaults sensatos; LR de FT 100x menor que el de FE).
         featureExtractionEpochs: 5,
@@ -401,6 +448,11 @@ export const defaultConfig = (kind: NodeKind): NodeConfig => {
         // Regularización.
         dropout: 0.4,
         l2: 0,
+      }
+    case 'train':
+      return {
+        framework: 'tensorflow',
+        batchSize: '32',
         batchNorm: 'false',
         earlyStopping: 'false',
         esPatience: 3,
