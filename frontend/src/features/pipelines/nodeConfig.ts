@@ -197,16 +197,10 @@ export const NODE_FIELDS: Record<NodeKind, FieldDef[]> = {
       help: 'El resto se reparte entre validación y test.',
     },
   ],
-  train: [
-    {
-      name: 'framework',
-      label: 'Framework',
-      type: 'select',
-      options: [
-        { value: 'tensorflow', label: 'TensorFlow' },
-        { value: 'pytorch', label: 'PyTorch' },
-      ],
-    },
+  // Nodo Hiperparámetros: arquitectura + TODOS los knobs del modelo. Vive aparte del nodo
+  // de Entrenamiento para no saturarlo. Como tiene `architecture` y `hpo`, los showIf
+  // (isCnn / isPretrained / hpoOff) se resuelven dentro de su propia config.
+  hparams: [
     {
       name: 'architecture',
       label: 'Arquitectura',
@@ -264,7 +258,6 @@ export const NODE_FIELDS: Record<NodeKind, FieldDef[]> = {
     },
     // CNN desde cero: epochs + learning rate únicos (ocultos en Transfer Learning).
     { name: 'epochs', label: 'Epochs', type: 'number', min: 1, max: 100, showIf: isCnn },
-    { name: 'batchSize', label: 'Batch size', type: 'select', options: batchSizes },
     { name: 'learningRate', label: 'Learning rate', type: 'text', placeholder: '0.001', showIf: (c) => isCnn(c) && hpoOff(c) },
     // ── Transfer Learning: 2 fases (solo arquitecturas preentrenadas) ─────────
     {
@@ -299,6 +292,20 @@ export const NODE_FIELDS: Record<NodeKind, FieldDef[]> = {
       help: 'Apaga aleatoriamente una fracción de neuronas en cada paso para reducir el sobreajuste. Típico 0.3–0.5; 0 = desactivado.' },
     { name: 'l2', label: 'Regularización L2', type: 'number', min: 0, max: 0.1, step: '0.001', showIf: hpoOff,
       help: 'Penaliza pesos grandes (weight decay) para reducir el sobreajuste. Típico 0.0001–0.001; 0 = desactivado.' },
+  ],
+  // Nodo Entrenamiento: solo la ejecución (framework/runtime, batch, batch norm, early
+  // stopping). El modelo (nuevo vs re-entrenar) se gestiona en TrainModelSource.
+  train: [
+    {
+      name: 'framework',
+      label: 'Framework',
+      type: 'select',
+      options: [
+        { value: 'tensorflow', label: 'TensorFlow' },
+        { value: 'pytorch', label: 'PyTorch' },
+      ],
+    },
+    { name: 'batchSize', label: 'Batch size', type: 'select', options: batchSizes },
     {
       name: 'batchNorm',
       label: 'Batch Normalization',
@@ -337,7 +344,6 @@ export const NODE_FIELDS: Record<NodeKind, FieldDef[]> = {
       help: '"Ambas" detiene solo cuando ni la pérdida ni la precisión mejoran.',
       showIf: (c) => c.earlyStopping === 'true',
     },
-    // El modelo (nuevo vs re-entrenar existente) se gestiona en TrainModelSource.
   ],
   deploy: [],
 }
@@ -416,16 +422,15 @@ export const defaultConfig = (kind: NodeKind): NodeConfig => {
       }
     case 'split':
       return { trainRatio: 80 }
-    case 'train':
+    case 'hparams':
       return {
-        framework: 'tensorflow',
         architecture: 'cnn',
-        hpo: 'false',
+        // HPO activado por defecto: es el modo recomendado para usuarios menos experimentados.
+        hpo: 'true',
         hpoTrials: 10,
         hpoEffort: 'balanced',
         optimizer: 'adam',
         epochs: 5,
-        batchSize: '32',
         learningRate: '0.001',
         // Transfer Learning (defaults sensatos; LR de FT 100x menor que el de FE).
         featureExtractionEpochs: 5,
@@ -436,6 +441,11 @@ export const defaultConfig = (kind: NodeKind): NodeConfig => {
         // Regularización.
         dropout: 0.4,
         l2: 0,
+      }
+    case 'train':
+      return {
+        framework: 'tensorflow',
+        batchSize: '32',
         batchNorm: 'false',
         earlyStopping: 'false',
         esPatience: 3,
