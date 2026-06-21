@@ -10,7 +10,7 @@ import numpy as np
 
 from app.pipeline.training import augmentation, scorecam
 from app.pipeline.training.base import (
-    EpochCallback, HyperParams, PhaseCallback, TrainingResult, TrainingStrategy,
+    EpochCallback, EventCallback, HyperParams, PhaseCallback, TrainingResult, TrainingStrategy,
 )
 
 log = logging.getLogger(__name__)
@@ -37,6 +37,7 @@ class TensorFlowStrategy(TrainingStrategy):
         on_epoch: Optional[EpochCallback] = None,
         class_names: Optional[list] = None,
         on_phase: Optional[PhaseCallback] = None,
+        on_event: Optional[EventCallback] = None,
         quick: bool = False,
     ) -> TrainingResult:
         import tensorflow as tf
@@ -137,6 +138,22 @@ class TensorFlowStrategy(TrainingStrategy):
                 final_loss=float(hist.get("val_loss", hist.get("loss", [0]))[-1]),
             )
 
+        # Eventos de monitoreo (solo entreno final; en HPO on_event es None): si el Early
+        # Stopping intervino se informa la parada + restauración de pesos, y se anuncia el
+        # inicio de la etapa de evaluación.
+        if on_event is not None:
+            arch_l = (hyperparams.architecture or "cnn").lower()
+            configured = (hyperparams.feature_extraction_epochs + hyperparams.finetuning_epochs) \
+                if arch_l != "cnn" else hyperparams.epochs
+            actual = len(hist.get("loss", []))
+            if hyperparams.early_stopping and actual < configured:
+                on_event(
+                    f"Early Stopping: entrenamiento detenido en la epoch {actual} de {configured} "
+                    f"(sin mejora de {hyperparams.es_monitor}); se restauraron los mejores pesos.",
+                    "INFO")
+            on_event("Evaluación: midiendo el modelo en validación y test ciego (datos no vistos)…",
+                     "INFO")
+
         # Predicciones para métricas avanzadas (item 7). TODO por lotes vía tf.data (cast por
         # lote) → ni train ni val ni test se materializan enteros en float (evita el pico de
         # memoria que disparaba el OOM en el post-entrenamiento).
@@ -167,6 +184,8 @@ class TensorFlowStrategy(TrainingStrategy):
         log.info("Modelo TF guardado: %s", artifact_path)
 
         # Interpretabilidad Score-CAM (galería sobre el held-out; best-effort).
+        if on_event is not None:
+            on_event("Interpretabilidad: generando la galería Score-CAM (mapas de activación)…", "INFO")
         cam_X, cam_y = ((X_test, y_test) if X_test is not None and len(X_test) > 0
                         else (X_val, y_val))
         with tf.device(device):
