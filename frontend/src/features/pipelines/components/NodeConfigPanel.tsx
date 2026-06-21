@@ -6,6 +6,7 @@ import { notify } from '@/shared/notify'
 import { Button } from '@/shared/components/ui/button'
 import { Input } from '@/shared/components/ui/input'
 import { Label } from '@/shared/components/ui/label'
+import { FieldHelp } from '@/shared/components/FieldHelp'
 import {
   Select,
   SelectContent,
@@ -80,8 +81,10 @@ const KIND_HELP: Record<NodeKind, string> = {
     'Prepara las imágenes antes de entrenar: normalización de píxeles y, opcionalmente, data augmentation y tamaño de imagen.',
   split:
     'Divide el dataset en entrenamiento / validación / test. Ajusta el % de entrenamiento (50–90%); el resto se reparte automáticamente.',
+  hparams:
+    'Define el modelo y sus hiperparámetros: arquitectura, y o bien la optimización automática (Optuna elige por ti, recomendado) o el ajuste manual (learning rate, optimizador, dropout, L2, fases de Transfer Learning) a tu criterio.',
   train:
-    'Entrena una CNN adaptativa. Define framework, optimizador, epochs, batch size y técnicas (early stopping, batch norm). El nº de clases se autodetecta.',
+    'Ejecuta el entrenamiento con la arquitectura e hiperparámetros del nodo anterior. Aquí defines el framework, el batch size y las técnicas de control (early stopping, batch norm) y el nombre del modelo. El nº de clases se autodetecta.',
   deploy:
     'Despliega como servicio de inferencia (/predict) el modelo entrenado en este flujo. El puerto se asigna automáticamente; los modelos existentes se gestionan desde "Mis modelos".',
 }
@@ -191,7 +194,10 @@ export function NodeConfigPanel({
 
     return (
       <div key={field.name} className="space-y-1.5">
-        <Label htmlFor={id}>{field.label}</Label>
+        <div className="flex items-center gap-1.5">
+          <Label htmlFor={id}>{field.label}</Label>
+          {field.help && <FieldHelp text={field.help} label={field.label} />}
+        </div>
         {field.type === 'info' ? (
           <div
             id={id}
@@ -241,7 +247,7 @@ export function NodeConfigPanel({
             }
           />
         )}
-        {showErr ? (
+        {showErr && (
           <p
             id={errId}
             role="alert"
@@ -249,8 +255,6 @@ export function NodeConfigPanel({
           >
             {err}
           </p>
-        ) : (
-          field.help && <p className="text-[11px] text-muted-foreground">{field.help}</p>
         )}
       </div>
     )
@@ -263,7 +267,10 @@ export function NodeConfigPanel({
           <Icon className="size-4" />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold">{cfg.label}</p>
+          <div className="flex items-center gap-1.5">
+            <p className="truncate text-sm font-semibold">{cfg.label}</p>
+            <FieldHelp text={KIND_HELP[data.kind]} label={cfg.label} />
+          </div>
           <p className="truncate text-[11px] text-muted-foreground">Configuración del nodo</p>
         </div>
         <Button variant="ghost" size="icon-sm" onClick={onRequestClose} aria-label="Cerrar panel">
@@ -272,10 +279,7 @@ export function NodeConfigPanel({
       </header>
 
       <div ref={bodyRef} className="flex-1 space-y-4 overflow-y-auto p-4">
-        {/* Descripción contextual: qué es y qué ajustar en este nodo. */}
-        <p className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
-          {KIND_HELP[data.kind]}
-        </p>
+        {/* La descripción del nodo ya está en el «?» de la cabecera (no satura el panel). */}
 
         {/* Ingesta: si el proyecto YA tiene dataset, el origen no se reconfigura aquí
             (se gestiona en el módulo de Datasets). Se ocultan los campos de origen. */}
