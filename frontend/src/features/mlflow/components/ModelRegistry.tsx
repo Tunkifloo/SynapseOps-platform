@@ -394,9 +394,14 @@ export function ConfusionMatrixView({ cm }: { cm: ConfusionMatrix }) {
   const max = Math.max(1, ...cm.matrix.flat())
   return (
     <div>
-      <p className="mb-1.5 text-[10px] font-semibold tracking-[0.14em] text-muted-foreground uppercase">
+      <p className="mb-1.5 flex items-center gap-1 text-[10px] font-semibold tracking-[0.14em] text-muted-foreground uppercase">
         Matriz de confusión{' '}
         <span className="text-muted-foreground/70 normal-case">(filas = real, columnas = predicho)</span>
+        <FieldHelp
+          label="Matriz de confusión"
+          className="normal-case"
+          text="Cruza la clase REAL (filas) con la PREDICHA (columnas). La diagonal son los aciertos; fuera de la diagonal, los errores — revela qué clases confunde el modelo entre sí."
+        />
       </p>
       <div className="overflow-auto">
         <table className="border-collapse text-[10px]">
@@ -451,15 +456,22 @@ export function ScoreCamView({ src }: { src: string }) {
   const [open, setOpen] = useState(true)
   return (
     <div>
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center gap-1.5 text-[10px] font-semibold tracking-[0.14em] text-muted-foreground uppercase transition-colors duration-150 ease-out-quart hover:text-foreground"
-        aria-expanded={open}
-      >
-        {open ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
-        Interpretabilidad · Score-CAM
-      </button>
+      <div className="flex items-center gap-1.5">
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          className="flex items-center gap-1.5 text-[10px] font-semibold tracking-[0.14em] text-muted-foreground uppercase transition-colors duration-150 ease-out-quart hover:text-foreground"
+          aria-expanded={open}
+        >
+          {open ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
+          Interpretabilidad · Score-CAM
+        </button>
+        <FieldHelp
+          label="Score-CAM (interpretabilidad)"
+          className="normal-case"
+          text="Mapas de calor que muestran en qué regiones de la imagen se fija el modelo para decidir. Sirve para confiar en el modelo y detectar si mira el objeto correcto o el fondo. Borde verde = acierto · rojo = error."
+        />
+      </div>
       {open && (
         <div className="mt-1.5 space-y-1.5">
           <p className="text-[11px] leading-relaxed text-muted-foreground">
