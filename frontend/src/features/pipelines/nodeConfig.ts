@@ -257,8 +257,10 @@ export const NODE_FIELDS: Record<NodeKind, FieldDef[]> = {
       showIf: hpoOff,
     },
     // CNN desde cero: epochs + learning rate únicos (ocultos en Transfer Learning).
-    { name: 'epochs', label: 'Epochs', type: 'number', min: 1, max: 100, showIf: isCnn },
-    { name: 'learningRate', label: 'Learning rate', type: 'text', placeholder: '0.001', showIf: (c) => isCnn(c) && hpoOff(c) },
+    { name: 'epochs', label: 'Epochs', type: 'number', min: 1, max: 100, showIf: isCnn,
+      help: 'Cuántas veces el modelo recorre TODO el dataset de entrenamiento. Más epochs aprenden más, pero demasiadas pueden sobreajustar. Típico 10–50; con Early Stopping se detiene solo cuando deja de mejorar.' },
+    { name: 'learningRate', label: 'Learning rate', type: 'text', placeholder: '0.001', showIf: (c) => isCnn(c) && hpoOff(c),
+      help: 'Tamaño del paso con que el modelo ajusta sus pesos. Muy alto = inestable; muy bajo = lento. Punto de partida típico 0.001. Con HPO activado se elige solo.' },
     // ── Transfer Learning: 2 fases (solo arquitecturas preentrenadas) ─────────
     {
       name: 'featureExtractionEpochs', label: 'Feature Extraction · epochs',
@@ -304,8 +306,10 @@ export const NODE_FIELDS: Record<NodeKind, FieldDef[]> = {
         { value: 'tensorflow', label: 'TensorFlow' },
         { value: 'pytorch', label: 'PyTorch' },
       ],
+      help: 'Motor de entrenamiento. TensorFlow y PyTorch dan resultados equivalentes; elige el que prefieras. No cambia la arquitectura ni los hiperparámetros.',
     },
-    { name: 'batchSize', label: 'Batch size', type: 'select', options: batchSizes },
+    { name: 'batchSize', label: 'Batch size', type: 'select', options: batchSizes,
+      help: 'Cuántas imágenes procesa a la vez antes de actualizar los pesos. Más grande entrena más rápido pero usa más memoria (GPU/RAM); si falla por memoria, redúcelo. Típico 32–64.' },
     {
       name: 'batchNorm',
       label: 'Batch Normalization',
@@ -314,6 +318,7 @@ export const NODE_FIELDS: Record<NodeKind, FieldDef[]> = {
         { value: 'false', label: 'Desactivado' },
         { value: 'true', label: 'Activado' },
       ],
+      help: 'Normaliza las activaciones dentro de la red en cada lote; suele estabilizar y acelerar el entrenamiento, sobre todo en la CNN desde cero. Recomendado: Activado.',
     },
     {
       name: 'earlyStopping',
@@ -323,6 +328,7 @@ export const NODE_FIELDS: Record<NodeKind, FieldDef[]> = {
         { value: 'false', label: 'Desactivado' },
         { value: 'true', label: 'Activado' },
       ],
+      help: 'Detiene el entrenamiento automáticamente cuando el modelo deja de mejorar en validación, evitando sobreajuste y tiempo perdido. Recomendado: Activado.',
     },
     {
       name: 'esPatience',
@@ -330,6 +336,7 @@ export const NODE_FIELDS: Record<NodeKind, FieldDef[]> = {
       type: 'number',
       min: 1,
       max: 50,
+      help: 'Cuántas epochs seguidas SIN mejora se toleran antes de detener. Más paciencia da más oportunidades de mejorar; menos detiene antes. Típico 3–10.',
       showIf: (c) => c.earlyStopping === 'true',
     },
     {
