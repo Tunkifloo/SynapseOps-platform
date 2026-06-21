@@ -111,5 +111,16 @@ public record ExecutionRequest(
 
         @Min(value = 1,  message = "Mínimo 1 capa a descongelar.")
         @Max(value = 50, message = "Máximo 50 capas a descongelar.")
-        Integer unfreezeLayers
+        Integer unfreezeLayers,
+
+        // ── HPO · optimización automática de hiperparámetros (Fase 4) ────────────
+        Boolean hpo,
+
+        @Min(value = 2,  message = "Mínimo 2 trials de HPO.")
+        @Max(value = 40, message = "Máximo 40 trials de HPO.")
+        Integer hpoTrials,
+
+        @Pattern(regexp = "(?i)(fast|balanced|thorough)",
+                message = "Esfuerzo de HPO no soportado (fast | balanced | thorough).")
+        String hpoEffort
 ) {}

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent } from 'react'
 import ReactFlow, {
   addEdge,
   Background,
@@ -98,27 +98,6 @@ function wouldCreateCycle(edges: Edge[], source: string, target: string): boolea
     if (visited.has(current)) continue
     visited.add(current)
     for (const neighbour of adjacency.get(current) ?? []) stack.push(neighbour)
-  }
-  return false
-}
-
-/** ¿Existe una ruta dirigida source → target con las aristas actuales? (BFS) */
-function isReachable(edges: Edge[], source: string, target: string): boolean {
-  if (source === target) return true
-  const adjacency = new Map<string, string[]>()
-  for (const edge of edges) {
-    const list = adjacency.get(edge.source) ?? []
-    list.push(edge.target)
-    adjacency.set(edge.source, list)
-  }
-  const queue = [source]
-  const visited = new Set<string>()
-  while (queue.length) {
-    const current = queue.shift() as string
-    if (current === target) return true
-    if (visited.has(current)) continue
-    visited.add(current)
-    for (const neighbour of adjacency.get(current) ?? []) queue.push(neighbour)
   }
   return false
 }
@@ -294,6 +273,9 @@ export function PipelineCanvas({
         earlyStopping: cfg.earlyStopping === 'true',
         esPatience: Number(cfg.esPatience) || undefined,
         esMonitor: String(cfg.esMonitor ?? 'val_loss'),
+        hpo: cfg.hpo === 'true',
+        hpoTrials: Number(cfg.hpoTrials) || undefined,
+        hpoEffort: String(cfg.hpoEffort ?? 'balanced'),
         ...buildTrainFields(cfg),
       }
 
@@ -372,35 +354,61 @@ export function PipelineCanvas({
 
   const validateFlow = useCallback((): string[] => {
     const errors: string[] = []
-    if (nodes.length === 0) return ['El lienzo está vacío: arrastra al menos Ingesta y Entrenamiento.']
+    if (nodes.length === 0)
+      return ['El lienzo está vacío: arrastra Ingesta → Preprocesamiento → Split → Hiperparámetros → Entrenamiento.']
 
-    const ingest = nodes.find((n) => n.data.kind === 'ingest')
-    const train = nodes.find((n) => n.data.kind === 'train')
-    if (!ingest) errors.push('Falta el nodo de Ingesta.')
-    if (!train) errors.push('Falta el nodo de Entrenamiento.')
+    const kindOf = new Map(nodes.map((n) => [n.id, n.data.kind]))
+    const has = (k: NodeKind) => nodes.some((n) => n.data.kind === k)
 
-    // Sin duplicados: un nodo por tipo (evita redundancias en el flujo).
-    const KIND_ORDER: Record<NodeKind, number> = { ingest: 0, preprocess: 1, split: 2, train: 3, deploy: 4 }
+    // Orden canónico del flujo. Despliegue es OPCIONAL; el resto son OBLIGATORIOS.
+    const ORDER: Record<NodeKind, number> = {
+      ingest: 0, preprocess: 1, split: 2, hparams: 3, train: 4, deploy: 5,
+    }
+    const REQUIRED: NodeKind[] = ['ingest', 'preprocess', 'split', 'hparams', 'train']
+    for (const k of REQUIRED) {
+      if (!has(k)) errors.push(`Falta el nodo de ${NODE_KIND_MAP[k].label}.`)
+    }
+
+    // Sin duplicados: un nodo por tipo.
     const counts = new Map<NodeKind, number>()
     for (const n of nodes) counts.set(n.data.kind, (counts.get(n.data.kind) ?? 0) + 1)
     for (const [kind, count] of counts) {
       if (count > 1) errors.push(`Hay ${count} nodos de "${NODE_KIND_MAP[kind].label}": usa solo uno por tipo.`)
     }
 
-    // Conectados en orden canónico: cada arista debe ir hacia adelante.
-    const kindOf = new Map(nodes.map((n) => [n.id, n.data.kind]))
-    for (const edge of edges) {
-      const s = kindOf.get(edge.source)
-      const t = kindOf.get(edge.target)
-      if (s && t && KIND_ORDER[s] >= KIND_ORDER[t]) {
-        errors.push(`Conexión fuera de orden: ${NODE_KIND_MAP[s].label} → ${NODE_KIND_MAP[t].label}. El flujo va Ingesta → Preproc → Split → Entrenamiento → Despliegue.`)
+    // Toda arista debe unir nodos ADYACENTES en el orden canónico (sin saltos ni hacia atrás).
+    const edgePairs = new Set(edges.map((e) => `${kindOf.get(e.source)}→${kindOf.get(e.target)}`))
+    for (const e of edges) {
+      const s = kindOf.get(e.source)
+      const t = kindOf.get(e.target)
+      if (!s || !t) continue
+      const diff = ORDER[t] - ORDER[s]
+      if (diff <= 0) {
+        errors.push(`Conexión inválida: ${NODE_KIND_MAP[s].label} → ${NODE_KIND_MAP[t].label}. El flujo va hacia adelante: Ingesta → Preproc → Split → Hiperparámetros → Entrenamiento → Despliegue.`)
+        break
+      }
+      if (diff > 1) {
+        const mid = (Object.keys(ORDER) as NodeKind[]).find((k) => ORDER[k] === ORDER[s] + 1)
+        errors.push(`No conectes ${NODE_KIND_MAP[s].label} directamente con ${NODE_KIND_MAP[t].label}: pasa por ${mid ? NODE_KIND_MAP[mid].label : 'el nodo intermedio'}.`)
         break
       }
     }
 
-    if (ingest && train && !isReachable(edges, ingest.id, train.id)) {
-      errors.push('Conecta el flujo: Ingesta → … → Entrenamiento (no hay ruta entre ellos).')
+    // La cadena obligatoria debe estar enlazada paso a paso hasta Entrenamiento.
+    const REQ_LINKS: [NodeKind, NodeKind][] = [
+      ['ingest', 'preprocess'], ['preprocess', 'split'], ['split', 'hparams'], ['hparams', 'train'],
+    ]
+    for (const [a, b] of REQ_LINKS) {
+      if (has(a) && has(b) && !edgePairs.has(`${a}→${b}`)) {
+        errors.push(`Conecta ${NODE_KIND_MAP[a].label} → ${NODE_KIND_MAP[b].label}.`)
+      }
     }
+
+    // Despliegue (opcional): si está, debe ir conectado desde Entrenamiento.
+    if (has('deploy') && !edgePairs.has('train→deploy')) {
+      errors.push(`El nodo de ${NODE_KIND_MAP['deploy'].label} debe conectarse desde ${NODE_KIND_MAP['train'].label} (o quítalo del lienzo).`)
+    }
+
     for (const n of nodes) {
       const err = validateConfig(n.data.kind, { ...defaultConfig(n.data.kind), ...(n.data.config ?? {}) })
       if (err) errors.push(`${NODE_KIND_MAP[n.data.kind].label}: ${err}`)
@@ -464,7 +472,11 @@ export function PipelineCanvas({
     const trainNode = nodes.find((n) => n.data.kind === 'train')
     const preprocessNode = nodes.find((n) => n.data.kind === 'preprocess')
     const splitNode = nodes.find((n) => n.data.kind === 'split')
+    const hparamsNode = nodes.find((n) => n.data.kind === 'hparams')
+    // `cfg` = ejecución (nodo Entrenamiento); `hcfg` = arquitectura + hiperparámetros (nodo
+    // Hiperparámetros). El payload combina ambos.
     const cfg: NodeConfig = { ...defaultConfig('train'), ...(trainNode?.data.config ?? {}) }
+    const hcfg: NodeConfig = { ...defaultConfig('hparams'), ...(hparamsNode?.data.config ?? {}) }
     const preCfg: NodeConfig = preprocessNode
       ? { ...defaultConfig('preprocess'), ...(preprocessNode.data.config ?? {}) } : {}
     const splitCfg: NodeConfig = splitNode
@@ -497,7 +509,11 @@ export function PipelineCanvas({
       earlyStopping: cfg.earlyStopping === 'true',
       esPatience: Number(cfg.esPatience) || undefined,
       esMonitor: String(cfg.esMonitor ?? 'val_loss'),
-      ...buildTrainFields(cfg),
+      // Hiperparámetros (nodo aparte): HPO + arquitectura + knobs vienen de `hcfg`.
+      hpo: hcfg.hpo === 'true',
+      hpoTrials: Number(hcfg.hpoTrials) || undefined,
+      hpoEffort: String(hcfg.hpoEffort ?? 'balanced'),
+      ...buildTrainFields(hcfg),
       // Nodos Preprocesamiento y Split (parametrización real en el ml-engine).
       normalization: preprocessNode ? String(preCfg.normalization ?? 'minmax') : undefined,
       dataAugmentation: preprocessNode ? preCfg.dataAugmentation === 'true' : undefined,
@@ -536,7 +552,7 @@ export function PipelineCanvas({
         try {
           const exec = await getExecution(token, wsId, pipelineId, executionId)
           if (exec.status === 'COMPLETED') {
-            setStatusByKind(['ingest', 'preprocess', 'split'], 'success')
+            setStatusByKind(['ingest', 'preprocess', 'split', 'hparams'], 'success')
             const runId = exec.mlflowRunId ?? ''
             setNodes((nds) => nds.map((n) => n.data.kind === 'train'
               ? { ...n, data: { ...n.data, status: 'success', error: undefined,
@@ -650,8 +666,13 @@ export function PipelineCanvas({
     // en curso") NO debe disparar el entrenamiento (solo arranca la ingesta).
     if (m.startsWith('epoch') || m.includes('entrenando') || m.includes('val_accuracy')
         || m.includes('registro') || m.includes('registrando')) {
-      setStatusByKind(['ingest', 'preprocess', 'split'], 'success')
+      setStatusByKind(['ingest', 'preprocess', 'split', 'hparams'], 'success')
       setStatusByKind(['train'], 'running')
+    } else if (m.includes('hpo') || m.includes('hiperparámetro') || m.includes('hiperparametro')) {
+      // HPO en curso (combinaciones/épocas de prueba) → se refleja en el nodo Hiperparámetros,
+      // NO en Split (que es el bug que veíamos).
+      setStatusByKind(['ingest', 'preprocess', 'split'], 'success')
+      setStatusByKind(['hparams'], 'running')
     } else if (m.includes('split')) {
       setStatusByKind(['ingest', 'preprocess'], 'success')
       setStatusByKind(['split'], 'running')
@@ -888,7 +909,7 @@ export function PipelineCanvas({
               if (exec.status === 'COMPLETED' || exec.status === 'FAILED') {
                 replayFinishedRef.current = true
                 if (exec.status === 'COMPLETED' && !cancelled) {
-                  setStatusByKind(['ingest', 'preprocess', 'split'], 'success')
+                  setStatusByKind(['ingest', 'preprocess', 'split', 'hparams'], 'success')
                   setNodes((nds) => nds.map((n) => n.data.kind === 'train'
                     ? { ...n, data: { ...n.data, status: 'success', error: undefined,
                         config: { ...n.data.config,
@@ -992,6 +1013,24 @@ export function PipelineCanvas({
     [edges, setEdges]
   )
 
+  // Clic en una línea conectora → ofrecer desconectarla (con confirmación, para no borrar
+  // por accidente). El usuario puede volver a unir los nodos arrastrando entre sus puntos.
+  const onEdgeClick = useCallback(
+    (_: MouseEvent, edge: Edge) => {
+      const s = nodes.find((n) => n.id === edge.source)?.data.kind
+      const t = nodes.find((n) => n.id === edge.target)?.data.kind
+      const label = s && t ? `${NODE_KIND_MAP[s].label} → ${NODE_KIND_MAP[t].label}` : 'esta conexión'
+      setConfirm({
+        title: 'Desconectar nodos',
+        description: `¿Eliminar la conexión ${label}? Podrás volver a unirlos arrastrando desde el punto de un nodo al del siguiente.`,
+        confirmLabel: 'Desconectar',
+        tone: 'destructive',
+        onConfirm: () => setEdges((eds) => eds.filter((e) => e.id !== edge.id)),
+      })
+    },
+    [nodes, setEdges]
+  )
+
   const onDragOver = useCallback((event: DragEvent<HTMLDivElement>) => {
     event.preventDefault()
     event.dataTransfer.dropEffect = 'move'
@@ -1068,6 +1107,7 @@ export function PipelineCanvas({
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
+          onEdgeClick={onEdgeClick}
           onNodeClick={(_, node) => requestSelectNode(node.id)}
           onPaneClick={() => requestCloseNode()}
           onMoveEnd={(_, vp) => {

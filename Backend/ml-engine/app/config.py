@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     app_port: int = 8000
     log_level: str = "info"
 
+    # Aislamiento del entrenamiento en subproceso (Fase 3): un OOM/crash del entrenamiento
+    # mata solo al hijo, no al consumidor. Kill-switch (ISOLATE_TRAINING=false) por si acaso.
+    isolate_training: bool = True
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

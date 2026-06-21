@@ -1,6 +1,7 @@
 import { Spinner } from '@/shared/components/ui/spinner'
+import { FieldHelp } from '@/shared/components/FieldHelp'
 import { parseMetrics, parseQualitySignals } from '@/features/executions/types'
-import { groupMetricsBySplit, formatMetric } from '@/features/executions/metricsGroups'
+import { groupMetricsBySplit, formatMetric, metricHelp } from '@/features/executions/metricsGroups'
 import type { PipelineNodeStatus } from './PipelineNode'
 import { QualitySignals } from './QualitySignals'
 
@@ -56,7 +57,10 @@ export function TrainMetrics({ status, metrics, runId }: TrainMetricsProps) {
             <div className="grid grid-cols-2 gap-2">
               {g.entries.map(([label, value]) => (
                 <div key={label} className="rounded-lg border border-border bg-card/60 p-2">
-                  <p className="truncate text-[11px] text-muted-foreground" title={label}>{label}</p>
+                  <div className="flex items-center gap-1">
+                    <p className="truncate text-[11px] text-muted-foreground" title={label}>{label}</p>
+                    {metricHelp(label) && <FieldHelp text={metricHelp(label) as string} label={label} />}
+                  </div>
                   <p className={`font-mono text-base font-semibold ${g.valueClass}`}>
                     {formatMetric(label, value)}
                   </p>

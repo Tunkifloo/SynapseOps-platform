@@ -23,7 +23,8 @@ import {
 } from '@/shared/components/ui/select'
 import { notify } from '@/shared/notify'
 import { setDeployHandoff } from '@/features/pipelines/deployHandoff'
-import { groupMetricsBySplit } from '@/features/executions/metricsGroups'
+import { groupMetricsBySplit, metricHelp } from '@/features/executions/metricsGroups'
+import { FieldHelp } from '@/shared/components/FieldHelp'
 import type { MlflowModelVersion, ModelStage } from '../api'
 import { DeleteVersionDialog } from './DeleteVersionDialog'
 
@@ -393,9 +394,14 @@ export function ConfusionMatrixView({ cm }: { cm: ConfusionMatrix }) {
   const max = Math.max(1, ...cm.matrix.flat())
   return (
     <div>
-      <p className="mb-1.5 text-[10px] font-semibold tracking-[0.14em] text-muted-foreground uppercase">
+      <p className="mb-1.5 flex items-center gap-1 text-[10px] font-semibold tracking-[0.14em] text-muted-foreground uppercase">
         Matriz de confusión{' '}
         <span className="text-muted-foreground/70 normal-case">(filas = real, columnas = predicho)</span>
+        <FieldHelp
+          label="Matriz de confusión"
+          className="normal-case"
+          text="Cruza la clase REAL (filas) con la PREDICHA (columnas). La diagonal son los aciertos; fuera de la diagonal, los errores — revela qué clases confunde el modelo entre sí."
+        />
       </p>
       <div className="overflow-auto">
         <table className="border-collapse text-[10px]">
@@ -450,15 +456,22 @@ export function ScoreCamView({ src }: { src: string }) {
   const [open, setOpen] = useState(true)
   return (
     <div>
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center gap-1.5 text-[10px] font-semibold tracking-[0.14em] text-muted-foreground uppercase transition-colors duration-150 ease-out-quart hover:text-foreground"
-        aria-expanded={open}
-      >
-        {open ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
-        Interpretabilidad · Score-CAM
-      </button>
+      <div className="flex items-center gap-1.5">
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          className="flex items-center gap-1.5 text-[10px] font-semibold tracking-[0.14em] text-muted-foreground uppercase transition-colors duration-150 ease-out-quart hover:text-foreground"
+          aria-expanded={open}
+        >
+          {open ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
+          Interpretabilidad · Score-CAM
+        </button>
+        <FieldHelp
+          label="Score-CAM (interpretabilidad)"
+          className="normal-case"
+          text="Mapas de calor que muestran en qué regiones de la imagen se fija el modelo para decidir. Sirve para confiar en el modelo y detectar si mira el objeto correcto o el fondo. Borde verde = acierto · rojo = error."
+        />
+      </div>
       {open && (
         <div className="mt-1.5 space-y-1.5">
           <p className="text-[11px] leading-relaxed text-muted-foreground">
@@ -522,7 +535,14 @@ function QualityReport({ metrics }: { metrics: Record<string, number> }) {
   }
   return (
     <div>
-      <p className="mb-1.5 text-[10px] font-semibold tracking-[0.14em] text-muted-foreground uppercase">Calidad y data drift</p>
+      <p className="mb-1.5 flex items-center gap-1 text-[10px] font-semibold tracking-[0.14em] text-muted-foreground uppercase">
+        Calidad y data drift
+        <FieldHelp
+          label="Calidad y data drift"
+          className="normal-case"
+          text="Salud del modelo, no su rendimiento. Overfitting: brecha entre la accuracy de entrenamiento y la de validación (el modelo memoriza en vez de generalizar). Deriva (drift) medida con PSI: cuánto cambió la distribución del split (train vs val) y del dataset respecto a la corrida previa. PSI < 0.10 estable · 0.10–0.25 moderada · ≥ 0.25 significativa."
+        />
+      </p>
       <div className="flex flex-col gap-1.5">
         {chips.map((c, i) => (
           <span key={i} className={`rounded-md px-2 py-1 text-[11px] font-medium ${toneClass[c.tone]}`}>{c.label}</span>
@@ -540,9 +560,12 @@ function DetailGrid({ title, entries, format, valueClass }: DetailGridProps) {
       <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
         {entries.map(([key, value]) => (
           <div key={key} className="rounded-md bg-muted/60 px-2 py-1.5">
-            <p className="truncate text-[10px] text-muted-foreground" title={key}>
-              {key.replace(/_/g, ' ')}
-            </p>
+            <div className="flex items-center gap-1">
+              <p className="truncate text-[10px] text-muted-foreground" title={key}>
+                {key.replace(/_/g, ' ')}
+              </p>
+              {metricHelp(key) && <FieldHelp text={metricHelp(key) as string} label={key.replace(/_/g, ' ')} />}
+            </div>
             <p className={`truncate font-mono text-xs ${valueClass ?? 'text-foreground'}`} title={String(value)}>
               {format(value)}
             </p>

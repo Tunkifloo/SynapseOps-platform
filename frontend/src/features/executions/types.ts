@@ -45,6 +45,10 @@ export interface ExecutionRequest {
     finetuningEpochs?: number
     finetuningLr?: number
     unfreezeLayers?: number
+    // HPO · optimización automática de hiperparámetros (Fase 4).
+    hpo?: boolean
+    hpoTrials?: number
+    hpoEffort?: string
 }
 
 export interface ExecutionFormData {
