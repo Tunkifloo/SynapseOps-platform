@@ -2,21 +2,26 @@ import { describe, expect, it } from 'vitest'
 
 import { defaultConfig, validateConfig } from './nodeConfig'
 
-// Configuración de entrenamiento válida y completa (incluye los parámetros
-// de CNN: optimizer, batchNorm, earlyStopping — todos obligatorios en el esquema).
+// Nodo Entrenamiento (ejecución): framework, batch, batch norm, early stopping y el modelo.
+// La arquitectura y los hiperparámetros viven ahora en el nodo Hiperparámetros.
 const fullTrainConfig = {
   framework: 'tensorflow',
-  architecture: 'cnn',
-  optimizer: 'adam',
-  epochs: 5,
   batchSize: '32',
-  learningRate: '0.001',
-  dropout: 0.4,
-  l2: 0,
   batchNorm: 'false',
   earlyStopping: 'false',
   modelMode: 'new',
   modelName: 'mnist_cnn_demo',
+}
+
+// Nodo Hiperparámetros: arquitectura + knobs (con HPO desactivado, los manuales son visibles).
+const fullHparamsConfig = {
+  architecture: 'cnn',
+  hpo: 'false',
+  optimizer: 'adam',
+  epochs: 5,
+  learningRate: '0.001',
+  dropout: 0.4,
+  l2: 0,
 }
 
 describe('validateConfig (HU-003 / HU-004 / HU-005)', () => {
@@ -30,13 +35,17 @@ describe('validateConfig (HU-003 / HU-004 / HU-005)', () => {
     expect(validateConfig('train', fullTrainConfig)).toBeNull()
   })
 
-  it('rechaza epochs fuera de rango (máx 100)', () => {
-    const error = validateConfig('train', { ...fullTrainConfig, epochs: 999, modelName: 'm' })
+  it('acepta una configuración de hiperparámetros completa', () => {
+    expect(validateConfig('hparams', fullHparamsConfig)).toBeNull()
+  })
+
+  it('rechaza epochs fuera de rango (máx 100) en Hiperparámetros', () => {
+    const error = validateConfig('hparams', { ...fullHparamsConfig, epochs: 999 })
     expect(error).toMatch(/Epochs/i)
   })
 
-  it('rechaza learning rate no numérico', () => {
-    const error = validateConfig('train', { ...fullTrainConfig, learningRate: 'abc', modelName: 'm' })
+  it('rechaza learning rate no numérico en Hiperparámetros', () => {
+    const error = validateConfig('hparams', { ...fullHparamsConfig, learningRate: 'abc' })
     expect(error).toMatch(/Learning rate/i)
   })
 
@@ -60,7 +69,8 @@ describe('validateConfig (HU-003 / HU-004 / HU-005)', () => {
 describe('defaultConfig', () => {
   it('entrega valores base coherentes por tipo de nodo', () => {
     expect(defaultConfig('split')).toEqual({ trainRatio: 80 })
-    expect(defaultConfig('train')).toMatchObject({ framework: 'tensorflow', architecture: 'cnn' })
+    expect(defaultConfig('train')).toMatchObject({ framework: 'tensorflow' })
+    expect(defaultConfig('hparams')).toMatchObject({ architecture: 'cnn', hpo: 'true' })
     expect(defaultConfig('deploy')).toEqual({})
   })
 })

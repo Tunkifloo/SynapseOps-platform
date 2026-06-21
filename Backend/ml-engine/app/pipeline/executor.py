@@ -679,7 +679,8 @@ class PipelineExecutor:
         result: TrainingResult = strategy.train(
             X_train, y_train, X_val, y_val, hp, output_dir,
             X_test=bundle.X_test, y_test=bundle.y_test, on_epoch=on_epoch,
-            class_names=bundle.class_names, on_phase=on_phase)
+            class_names=bundle.class_names, on_phase=on_phase,
+            on_event=lambda m, lvl="INFO": self._emit(job.execution_id, m, lvl))
         # TEL-01 · t_fin_entrenamiento: fin del entrenamiento (antes del registro en MLflow).
         t_fin_entrenamiento = datetime.now().isoformat(timespec="milliseconds")
         self._warn_memory(job, "fin del entrenamiento")
