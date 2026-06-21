@@ -1,5 +1,6 @@
 import { CheckCircle2, TrendingUp, ShieldCheck } from 'lucide-react'
 
+import { FieldHelp } from '@/shared/components/FieldHelp'
 import type { DriftItem, QualitySignals as QS } from '@/features/executions/types'
 
 interface QualitySignalsProps {
@@ -51,6 +52,11 @@ export function QualitySignals({ signals }: QualitySignalsProps) {
     <div className="space-y-2 rounded-xl border border-border bg-card/40 p-3">
       <p className="flex items-center gap-1.5 text-xs font-semibold tracking-[0.1em] text-muted-foreground uppercase">
         <ShieldCheck className="size-3.5" /> Calidad del entrenamiento
+        <FieldHelp
+          label="Calidad del entrenamiento"
+          className="normal-case"
+          text="Diagnóstico de la SALUD del entrenamiento (no del rendimiento). Overfitting: el modelo memoriza el entrenamiento y generaliza peor (brecha alta entre train y validación). Deriva (drift): cuánto difieren las distribuciones — del split (train vs validación) y de los datos respecto a la corrida anterior — medida con PSI: < 0.10 estable · 0.10–0.25 moderada · ≥ 0.25 significativa."
+        />
       </p>
 
       {primarySplit && (

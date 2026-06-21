@@ -23,7 +23,8 @@ import {
 } from '@/shared/components/ui/select'
 import { notify } from '@/shared/notify'
 import { setDeployHandoff } from '@/features/pipelines/deployHandoff'
-import { groupMetricsBySplit } from '@/features/executions/metricsGroups'
+import { groupMetricsBySplit, metricHelp } from '@/features/executions/metricsGroups'
+import { FieldHelp } from '@/shared/components/FieldHelp'
 import type { MlflowModelVersion, ModelStage } from '../api'
 import { DeleteVersionDialog } from './DeleteVersionDialog'
 
@@ -522,7 +523,14 @@ function QualityReport({ metrics }: { metrics: Record<string, number> }) {
   }
   return (
     <div>
-      <p className="mb-1.5 text-[10px] font-semibold tracking-[0.14em] text-muted-foreground uppercase">Calidad y data drift</p>
+      <p className="mb-1.5 flex items-center gap-1 text-[10px] font-semibold tracking-[0.14em] text-muted-foreground uppercase">
+        Calidad y data drift
+        <FieldHelp
+          label="Calidad y data drift"
+          className="normal-case"
+          text="Salud del modelo, no su rendimiento. Overfitting: brecha entre la accuracy de entrenamiento y la de validación (el modelo memoriza en vez de generalizar). Deriva (drift) medida con PSI: cuánto cambió la distribución del split (train vs val) y del dataset respecto a la corrida previa. PSI < 0.10 estable · 0.10–0.25 moderada · ≥ 0.25 significativa."
+        />
+      </p>
       <div className="flex flex-col gap-1.5">
         {chips.map((c, i) => (
           <span key={i} className={`rounded-md px-2 py-1 text-[11px] font-medium ${toneClass[c.tone]}`}>{c.label}</span>
@@ -540,9 +548,12 @@ function DetailGrid({ title, entries, format, valueClass }: DetailGridProps) {
       <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
         {entries.map(([key, value]) => (
           <div key={key} className="rounded-md bg-muted/60 px-2 py-1.5">
-            <p className="truncate text-[10px] text-muted-foreground" title={key}>
-              {key.replace(/_/g, ' ')}
-            </p>
+            <div className="flex items-center gap-1">
+              <p className="truncate text-[10px] text-muted-foreground" title={key}>
+                {key.replace(/_/g, ' ')}
+              </p>
+              {metricHelp(key) && <FieldHelp text={metricHelp(key) as string} label={key.replace(/_/g, ' ')} />}
+            </div>
             <p className={`truncate font-mono text-xs ${valueClass ?? 'text-foreground'}`} title={String(value)}>
               {format(value)}
             </p>
