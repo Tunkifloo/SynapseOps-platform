@@ -13,8 +13,12 @@ pydantic-settings
 confluent-kafka
 
 # ── MLflow ────────────────────────────────────────────────
-mlflow
-protobuf>=4.25,<6
+# mlflow CLIENTE fijado a 2.x: (a) coincide con el servidor del compose (mlflow v2.21.3) y
+# (b) mantiene protobuf<5. mlflow 3.x (sin pin) arrastraba protobuf 5.29.6 → INCOMPATIBLE con
+# TensorFlow 2.15.1 (requiere protobuf>=3.20.3,<5) y desajustaba cliente/servidor.
+mlflow>=2.21,<3
+# protobuf<5 OBLIGATORIO por TF 2.15.1. (Antes <6 permitía que mlflow 3.x subiera a protobuf 5.)
+protobuf>=4.25,<5
 
 # ── Evidently AI ──────────────────────────────────────────
 evidently
