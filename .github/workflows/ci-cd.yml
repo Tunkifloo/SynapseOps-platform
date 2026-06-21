@@ -128,7 +128,16 @@ jobs:
           # coexistencia TF/PyTorch). El vector NO aplica: el sistema solo carga TorchScript
           # producido por la propia plataforma vía torch.jit.load — nunca torch.load de
           # artefactos no confiables subidos por terceros. Revisar al migrar el stack a cu124.
-          allow-ghsas: GHSA-53q9-r3pm-6pq6
+          #
+          # Excepción documentada: GHSA-7gcm-g887-7qv7 (protobuf — DoS por bypass de profundidad
+          # de recursión en el parser JSON). SOLO está parcheado en protobuf>=5.29.6, pero
+          # TensorFlow 2.15.1 EXIGE protobuf<5 (subir a TF 2.16+/protobuf 5 implicaría Keras 3,
+          # que rompe la compatibilidad de los .keras con el model-service). No hay versión
+          # corregida en la rama 4.x. El vector NO aplica: el ml-engine usa protobuf solo para la
+          # serialización interna de TensorFlow/MLflow de SUS PROPIOS datos (grafos, métricas,
+          # tracking) — nunca parsea JSON→protobuf de entrada no confiable de terceros. Revisar
+          # al migrar el stack a TF/protobuf 5.
+          allow-ghsas: GHSA-53q9-r3pm-6pq6, GHSA-7gcm-g887-7qv7
 
   # ── JOB 4: Build & Push de imágenes → GHCR (solo main + tags v*) ───────────
   build-and-push:
