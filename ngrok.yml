@@ -6,6 +6,6 @@ tunnels:
     addr: 3000
     proto: http
 
-  mlflow:
-    addr: 5000
+  backend:
+    addr: 8080
     proto: http

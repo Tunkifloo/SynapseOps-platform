@@ -30,6 +30,12 @@ export const request = async (url: string, init: RequestInit = {}) => {
     headers.set('Content-Type', 'application/json')
   }
 
+  // Evita la página intersticial de ngrok (free) cuando el orchestrator se expone por túnel:
+  // sin esta cabecera, ngrok responde HTML de advertencia en vez del JSON de la API.
+  if (!headers.has('ngrok-skip-browser-warning')) {
+    headers.set('ngrok-skip-browser-warning', 'true')
+  }
+
   let response: Response
   try {
     response = await fetch(url, { ...init, headers })

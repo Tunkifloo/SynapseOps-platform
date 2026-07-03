@@ -1,0 +1,85 @@
+name: Deploy Frontend → GitHub Pages
+
+# Publica el frontend (Vite) como sitio estático en GitHub Pages. El front apunta al
+# Backend Orchestrator expuesto por un túnel ngrok (la URL se configura en la variable de
+# repositorio VITE_API_BASE_URL, p. ej. https://xxxx.ngrok-free.app/api/v1).
+#
+# Requisitos previos (una sola vez):
+#   1) Settings → Pages → Build and deployment → Source: "GitHub Actions".
+#   2) Settings → Secrets and variables → Actions → Variables → New variable:
+#        VITE_API_BASE_URL = https://<tu-subdominio>.ngrok-free.app/api/v1
+#      (actualízala cada vez que cambie la URL del túnel ngrok y re-ejecuta este workflow).
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths: [ "frontend/**", ".github/workflows/deploy-pages.yml" ]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Un solo despliegue a la vez; no cancela el que esté en curso.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: "Build (Vite) → artefacto de Pages"
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Checkout"
+        uses: actions/checkout@v4
+
+      - name: "Configurar Node 20"
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: "Instalar dependencias"
+        run: cd frontend && npm ci --prefer-offline --no-audit
+
+      - name: "Verificar que VITE_API_BASE_URL esté configurada"
+        env:
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
+        run: |
+          if [ -z "$VITE_API_BASE_URL" ]; then
+            echo "::error::Falta la variable de repositorio VITE_API_BASE_URL (URL del orchestrator vía ngrok). Configúrala en Settings → Variables → Actions."
+            exit 1
+          fi
+          echo "API destino: $VITE_API_BASE_URL"
+
+      - name: "Build del frontend"
+        env:
+          # Base = /<nombre-del-repo>/ para un project site de GitHub Pages.
+          VITE_BASE: "/${{ github.event.repository.name }}/"
+          # HashRouter: evita 404 en rutas profundas sin reescrituras del servidor.
+          VITE_ROUTER_MODE: "hash"
+          # URL del Backend Orchestrator expuesto por ngrok.
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
+        run: cd frontend && npm run build
+
+      - name: "Configurar Pages"
+        uses: actions/configure-pages@v5
+
+      - name: "Subir artefacto"
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: frontend/dist
+
+  deploy:
+    name: "Deploy a GitHub Pages"
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: "Publicar"
+        id: deployment
+        uses: actions/deploy-pages@v4

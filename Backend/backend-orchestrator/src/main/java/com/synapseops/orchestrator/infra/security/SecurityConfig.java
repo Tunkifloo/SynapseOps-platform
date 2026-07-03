@@ -79,12 +79,16 @@ public class SecurityConfig {
                 "http://localhost:3000",
                 "http://localhost:5173",
                 "https://*.ngrok-free.app",
-                "https://*.ngrok.io"
+                "https://*.ngrok.io",
+                // Frontend desplegado en GitHub Pages (consume el orchestrator vía túnel ngrok).
+                "https://*.github.io"
         ));
         config.setAllowedMethods(Arrays.asList(
                 "GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
         config.setAllowedHeaders(Arrays.asList(
-                "Authorization", "Cache-Control", "Content-Type"));
+                "Authorization", "Cache-Control", "Content-Type",
+                // Cabecera que el front envía para saltar la página intersticial de ngrok (free).
+                "ngrok-skip-browser-warning"));
         config.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();

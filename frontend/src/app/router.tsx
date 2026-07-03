@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState, type ReactNode } from 'react'
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, HashRouter, Navigate, Route, Routes } from 'react-router-dom'
 
 import type { Role } from '@/types'
 import { ForbiddenPage } from '@/features/_shared/ForbiddenPage'
@@ -93,12 +93,17 @@ function ShellPage({ section, renderPage }: ShellPageProps) {
   )
 }
 
+// En GitHub Pages se usa HashRouter (VITE_ROUTER_MODE=hash): las rutas viven tras "#",
+// por lo que los enlaces profundos no devuelven 404 sin configurar reescrituras del servidor.
+// En dev y detrás de nginx se mantiene BrowserRouter (URLs limpias).
+const Router = import.meta.env.VITE_ROUTER_MODE === 'hash' ? HashRouter : BrowserRouter
+
 export function AppRouter() {
   const isAuthenticated = useAppStore((state) => state.isAuthenticated)
   const role = useAppStore((state) => state.user?.role)
 
   return (
-    <BrowserRouter>
+    <Router>
       <Suspense fallback={<div className="flex h-[100svh] items-center justify-center bg-background"><Spinner /></div>}>
       <Routes>
         <Route path="/login" element={!isAuthenticated ? <LoginPage /> : <Navigate to="/dashboard" replace />} />
@@ -251,6 +256,6 @@ export function AppRouter() {
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
       </Suspense>
-    </BrowserRouter>
+    </Router>
   )
 }

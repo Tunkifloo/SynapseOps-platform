@@ -300,6 +300,11 @@
                         <artifactId>maven-surefire-plugin</artifactId>
                         <configuration>
                             <groups>integration</groups>
+                            <!-- JDK 21 deshabilita el self-attach por defecto; Mockito (inline
+                                 mock-maker vía Byte Buddy) lo necesita para instrumentar. Sin esto
+                                 los tests con @MockitoBean fallan con "Could not self-attach to
+                                 current VM" / "Could not initialize plugin: MockMaker". -->
+                            <argLine>-Djdk.attach.allowAttachSelf=true -XX:+EnableDynamicAgentLoading</argLine>
                             <forkCount>1</forkCount>
                             <reuseForks>true</reuseForks>
                             <environmentVariables>

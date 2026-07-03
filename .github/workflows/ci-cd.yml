@@ -103,9 +103,9 @@ jobs:
           cache: pip
 
       - name: "Instalar dependencias de test (ligeras)"
-        run: pip install --quiet pytest numpy Pillow pydantic pydantic-settings
+        run: pip install --quiet pytest numpy Pillow pydantic pydantic-settings scikit-learn
 
-      - name: "pytest (ingesta de datasets + drift)"
+      - name: "pytest (ingesta · drift/PSI · métricas · preprocesamiento)"
         run: cd Backend/ml-engine && python -m pytest tests/ -q
 
   # ── JOB 3: Dependency Review (solo en PRs) ─────────────────────────────────
@@ -228,7 +228,7 @@ jobs:
         if: ${{ success() }}
         run: |
           {
-            echo "### 🚀 Imagen publicada — ${{ matrix.name }}"
+            echo "### Imagen publicada — ${{ matrix.name }}"
             echo ""
             echo "**Digest:** \`${{ steps.build.outputs.digest }}\`"
             echo ""
