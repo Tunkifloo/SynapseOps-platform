@@ -5,7 +5,7 @@
         test test-it test-frontend test-ml \
         build \
         docker-build clean all help
-docker
+
 BACKEND_DIR   := Backend/backend-orchestrator
 FRONTEND_DIR  := frontend
 ML_ENGINE_DIR := Backend/ml-engine
