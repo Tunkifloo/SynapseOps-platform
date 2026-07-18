@@ -72,6 +72,26 @@ $env:E2E_HEADLESS="0"; .\.venv\Scripts\python.exe -m pytest -m smoke
 .\.venv\Scripts\python.exe -m pytest -m smoke --html=artifacts\reporte-e2e.html --self-contained-html
 ```
 
+### Modo pausado para grabar un video de evidencia
+
+Para grabar la pantalla mientras se ejecutan las pruebas, activa el **modo pausado**: el
+navegador se ve, cada paso se resalta en naranja y hay una pausa configurable tras cada
+interacción (clic/escritura/navegación).
+
+```powershell
+# Ventana visible + pausa de 800 ms por paso + resaltado (ideal para grabar)
+$env:E2E_HEADLESS="0"; $env:E2E_SLOWMO_MS="800"
+.\.venv\Scripts\python.exe -m pytest -m smoke
+
+# Un solo archivo, aún más lento (1 s por paso), para una toma limpia
+$env:E2E_SLOWMO_MS="1000"
+.\.venv\Scripts\python.exe -m pytest tests\test_workspaces.py
+```
+
+> `E2E_SLOWMO_MS` = milisegundos de pausa tras cada paso (0 = rápido, por defecto).
+> `E2E_HIGHLIGHT=0` desactiva el resaltado naranja si prefieres una toma sin marcas.
+> Recuerda volver a `$env:E2E_SLOWMO_MS="0"` (o cerrar la terminal) para las corridas normales.
+
 ### Variables de entorno (todas opcionales)
 
 | Variable | Por defecto | Descripción |
@@ -92,28 +112,68 @@ $env:E2E_BROWSER="chrome"; $env:E2E_HEADLESS="0"
 
 ---
 
-## 4. Casos cubiertos (24)
-
-| ID | Caso | Archivo |
+## 4. Casos cubiertos (35)
+**Autenticación y control de acceso** (`test_autenticacion.py`)
+| ID | Caso de uso | Resultado esperado |
 |---|---|---|
-| TC-E2E-01 | Login válido (ADMIN) → redirige al Resumen | `test_autenticacion.py` |
-| TC-E2E-02 | Login inválido → muestra alerta de error | `test_autenticacion.py` |
-| TC-E2E-03 | Formulario vacío → validación en cliente | `test_autenticacion.py` |
-| TC-E2E-04 | Ruta protegida sin sesión → redirige a /login | `test_autenticacion.py` |
-| TC-E2E-05 | Cerrar sesión → vuelve a /login | `test_autenticacion.py` |
-| TC-E2E-06..12 | Navegar por los 7 módulos del ciclo MLOps | `test_navegacion.py` |
-| TC-E2E-13 | Crear un espacio de trabajo → aparece listado | `test_workspaces.py` |
-| TC-E2E-14 | Validar nombre obligatorio del proyecto | `test_workspaces.py` |
-| TC-E2E-15 | Buscar un espacio por nombre | `test_workspaces.py` |
-| TC-E2E-16 | Búsqueda sin coincidencias → estado vacío | `test_workspaces.py` |
-| TC-E2E-17 | Filtrar por la pestaña "Sin dataset" | `test_workspaces.py` |
-| TC-E2E-18 | Abrir el detalle (drawer con métricas) | `test_workspaces.py` |
-| TC-E2E-19 | Editar y renombrar un espacio | `test_workspaces.py` |
-| TC-E2E-20 | Eliminar un espacio (con confirmación) | `test_workspaces.py` |
-| TC-E2E-21 | Alternar tema claro/oscuro y persistirlo | `test_ui_general.py` |
-| TC-E2E-22 | Ver "Mi perfil" con el correo del usuario | `test_ui_general.py` |
-| TC-E2E-23 | Persistencia de sesión al recargar | `test_ui_general.py` |
-| TC-E2E-24 | Mostrar/ocultar la contraseña en el login | `test_ui_general.py` |
+| TC-E2E-01 | Iniciar sesión con credenciales válidas (ADMIN) | Redirige a `/dashboard`; aparece la barra de navegación |
+| TC-E2E-02 | Iniciar sesión con credenciales inválidas | Se muestra la alerta de error; permanece sin autenticar |
+| TC-E2E-03 | Enviar el formulario de login vacío | Se muestran los mensajes de campo obligatorio (validación en cliente) |
+| TC-E2E-04 | Acceder a `/workspaces` sin sesión | El guard redirige a `/login` |
+| TC-E2E-05 | Cerrar sesión | Vuelve a `/login` |
+
+**Navegación** (`test_navegacion.py`)
+| ID | Caso de uso | Resultado esperado |
+|---|---|---|
+| TC-E2E-06..12 | Navegar por los módulos (Espacios, Lienzo, Modelos, Datasets, Despliegues, Monitoreo, Resumen) | Cada módulo carga y conserva el shell |
+
+**Comportamientos transversales** (`test_ui_general.py`)
+| ID | Caso de uso | Resultado esperado |
+|---|---|---|
+| TC-E2E-21 | Alternar tema claro/oscuro | Cambia `.dark` en `<html>` y persiste tras recargar (localStorage) |
+| TC-E2E-22 | Ver "Mi perfil" | Carga la pantalla y muestra el correo del usuario |
+| TC-E2E-23 | Persistencia de sesión al recargar | La sesión se mantiene (no redirige a `/login`) |
+| TC-E2E-24 | Mostrar/ocultar la contraseña en el login | El campo alterna entre `password` y `text` |
+
+**Autenticación — profundidad** (`test_auth_extra.py`)
+| ID | Caso de uso | Resultado esperado |
+|---|---|---|
+| TC-E2E-25 | Login → Registro (enlace "Regístrate") | Abre `/signup` |
+| TC-E2E-26 | Validación del formulario de registro | Muestra errores; vuelve a `/login` |
+| TC-E2E-27 | Login → "¿Olvidaste tu contraseña?" | Abre `/forgot-password` |
+| TC-E2E-28 | Raíz `/` sin sesión | Redirige a `/login` |
+
+**Módulos con estado — profundidad** (`test_builder_search.py`, `test_workspaces_extra.py`, `test_admin.py`)
+| ID | Caso de uso | Resultado esperado |
+|---|---|---|
+| TC-E2E-29 | Crear espacio con descripción | La descripción aparece en el panel de detalle |
+| TC-E2E-30 | Cancelar la creación de un espacio | No se crea ningún espacio |
+| TC-E2E-31 | Búsqueda global de comandos | Sugiere acciones y navega al elegir una |
+| TC-E2E-32 | Abrir el Lienzo desde un espacio | Carga el editor "Lienzo del pipeline" |
+| TC-E2E-33 | Cargar "Gestión de usuarios" (ADMIN) | Muestra la tabla y el CTA "Crear usuario" |
+| TC-E2E-34 | Validar el formulario de creación de usuario | Muestra errores; se cancela sin crear (sin persistencia) |
+| TC-E2E-35 | Abrir el modal "Cambiar contraseña" | Aparece el modal con sus campos (sin enviar) |
+
+**Ciclo de vida de un Espacio de trabajo — CRUD por la UI** (`test_workspaces.py`)
+| ID | Caso de uso | Resultado esperado |
+|---|---|---|
+| TC-E2E-13 | Crear un espacio de trabajo | La tarjeta aparece en el listado |
+| TC-E2E-14 | Validar el nombre obligatorio | Se muestra el error y no se crea |
+| TC-E2E-15 | Buscar un espacio por nombre | La tarjeta coincidente permanece visible |
+| TC-E2E-16 | Búsqueda sin coincidencias | Se muestra "Sin coincidencias para tu búsqueda." |
+| TC-E2E-17 | Filtrar por la pestaña "Sin dataset" | El espacio recién creado aparece |
+| TC-E2E-18 | Abrir el detalle (drawer) | Muestra las métricas (Pipelines, Modelos) |
+| TC-E2E-19 | Editar y renombrar | El listado refleja el nuevo nombre |
+| TC-E2E-20 | Eliminar (con confirmación) | La tarjeta desaparece del listado |
+
+> Estos casos se ejecutan en orden compartiendo un navegador con sesión iniciada; el espacio
+> se crea con un nombre único por corrida (UUID) y se **limpia automáticamente** al terminar.
+
+> El flujo completo de entrenamiento (lienzo → entrenamiento → despliegue → predicción →
+> monitoreo) es de larga duración y depende de datos/GPU; se mantiene como **guion E2E
+> asistido** en [06 — Funcionalidad](06-pruebas-funcionalidad.md). Esta suite automatiza los
+> recorridos deterministas de la interfaz, que son los idóneos para regresión repetible.
+
 
 Los casos de ciclo de vida (`test_workspaces.py`) crean un espacio con nombre único por
 corrida y lo **limpian automáticamente** al terminar. El flujo completo de entrenamiento

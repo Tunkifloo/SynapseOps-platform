@@ -20,6 +20,8 @@ class LoginPage(BasePage):
     ERROR_ALERT = (By.CSS_SELECTOR, "p[role='alert']")
     INLINE_ERROR = (By.CSS_SELECTOR, "p.text-destructive-strong")
     HEADING = (By.XPATH, "//h2[contains(., 'Bienvenido de nuevo')]")
+    SIGNUP_LINK = (By.XPATH, "//a[normalize-space()='Regístrate']")
+    FORGOT_LINK = (By.XPATH, "//a[contains(normalize-space(),'Olvidaste tu contraseña')]")
 
     def load(self):
         self.open("/login")

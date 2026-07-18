@@ -209,6 +209,11 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
       ADMIN_EMAIL: ${ADMIN_EMAIL}
       MODEL_SERVICE_TEMPLATE_DIR: /app/model-service-template
+      # Swagger UI / OpenAPI: el perfil `prod` los desactiva por seguridad
+      # (application-prod.yaml). SWAGGER_ENABLED=true en el .env raíz los reactiva
+      # para el laboratorio; sin la variable, el default sigue endurecido (false).
+      SPRINGDOC_API_DOCS_ENABLED: ${SWAGGER_ENABLED:-false}
+      SPRINGDOC_SWAGGER_UI_ENABLED: ${SWAGGER_ENABLED:-false}
     volumes:
       - storage_data:/storage
       - /var/run/docker.sock:/var/run/docker.sock

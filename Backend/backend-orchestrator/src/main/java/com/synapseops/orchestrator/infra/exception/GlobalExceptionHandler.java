@@ -11,6 +11,7 @@ import org.springframework.security.authentication.DisabledException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.bind.support.WebExchangeBindException;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.server.ServerWebExchange;
 import org.springframework.web.server.ServerWebInputException;
 
@@ -146,6 +147,35 @@ public class GlobalExceptionHandler {
         problem.setProperty("timestamp", Instant.now());
         problem.setProperty("path", exchange.getRequest().getPath().value());
         problem.setProperty("redirectTo", "forgot-password");
+        return problem;
+    }
+
+    /**
+     * Excepciones que YA traen su propio código HTTP (404 de recurso inexistente,
+     * 405, 415, etc.). Sin este handler caían en el genérico de abajo y se
+     * reescribían como 500, ocultando la causa real: p. ej. una ruta inexistente
+     * (NoResourceFoundException, 404) se reportaba al cliente como "Error interno".
+     * Se preserva el estado original y se registra en nivel WARN (no es un fallo
+     * del servidor, sino una petición a un recurso que no existe).
+     */
+    @ExceptionHandler(ResponseStatusException.class)
+    public ProblemDetail handleResponseStatus(ResponseStatusException ex,
+                                              ServerWebExchange exchange) {
+        HttpStatus status = HttpStatus.resolve(ex.getStatusCode().value());
+        if (status == null) {
+            status = HttpStatus.INTERNAL_SERVER_ERROR;
+        }
+        log.warn("{} en {} {}: {}",
+                status.value(),
+                exchange.getRequest().getMethod(),
+                exchange.getRequest().getPath().value(),
+                ex.getReason());
+        ProblemDetail problem = ProblemDetail.forStatus(status);
+        problem.setType(URI.create("/errors/" + status.value()));
+        problem.setTitle(status.getReasonPhrase());
+        problem.setDetail(ex.getReason() != null ? ex.getReason() : status.getReasonPhrase());
+        problem.setProperty("timestamp", Instant.now());
+        problem.setProperty("path", exchange.getRequest().getPath().value());
         return problem;
     }
 
